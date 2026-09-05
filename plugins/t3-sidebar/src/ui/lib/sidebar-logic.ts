@@ -1,6 +1,7 @@
 // Pure sidebar logic, ported from t3code's Sidebar.logic.ts and adapted to
 // bb's PluginSidebarThread payload. Nothing here touches React or the DOM so
 // it can be unit-tested in isolation.
+import type { SnoozedMap } from "../../shared/snooze-contract";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 
 export const SETTLED_TAIL_INITIAL_COUNT = 10;
@@ -158,13 +159,14 @@ export function parseAutoSettleMs(value: unknown): number {
 }
 
 // ── Partition ────────────────────────────────────────────────────────
-export type SidebarSection = "pinned" | "active" | "settled";
+export type SidebarSection = "pinned" | "active" | "settled" | "snoozed";
 
 export interface PartitionInput<T extends PluginSidebarThread> {
   threads: readonly T[];
   /** threadId → settledAt (epoch ms). */
   settledAt: Readonly<Record<string, number>>;
   /** Restrict to one project; null shows every project. */
+  snoozed?: Readonly<SnoozedMap>;
   scopeProjectId: string | null;
   autoSettleMs: number;
   nowMs: number;
@@ -174,6 +176,7 @@ export interface Partition<T extends PluginSidebarThread> {
   pinned: T[];
   active: T[];
   settled: T[];
+  snoozed: T[];
   /**
    * Explicitly settled threads that woke back up (new attention, unread, or
    * live work). They render as active; the caller should clear their entry
@@ -219,10 +222,26 @@ export function partitionThreads<T extends PluginSidebarThread>(
   const pinned: T[] = [];
   const active: T[] = [];
   const settled: T[] = [];
+  const snoozed: T[] = [];
   const staleSettledIds: string[] = [];
 
   for (const thread of visible) {
-    const settledAt = input.settledAt[thread.id];
+    const snooze = input.snoozed?.[thread.id];
+    const storedSettledAt = input.settledAt[thread.id];
+    const hasSnooze =
+      snooze !== undefined && (storedSettledAt === undefined || snooze.at > storedSettledAt);
+    if (
+      hasSnooze &&
+      snooze.until > input.nowMs &&
+      !thread.hasPendingInteraction &&
+      thread.indicator !== "waiting-for-input"
+    ) {
+      snoozed.push(thread);
+      continue;
+    }
+    // A reminder must be seen before inactivity can put it back on the shelf.
+    const awaitingRead = hasSnooze && (thread.lastReadAt ?? 0) < snooze.until;
+    const settledAt = hasSnooze ? undefined : storedSettledAt;
     if (settledAt !== undefined) {
       if (isSettledEntryStale(thread, settledAt)) {
         staleSettledIds.push(thread.id);
@@ -230,7 +249,14 @@ export function partitionThreads<T extends PluginSidebarThread>(
         settled.push(thread);
         continue;
       }
-    } else if (qualifiesForAutoSettle(thread, input.autoSettleMs, input.nowMs)) {
+    } else if (
+      !awaitingRead &&
+      qualifiesForAutoSettle(
+        hasSnooze ? { ...thread, updatedAt: Math.max(thread.updatedAt, snooze.until) } : thread,
+        input.autoSettleMs,
+        input.nowMs,
+      )
+    ) {
       settled.push(thread);
       continue;
     }
@@ -241,6 +267,11 @@ export function partitionThreads<T extends PluginSidebarThread>(
     pinned: sortByCreated(pinned),
     active: sortByCreated(active),
     settled: sortSettled(settled, input.settledAt),
+    snoozed: [...snoozed].sort(
+      (a, b) =>
+        (input.snoozed?.[a.id]?.until ?? 0) - (input.snoozed?.[b.id]?.until ?? 0) ||
+        a.id.localeCompare(b.id),
+    ),
     staleSettledIds,
   };
 }

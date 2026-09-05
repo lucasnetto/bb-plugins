@@ -1,3 +1,10 @@
+import { snoozePresets, snoozeWakeLabel } from "@/ui/lib/snooze";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/ui/components/ui/dropdown-menu";
 import { useLinkedPrs } from "./LinkedPrs";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
@@ -12,6 +19,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
   ContextMenuTrigger,
 } from "@/ui/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/components/ui/tooltip";
@@ -40,6 +50,7 @@ export interface ThreadRowActions {
   rename: (threadId: string, title: string) => void;
   archive: (threadId: string) => void;
   requestDelete: (threadId: string) => void;
+  setSnoozed: (threadId: string, until: number | null) => void;
   setSettled: (threadId: string, settled: boolean) => void;
 }
 
@@ -52,6 +63,7 @@ export interface ThreadRowProps {
   /** Epoch ms the row's time label counts from. */
   timeAnchorMs: number;
   nowMs: number;
+  snoozedUntil?: number;
   actions: ThreadRowActions;
 }
 
@@ -176,7 +188,15 @@ function HoverAction({
 
 export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const { thread, section, isActive, actions } = props;
-  const isCard = section !== "settled";
+  const isCard = section === "active" || section === "pinned";
+  const isSnoozed = section === "snoozed";
+  const [menuNow, setMenuNow] = useState(() => Date.now());
+  const presets = snoozePresets(new Date(menuNow));
+  const canSnooze = !thread.hasPendingInteraction && thread.indicator !== "waiting-for-input";
+  const snooze = (id: string) => {
+    const preset = snoozePresets(new Date()).find((item) => item.id === id);
+    if (preset) actions.setSnoozed(thread.id, preset.until);
+  };
   const status = resolveThreadStatus(thread);
   const topStatus = resolveTopStatus({ status, isUnread: thread.isUnread, isActive });
   const recede = shouldRecede({ status, isUnread: thread.isUnread, isActive });
@@ -304,7 +324,10 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       "opacity-70 transition-opacity hover:opacity-100",
   );
 
-  const timeLabel = formatCompactTime(props.timeAnchorMs, props.nowMs);
+  const timeLabel =
+    isSnoozed && props.snoozedUntil !== undefined
+      ? snoozeWakeLabel(props.snoozedUntil, props.nowMs)
+      : formatCompactTime(props.timeAnchorMs, props.nowMs);
 
   const menu = (
     <ContextMenuContent className="w-52">
@@ -324,6 +347,25 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       <ContextMenuItem onSelect={() => actions.setSettled(thread.id, section !== "settled")}>
         {section === "settled" ? "Un-settle" : "Settle"}
       </ContextMenuItem>
+      {isSnoozed ? (
+        <ContextMenuItem onSelect={() => actions.setSnoozed(thread.id, null)}>
+          Wake now
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={!canSnooze}>Snooze</ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            {presets.map((preset) => (
+              <ContextMenuItem key={preset.id} onSelect={() => snooze(preset.id)}>
+                {preset.label}
+                <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                  {snoozeWakeLabel(preset.until, menuNow)}
+                </span>
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      )}
       <ContextMenuItem onSelect={() => setRenaming(title)}>Rename</ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onSelect={() => actions.archive(thread.id)}>Archive</ContextMenuItem>
@@ -351,7 +393,11 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   if (!isCard) {
     return (
       <li data-thread-item className="list-none">
-        <ContextMenu>
+        <ContextMenu
+          onOpenChange={(open) => {
+            if (open) setMenuNow(Date.now());
+          }}
+        >
           <ContextMenuTrigger asChild>
             <a
               {...anchorProps}
@@ -374,10 +420,11 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
                 </span>
                 <span className="pointer-events-none absolute inset-y-0 right-0 -mr-1 flex items-center opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
                   <HoverAction
-                    label="Un-settle thread"
+                    label={isSnoozed ? "Wake now" : "Un-settle thread"}
                     onClick={(event) => {
                       event.stopPropagation();
-                      actions.setSettled(thread.id, false);
+                      if (isSnoozed) actions.setSnoozed(thread.id, null);
+                      else actions.setSettled(thread.id, false);
                     }}
                   >
                     <Icon name="ArrowTurnBackward" className="mb-px size-3.5" />
@@ -397,7 +444,11 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
 
   return (
     <li data-thread-item className="list-none py-0.5">
-      <ContextMenu>
+      <ContextMenu
+        onOpenChange={(open) => {
+          if (open) setMenuNow(Date.now());
+        }}
+      >
         <ContextMenuTrigger asChild>
           <a {...anchorProps} className={surfaceClass}>
             <div className="relative z-10 px-2.5 py-2">
@@ -459,6 +510,43 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
                       >
                         <Icon name="Check" className="size-3.5" />
                       </HoverAction>
+                    ) : null}
+                    {canSnooze ? (
+                      <DropdownMenu
+                        onOpenChange={(open) => {
+                          if (open) setMenuNow(Date.now());
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Snooze thread"
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                            className="inline-flex items-center rounded-md px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            Snooze
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          {presets.map((preset) => (
+                            <DropdownMenuItem key={preset.id} onSelect={() => snooze(preset.id)}>
+                              {preset.label}
+                              <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                                {snoozeWakeLabel(preset.until, menuNow)}
+                              </span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     ) : null}
                     <HoverAction
                       label="Settle thread"

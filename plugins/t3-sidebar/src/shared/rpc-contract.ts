@@ -1,3 +1,4 @@
+import { snoozeContract } from "./snooze-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { projectSettingsContract } from "./project-settings-contract";
@@ -5,6 +6,7 @@ import { projectThreadContract } from "./project-thread-contract";
 export type SettledMap = Record<string, number>;
 
 export const rpcContract = defineRpcContract({
+  ...snoozeContract,
   ...projectSettingsContract,
   ...projectThreadContract,
   project_hosts: {

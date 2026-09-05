@@ -18,6 +18,17 @@ t3code's inbox model:
   context menu) collapses into slim rows under a collapsible `Settled (n)`
   header, sorted by when it wrapped up, paged 10 / +25. Hover a slim row to
   un-settle. A settled thread wakes on its own when it needs you again.
+- **Snooze.** Hover a card or right-click → _Snooze_: 1 hour, 3 hours,
+  this evening (18:00), tomorrow (09:00), or next Monday (09:00), in your
+  local timezone. The evening option disappears when it is less than an hour away.
+  Threads move to a collapsible **Snoozed** shelf, ordered by wake time;
+  _Wake now_ returns them immediately. Snoozing preserves pinned state.
+  Running work continues, including completion while snoozed. A new turn,
+  input request, or failure wakes the thread early. Threads awaiting input
+  or queued work cannot be snoozed. Settling a snoozed thread parks it instead.
+  Wake times persist across reloads and restarts, sync across clients, and
+  are checked when the sidebar opens or regains focus. Expired reminders
+  stay in the inbox until read before auto-settle can apply again.
 - **Auto-settle** — _Settings → Plugins → T3 Sidebar_: read, idle threads
   with no new attention for 1h / 6h / 1 day / 3 days / 1 week (or Never)
   settle without a click. Pinned threads never auto-settle.
@@ -48,7 +59,8 @@ It never switches branches or resets the checkout.
 ## Layout
 
 - `src/server/server.ts` — the settled map (`threadId → settledAt`) in `bb.storage.kv`,
-  two RPCs, one realtime signal, one setting.
+  its RPCs, realtime signal, and auto-settle setting.
+- `src/server/lib/snooze.ts` — persisted snooze state, validated RPCs, and early-wake events.
 - `src/ui/lib/sidebar-logic.ts` — pure logic ported from t3code's
   `Sidebar.logic.ts`: status resolution, partition, sorting, shelf paging.
 - `src/ui/components/sidebar/` — `ThreadRow` (card + slim variants) and

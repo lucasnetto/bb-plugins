@@ -1,3 +1,5 @@
+import { useSnoozedMap } from "@/ui/lib/use-snoozed-map";
+import type { SidebarSection } from "@/ui/lib/sidebar-logic";
 import { ProjectDialog } from "./ProjectDialog";
 import { Button } from "@/ui/components/ui/button";
 import { LinkedPrProvider } from "./LinkedPrs";
@@ -60,13 +62,27 @@ function useLocalStorageState<T>(key: string, fallback: T): [T, Dispatch<SetStat
   return [value, setValue];
 }
 
-/** Minute-quantized clock so time labels re-render without per-row timers. */
-function useNowMinute(): number {
+/** One clock for labels and exact snooze deadlines; refresh after backgrounding. */
+function useNowMinute(snoozed: import("../../../shared/snooze-contract").SnoozedMap): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
+    let timer: number;
+    const tick = () => {
+      const current = Date.now();
+      setNow(current);
+      const nextWake = Math.min(
+        ...Object.values(snoozed).map(({ until }) => (until > current ? until : Infinity)),
+      );
+      window.clearTimeout(timer);
+      timer = window.setTimeout(tick, Math.min(60_000, nextWake - current));
+    };
+    tick();
+    window.addEventListener("focus", tick);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", tick);
+    };
+  }, [snoozed]);
   return now;
 }
 
@@ -281,7 +297,12 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const { providers } = experimental_useProviders();
   const settings = useSettings();
   const { settled: settledAt, set: setSettled } = useSettledMap();
-  const nowMs = useNowMinute();
+  const { snoozed, set: setSnoozed } = useSnoozedMap();
+  const nowMs = useNowMinute(snoozed);
+  const [snoozedExpanded, setSnoozedExpanded] = useLocalStorageState(
+    "t3-sidebar:snoozed-expanded",
+    false,
+  );
 
   const [scopeProjectId, setScopeProjectId] = useLocalStorageState<string | null>(SCOPE_KEY, null);
   const [settledExpanded, setSettledExpanded] = useLocalStorageState(SETTLED_EXPANDED_KEY, false);
@@ -303,11 +324,12 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       partitionThreads({
         threads,
         settledAt,
+        snoozed,
         scopeProjectId: effectiveScope,
         autoSettleMs,
         nowMs,
       }),
-    [autoSettleMs, effectiveScope, nowMs, settledAt, threads],
+    [autoSettleMs, effectiveScope, nowMs, settledAt, snoozed, threads],
   );
 
   // A settled thread that woke up must lose its entry, or it would silently
@@ -362,12 +384,13 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       rename: (threadId, title) => void hostActions.rename(threadId, title),
       archive: (threadId) => hostActions.archive(threadId),
       requestDelete: (threadId) => hostActions.requestDelete(threadId),
+      setSnoozed,
       setSettled: (threadId, value) => setSettled([threadId], value),
     }),
-    [hostActions, onNavigate, setSettled],
+    [hostActions, onNavigate, setSettled, setSnoozed],
   );
 
-  const renderRow = (thread: PluginSidebarThread, section: "pinned" | "active" | "settled") => (
+  const renderRow = (thread: PluginSidebarThread, section: SidebarSection) => (
     <ThreadRow
       key={`${thread.id}:${section === "settled" ? "slim" : "card"}`}
       thread={thread}
@@ -376,12 +399,17 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       projectName={projectNameById.get(thread.projectId) ?? null}
       provider={providerById.get(thread.providerId) ?? null}
       timeAnchorMs={section === "settled" ? settledTimestamp(thread, settledAt) : thread.updatedAt}
+      snoozedUntil={section === "snoozed" ? snoozed[thread.id]?.until : undefined}
       nowMs={nowMs}
       actions={rowActions}
     />
   );
 
-  const total = partition.pinned.length + partition.active.length + partition.settled.length;
+  const total =
+    partition.pinned.length +
+    partition.active.length +
+    partition.settled.length +
+    partition.snoozed.length;
   const scopedProject = projects.find((project) => project.id === effectiveScope) ?? null;
 
   return (
@@ -413,6 +441,17 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
           ) : null}
           {partition.active.map((thread) => renderRow(thread, "active"))}
+          {partition.snoozed.length > 0 ? (
+            <ShelfHeader
+              label="Snoozed"
+              count={partition.snoozed.length}
+              expanded={snoozedExpanded}
+              onToggle={() => setSnoozedExpanded((value) => !value)}
+            />
+          ) : null}
+          {partition.snoozed
+            .filter((thread) => snoozedExpanded || thread.id === activeThreadId)
+            .map((thread) => renderRow(thread, "snoozed"))}
           {partition.settled.length > 0 ? (
             <ShelfHeader
               label="Settled"

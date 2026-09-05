@@ -6,6 +6,7 @@
 // collapses into the Settled shelf at the bottom of the list. The store is a
 // map of threadId → settledAt (epoch ms) in bb.storage.kv, shared by every
 // client of this bb through RPC + a realtime signal.
+import { createSnoozeHandlers } from "./lib/snooze";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { Effect, Semaphore } from "effect";
@@ -52,6 +53,7 @@ export default function plugin(bb: BbPluginApi) {
   });
 
   bb.rpc.register(rpcContract, {
+    ...createSnoozeHandlers(bb),
     ...createProjectSettingsHandlers(bb),
     ...createProjectThreadHandlers(bb),
     project_hosts: () =>
