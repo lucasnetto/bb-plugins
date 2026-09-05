@@ -2,10 +2,10 @@
 
 A BB plugin that keeps a todo list. It shows every surface a plugin can own:
 
-- `server.ts` — the backend: a todo store in `bb.storage.kv`, RPC methods
+- `src/server/server.ts` — the backend: a todo store in `bb.storage.kv`, RPC methods
   for the page, a `bb cursor-account-labels` CLI command, a setting, and a realtime signal
   that keeps every open page current.
-- `app.tsx` — the frontend: an **Example todos** page in the left sidebar
+- `src/ui/app.tsx` — the frontend: an **Example todos** page in the left sidebar
   (`app.slots.navPanel`) built from the vendored components.
 - `skills/example-todos/SKILL.md` — a skill that tells agents how to keep the list
   with `bb cursor-account-labels`. BB imports it into agent threads automatically.
@@ -15,7 +15,7 @@ Try it: install the plugin, open **Example todos** in the sidebar, then run
 
 ## UI components
 
-`components/ui/` is vendored source you own (the shadcn model): edit the
+`src/ui/components/ui/` is vendored source you own (the shadcn model): edit the
 files freely — they never update out from under you. Add more from the BB
 component registry (the full shadcn set, version-matched to your BB install
 via the pinned ref in `components.json`):
@@ -40,8 +40,8 @@ distribution requirements.
 `package.json` is the plugin manifest. Notable fields:
 
 - `bb.server` — backend entry (required).
-- `bb.app` — frontend entry. Delete it, `app.tsx`, `components/`,
-  `hooks/`, and `lib/` for a headless plugin.
+- `bb.app` — frontend entry. Delete it, `src/ui/app.tsx`, `src/ui/components/`,
+  `src/ui/hooks/`, and `src/ui/lib/` for a headless plugin.
 - `bb.skills` — skill roots; omitted here, so BB reads `skills/`. Each
   directory with a `SKILL.md` is one skill, named after the directory.
 - `bb.name` and `bb.description` — required human-facing identity.

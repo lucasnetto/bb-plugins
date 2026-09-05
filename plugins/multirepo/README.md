@@ -45,7 +45,7 @@ bb plugin build
 bb plugin install . --yes
 ```
 
-Source layout: `git.ts` reads Git/GitHub on the owning host; `host.ts` exposes typed host RPC; `server.ts` resolves the project and launches review threads; `app.tsx` registers the panels and reuses bb source/diff viewers.
+Source layout: `src/server/git.ts` reads Git/GitHub on the owning host; `src/server/host.ts` exposes typed host RPC; `src/server/server.ts` resolves the project and launches review threads; `src/ui/app.tsx` registers the panels and reuses bb source/diff viewers.
 
 ## Linked PRs per thread
 
@@ -111,12 +111,34 @@ handoffs. Live BB verification covered split/unified rendering, wrapping, tree
 navigation, collapse/expand, selected-line Explain/Fix preserving the draft, and
 sidebar navigation back into the original thread.
 
+### Effect backend
+
+Git and GitHub workflows compose in Effect v4 (`4.0.0-rc.112`, pinned in the
+workspace catalog). `src/server/host-effects.ts` owns command execution, filesystem error
+mapping and decoding. `src/server/git.ts` and `src/server/links-host.ts` compose these operations as Effects.
+RPC, CLI, HTTP, mention and event entry points run the effects using the
+plugin-owned runtime; internal operations never call Promise handlers.
+Discovery inspects up to four repositories concurrently, with three Git reads
+per repository. PR detail and revision reads use structured concurrency so a
+failed read interrupts its siblings. Existing Zod RPC contracts remain intact.
+
+Host requests pass BB's AbortSignal into the Effect runtime and through to
+subprocesses. Already-cancelled requests do not launch commands. Server
+workflows use managed runtimes disposed by BB on reload, including host-call
+cancellation. Plain SDK promises without cancellation support may finish their
+current call, but the interrupted workflow does not advance to subsequent steps.
+Expected repository failures remain error rows; interruption is never recovered
+as a successful result. Commands are not automatically retried.
+
+Tests cover temporary Git repositories, injectable command failures, revision
+reads, bounded discovery, cancellation, and serving requests after reload.
+
 ### T3 source attribution
 
-`review/StyledDiffCodeView.tsx`, the diff theme, file tree, and tree helpers are
+`src/ui/review/StyledDiffCodeView.tsx`, the diff theme, file tree, and tree helpers are
 adapted from T3 Code commit `f3bbdb606f98d8cc2e6c2fd8074b5a0c12cc3828`.
-The original copyright and MIT terms are retained in `review/T3-LICENSE`.
-`review/PrReview.tsx` replaces T3's environment/state/composer dependencies with
+The original copyright and MIT terms are retained in `src/ui/review/T3-LICENSE`.
+`src/ui/review/PrReview.tsx` replaces T3's environment/state/composer dependencies with
 BB RPC and composer APIs. It shares the host's Pierre diff runtime; the tree
 uses the pinned `@pierre/trees` dependency.
 

@@ -11,6 +11,7 @@
     "@hugeicons/react": "catalog:",
     "@radix-ui/react-checkbox": "catalog:",
     "@radix-ui/react-slot": "catalog:",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -49,8 +50,8 @@
     "branding": {
       "icon": "EyeOff"
     },
-    "server": "./server.ts",
-    "app": "./app.tsx",
+    "server": "./src/server/server.ts",
+    "app": "./src/ui/app.tsx",
     "skills": []
   }
 }

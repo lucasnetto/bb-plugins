@@ -82,3 +82,44 @@ Direct BB Git installs of these source manifests are unsupported: BB runs
 packed npm releases or use the local checkout workflow above.
 
 Generated bundles, dependencies, and local configuration stay out of Git.
+
+## Source layout
+
+Each plugin keeps its manifest and tooling configuration at the package root:
+
+```text
+plugins/<name>/
+  package.json
+  components.json
+  tsconfig.json
+  vite.config.ts       # plugins with tests
+  src/
+    ui/                # app.tsx, components, hooks, browser helpers
+    server/            # server.ts, host.ts when needed, Effect operations
+    shared/            # RPC schemas, types and constants, when needed
+  tests/               # mirrors src/, e.g. server/server.test.ts
+    server/
+    ui/
+```
+
+UI and server code import contracts from `src/shared`; neither imports the
+other's implementation, even for types. Shared modules do not depend on UI or
+server implementations. Tests live in a sibling `tests/` tree mirroring `src/`
+(e.g. `tests/ui/app.test.tsx` and `tests/server/lib/project-settings.test.mjs`).
+Test discovery is limited to `tests/`, which is included in type checking. `@/` resolves
+to `src/`, including the shadcn aliases (`@/ui/components`, `@/ui/lib`, etc.).
+BB entry points in each manifest point directly into `src/`. Generated `dist/`
+artifacts and agent `skills/` retain their existing locations.
+
+## Backend convention
+
+All backend operations return Effect v4 values, including CRUD, thread
+forwarding, CLI workflows, HTTP reads, events and background work. Convert to
+Promises only at BB entry points. Native/SDK adapters wrap foreign promises in
+`Effect.tryPromise`; pass cancellation signals when the underlying API supports
+them. Backend operations compose other operations directly, never Promise
+handlers. Plugin-owned runtimes are disposed on reload.
+
+Pure helpers, schemas, manifest/registration declarations and frontend code
+remain ordinary TypeScript. Use the workspace-pinned Effect version and verify
+its installed APIs; this repository currently pins `4.0.0-rc.112`.

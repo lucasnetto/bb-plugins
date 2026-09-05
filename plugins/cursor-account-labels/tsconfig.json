@@ -7,10 +7,10 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     },
     "noEmit": true,
     "skipLibCheck": false
   },
-  "include": ["server.ts", "app.tsx"]
+  "include": ["src", "tests", "vite.config.ts"]
 }

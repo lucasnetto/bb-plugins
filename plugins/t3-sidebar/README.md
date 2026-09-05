@@ -47,13 +47,13 @@ It never switches branches or resets the checkout.
 
 ## Layout
 
-- `server.ts` — the settled map (`threadId → settledAt`) in `bb.storage.kv`,
+- `src/server/server.ts` — the settled map (`threadId → settledAt`) in `bb.storage.kv`,
   two RPCs, one realtime signal, one setting.
-- `lib/sidebar-logic.ts` — pure logic ported from t3code's
+- `src/ui/lib/sidebar-logic.ts` — pure logic ported from t3code's
   `Sidebar.logic.ts`: status resolution, partition, sorting, shelf paging.
-- `components/sidebar/` — `ThreadRow` (card + slim variants) and
+- `src/ui/components/sidebar/` — `ThreadRow` (card + slim variants) and
   `T3ThreadList` (scope picker, sections, shelf).
-- `components/ui/` — vendored shadcn source from the `@bb` registry.
+- `src/ui/components/ui/` — vendored shadcn source from the `@bb` registry.
 
 ## Develop
 
@@ -85,3 +85,14 @@ state are used. Existing inactivity settlement is unchanged.
 
 PR navigation uses the one-use sessionStorage request and browser event
 `bb:multirepo:open-review` documented in Multirepo’s README.
+
+### Effect backend workflows
+
+Project settings, settled-thread updates and auto-pull use Effect v4. Settings
+updates serialize per project using scoped, reference-counted semaphores;
+settled updates serialize their read/write operation. Managed runtimes are
+owned by plugin disposal. BB retains ownership of the five-minute auto-pull
+schedule; overlapping passes are skipped and cancellation reaches host Git
+commands. The clean/default-branch checks before and after fetch remain in
+place, and writes are never retried. Project CRUD, directory listing and thread creation also return Effects, with
+Promise conversion at BB entry points.

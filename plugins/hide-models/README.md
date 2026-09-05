@@ -45,3 +45,12 @@ vp install
 bb plugin install .   # path install
 bb plugin dev         # rebuild + reload on save
 ```
+
+### Effect catalog loading
+
+Provider catalog loading uses Effect v4 with at most four concurrent provider
+reads. Individual provider failures retain their error row, while plugin
+disposal interrupts the overall load. The SDK currently exposes ordinary
+promises for provider reads, so an individual SDK call may finish after
+interruption. Hidden-list CRUD, CLI commands and HTTP reads also compose in Effect; writes
+serialize to preserve concurrent changes. UI filtering remains plain TypeScript.

@@ -11,6 +11,7 @@
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@radix-ui/react-slot": "catalog:",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -50,9 +51,9 @@
     "branding": {
       "icon": "Layers"
     },
-    "server": "./server.ts",
-    "host": "./host.ts",
-    "app": "./app.tsx",
+    "server": "./src/server/server.ts",
+    "host": "./src/server/host.ts",
+    "app": "./src/ui/app.tsx",
     "skills": []
   }
 }

@@ -10,7 +10,8 @@
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@radix-ui/react-checkbox": "catalog:",
-    "@radix-ui/react-slot": "catalog:"
+    "@radix-ui/react-slot": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "catalog:",
@@ -47,8 +48,8 @@
     "branding": {
       "icon": "Tag"
     },
-    "server": "./server.ts",
-    "app": "./app.tsx",
+    "server": "./src/server/server.ts",
+    "app": "./src/ui/app.tsx",
     "skills": []
   }
 }

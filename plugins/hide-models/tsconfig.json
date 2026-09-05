@@ -8,10 +8,10 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     },
     "noEmit": true,
     "skipLibCheck": false
   },
-  "include": ["server.ts", "app.tsx", "components", "lib", "hooks"]
+  "include": ["src", "tests", "vite.config.ts"]
 }
