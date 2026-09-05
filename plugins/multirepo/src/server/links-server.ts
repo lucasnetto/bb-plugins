@@ -1,7 +1,7 @@
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { Effect, Schema } from "effect";
-import { call, sync, createRuntime, decodeSchema, fail } from "./server-effects";
+import { call, sync, createRuntime, decodeSchema, fail, type BackendError } from "./server-effects";
 import { randomUUID } from "node:crypto";
 import { hostContract, reviewCommentInput } from "../shared/contract";
 import {
@@ -23,10 +23,16 @@ function toolResult(value: unknown) {
   return text;
 }
 export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof createRuntime>) {
+  let afterUnlink: (input: {
+    threadId: string;
+    url: string;
+  }) => Effect.Effect<unknown, BackendError> = () => Effect.void;
   const db = bb.storage.database();
   bb.storage.migrate(db, [
     "CREATE TABLE linked_prs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
     "CREATE TABLE review_comments (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, context TEXT NOT NULL)",
+    "CREATE TABLE review_guides (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
+    "CREATE TABLE review_guide_jobs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
   ]);
   const host = bb.hosts.experimental_client({ contract: hostContract });
   const listRows = Effect.fn("LinkedPr.rows")(function* (threadId: string) {
@@ -147,17 +153,28 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         if (!saved) return yield* fail("Linked PR was not saved.");
         return saved;
       }),
-    linkedUnlink: Effect.fn("LinkedPr.unlink")(
-      ({ threadId, url }: { threadId: string; url: string }) =>
-        sync("linked PR.delete", () => {
-          const ref = parsePrUrl(url);
-          const result = db
-            .prepare("DELETE FROM linked_prs WHERE thread_id = ? AND url = ?")
-            .run(threadId, ref.url);
-          changed(threadId);
-          return { removed: result.changes > 0 };
-        }),
-    ),
+    linkedUnlink: Effect.fn("LinkedPr.unlink")(function* ({
+      threadId,
+      url,
+    }: {
+      threadId: string;
+      url: string;
+    }) {
+      const ref = yield* sync("unlink URL", () => parsePrUrl(url));
+      const result = yield* sync("linked PR.delete", () => {
+        db.prepare("DELETE FROM review_guides WHERE thread_id = ? AND url = ?").run(
+          threadId,
+          ref.url,
+        );
+        const result = db
+          .prepare("DELETE FROM linked_prs WHERE thread_id = ? AND url = ?")
+          .run(threadId, ref.url);
+        changed(threadId);
+        return { removed: result.changes > 0 };
+      });
+      yield* afterUnlink({ threadId, url: ref.url });
+      return result;
+    }),
     linkedDetail: ({ threadId, url }: { threadId: string; url: string }) =>
       Effect.gen(function* () {
         const rows = yield* listRows(threadId);
@@ -234,6 +251,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
   bb.events.on("thread.deleted", ({ thread }) =>
     runtime.runPromise(
       sync("thread PR cleanup", () => {
+        db.prepare("DELETE FROM review_guides WHERE thread_id = ?").run(thread.id);
         db.prepare("DELETE FROM review_comments WHERE thread_id = ?").run(thread.id);
         db.prepare("DELETE FROM linked_prs WHERE thread_id = ?").run(thread.id);
         changed(thread.id);
@@ -259,5 +277,10 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
       }),
     ),
   );
-  return handlers;
+  return {
+    ...handlers,
+    onUnlink: (cleanup: typeof afterUnlink) => {
+      afterUnlink = cleanup;
+    },
+  };
 }

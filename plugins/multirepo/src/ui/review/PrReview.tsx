@@ -1,3 +1,4 @@
+import { GuideGenerator } from "./GuideGenerator";
 // BB adapter for T3 Code's PR code tab. Ported components retain T3-LICENSE.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
@@ -15,6 +16,8 @@ import { Button } from "../components/ui/button";
 import { StyledDiffCodeView, type StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
 import { DiffFileTree } from "./DiffFileTree";
 import { reviewContext } from "./selection";
+import { useGuide } from "./useGuide";
+import { GuidedReview } from "./GuidedReview";
 
 type Selection = NonNullable<CodeViewProps<undefined, undefined>["selectedLines"]>;
 function parseFile(file: LinkedDetail["files"][number]): CodeViewDiffItem | null {
@@ -56,6 +59,9 @@ function ContextHeader({
   return children;
 }
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
+  return <PrReviewContent key={`${threadId}:${url}`} threadId={threadId} url={url} />;
+}
+function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
   const rpc = useRpc<typeof rpcContract>();
   const composer = useComposer();
   const { mode } = experimental_useCodeTheme();
@@ -63,6 +69,12 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const guide = useGuide(threadId, url, revision);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const staleGuide =
+    !!guide.data &&
+    !!detail &&
+    (guide.data.base !== detail.baseRefOid || guide.data.head !== detail.headRefOid);
   const [style, setStyle] = useState<"split" | "unified">("unified");
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [contextRevision, setContextRevision] = useState(0);
@@ -136,6 +148,10 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
       })) ?? [],
     [detail],
   );
+  useEffect(() => {
+    setSelection(null);
+    setSelectedPath(null);
+  }, [guideOpen, guide.data?.id]);
   const loadDiffFiles = useMemo<FileDiffContentsLoader>(() => {
     const pending = new Map<string, ReturnType<FileDiffContentsLoader>>();
     return (fileDiff) => {
@@ -302,7 +318,10 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
         } as CSSProperties
       }
     >
-      <header className="shrink-0 border-b border-border px-4 py-3">
+      <header
+        hidden={guideOpen && !!guide.data}
+        className="shrink-0 border-b border-border px-4 py-3"
+      >
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>
             {detail?.pr.repository} #{detail?.pr.number}
@@ -325,6 +344,17 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
         <span className="mr-auto px-2 text-xs font-medium">
           Code <span className="text-muted-foreground">{detail?.files.length ?? 0}</span>
         </span>
+        <Button
+          size="sm"
+          variant={guideOpen ? "secondary" : "ghost"}
+          aria-pressed={guideOpen}
+          onClick={() => {
+            setGuideOpen(!guideOpen);
+            setCollapsed(new Set());
+          }}
+        >
+          Guide
+        </Button>
         <Button
           size="sm"
           variant={style === "unified" ? "secondary" : "ghost"}
@@ -393,47 +423,125 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
           Loading diff…
         </p>
       ) : null}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="relative min-h-0 min-w-0 flex-1">
-          {unavailable ? (
-            <div className="p-4 text-sm">
-              <p className="mb-2 break-all">{selectedPath}</p>
-              <p className="text-muted-foreground">
-                GitHub did not provide a readable patch for this file.
-              </p>
-              <UrlLink href={`${url}/files`}>Open file on GitHub ↗</UrlLink>
-            </div>
-          ) : (
-            <StyledDiffCodeView
-              viewerRef={viewer}
-              className="h-full overflow-auto [scrollbar-gutter:stable]"
+      {guideOpen ? (
+        <>
+          <GuideGenerator
+            threadId={threadId}
+            open={guide.requestOpen}
+            onOpenChange={guide.setRequestOpen}
+            pending={guide.pending}
+            onStart={guide.start}
+          />
+          {guide.error ? (
+            <p role="alert" className="px-4 py-2 text-sm text-destructive">
+              {guide.error}
+            </p>
+          ) : null}
+          {guide.generating ? (
+            <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+              Generating review guide…{" "}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={guide.pending}
+                onClick={() => void guide.cancel()}
+              >
+                Cancel generation
+              </Button>
+            </p>
+          ) : null}
+          {guide.data ? (
+            <GuidedReview
+              saved={guide.data}
               items={items}
+              stale={staleGuide || loading}
+              pending={guide.pending || guide.generating || guide.loading || loading}
+              onRequest={guide.request}
+              onMark={(index, reviewed) => void guide.mark(index, reviewed)}
+              selectedPath={selectedPath}
+              onSelectPath={setSelectedPath}
               options={options}
-              selectedLines={selection}
-              onSelectedLinesChange={(next) => {
-                setSelection(next);
+              selection={selection}
+              onSelection={(next) => {
+                setSelection(next ?? null);
                 if (next)
                   setSelectedPath(items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
                 setNotice("");
               }}
-              renderHeaderPrefix={header}
+              header={header}
             />
+          ) : (
+            <div className="flex flex-1 flex-col items-start justify-center gap-3 p-6">
+              <h3 className="text-lg font-semibold">
+                {staleGuide ? "The PR has changed" : "Review the story behind this change"}
+              </h3>
+              <p className="max-w-lg text-sm text-muted-foreground">
+                {staleGuide
+                  ? "This guide belongs to an earlier revision. Generate a new guide to review the current diff."
+                  : "Organize the diff into chapters: the core change first, its consequences next, then wiring and housekeeping."}
+              </p>
+              <Button
+                disabled={
+                  loading ||
+                  guide.loading ||
+                  guide.pending ||
+                  guide.generating ||
+                  !detail?.files.length
+                }
+                onClick={guide.request}
+              >
+                {guide.pending ? "Starting…" : staleGuide ? "Regenerate guide" : "Generate guide"}
+              </Button>
+              <p className="text-xs text-muted-foreground">Choose a model before generating.</p>
+            </div>
           )}
-          {!loading && detail?.files.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">No changed files.</p>
+        </>
+      ) : null}
+      {!guideOpen ? (
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 min-w-0 flex-1">
+            {unavailable ? (
+              <div className="p-4 text-sm">
+                <p className="mb-2 break-all">{selectedPath}</p>
+                <p className="text-muted-foreground">
+                  GitHub did not provide a readable patch for this file.
+                </p>
+                <UrlLink href={`${url}/files`}>Open file on GitHub ↗</UrlLink>
+              </div>
+            ) : (
+              <StyledDiffCodeView
+                viewerRef={viewer}
+                className="h-full overflow-auto [scrollbar-gutter:stable]"
+                items={items}
+                options={options}
+                selectedLines={selection}
+                onSelectedLinesChange={(next) => {
+                  setSelection(next);
+                  if (next)
+                    setSelectedPath(
+                      items.find((item) => item.id === next.id)?.fileDiff.name ?? null,
+                    );
+                  setNotice("");
+                }}
+                renderHeaderPrefix={header}
+              />
+            )}
+            {!loading && detail?.files.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">No changed files.</p>
+            ) : null}
+          </div>
+          {treeOpen ? (
+            <aside className="flex min-h-0 w-[35%] min-w-36 max-w-72 shrink-0 border-l border-border">
+              <DiffFileTree
+                entries={entries}
+                onSelectFile={reveal}
+                selectedPath={selectedPath}
+                ariaLabel="Changed files"
+              />
+            </aside>
           ) : null}
         </div>
-        {treeOpen ? (
-          <aside className="flex min-h-0 w-[35%] min-w-36 max-w-72 shrink-0 border-l border-border">
-            <DiffFileTree
-              entries={entries}
-              onSelectFile={reveal}
-              selectedPath={selectedPath}
-              ariaLabel="Changed files"
-            />
-          </aside>
-        ) : null}
-      </div>
+      ) : null}
       {selection || comment ? (
         <form
           className="shrink-0 space-y-2 border-t border-border px-3 py-3"

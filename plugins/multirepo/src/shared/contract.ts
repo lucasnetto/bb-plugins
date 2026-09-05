@@ -1,3 +1,11 @@
+import {
+  guideStartInput,
+  guideJobSchema,
+  guideDefaultsInput,
+  guideDefaultsSaveInput,
+  guideOptionsSchema,
+  guideSettingsSchema,
+} from "./guide-generation";
 import { standardSchema } from "./standard-schema";
 import { Schema } from "effect";
 import {
@@ -10,6 +18,7 @@ import {
   linkInput,
 } from "./links-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
+import { guideTarget, guideProgressInput, savedGuideSchema } from "./guide-contract";
 
 export const repoInput = Schema.Struct({ repo: Schema.String.check(Schema.isMinLength(1)) });
 const rootInput = Schema.Struct({ root: Schema.String.check(Schema.isMinLength(1)) });
@@ -127,6 +136,33 @@ export const reviewCommentInput = Schema.Struct({
   context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
 export const rpcContract = defineRpcContract({
+  guideStart: { input: standardSchema(guideStartInput), output: standardSchema(guideJobSchema) },
+  guideJob: {
+    input: standardSchema(guideTarget),
+    output: standardSchema(Schema.NullOr(guideJobSchema)),
+  },
+  guideCancel: { input: standardSchema(guideTarget), output: standardSchema(Schema.Null) },
+  guideOptions: { input: standardSchema(threadInput), output: standardSchema(guideOptionsSchema) },
+  guideSettings: {
+    input: standardSchema(guideDefaultsInput),
+    output: standardSchema(guideSettingsSchema),
+  },
+  guideDefaultsSave: {
+    input: standardSchema(guideDefaultsSaveInput),
+    output: standardSchema(Schema.Null),
+  },
+  guideGet: {
+    input: standardSchema(guideTarget),
+    output: standardSchema(Schema.NullOr(savedGuideSchema)),
+  },
+  guideRequest: {
+    input: standardSchema(guideTarget),
+    output: standardSchema(Schema.Struct({ id: Schema.String })),
+  },
+  guideProgress: {
+    input: standardSchema(guideProgressInput),
+    output: standardSchema(savedGuideSchema),
+  },
   stageReviewComment: {
     input: standardSchema(reviewCommentInput),
     output: standardSchema(Schema.Struct({ id: Schema.String })),

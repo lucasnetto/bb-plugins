@@ -111,6 +111,40 @@ handoffs. Live BB verification covered split/unified rendering, wrapping, tree
 navigation, collapse/expand, selected-line Explain/Fix preserving the draft, and
 sidebar navigation back into the original thread.
 
+### Guided review
+
+In a linked PR's code panel, **Guide → Generate guide** opens BB's native
+provider/model picker, including reasoning and service tier. Generation runs in
+a hidden worker and saves the walkthrough directly into the panel, with status,
+errors, and cancellation. It leaves the chat draft untouched.
+
+Configure the default in **Multirepo settings → Guided review model**. An optional
+project override takes precedence over the plugin default, then the current
+thread's model is the fallback. The launch picker changes only that run.
+Jobs survive reloads, reject outdated PR revisions, and archive/stop their workers
+when finished or cancelled.
+
+Chapters explain the core change, its consequences, and supporting changes.
+Chapters appear as a scrolling page of cards, with explanations and file chips
+on the left and the same selectable Pierre diffs on the right. On narrow panels,
+the columns stack. Reviewed checkboxes collapse chapters and persist per thread
+and PR; collapsed chapters can be reopened without losing progress. Files outside the main chapters remain visible under Everything else.
+Guides are pinned to both base and head commits. Earlier-revision explanations
+remain readable, but code and progress changes require regeneration; invalid paths, duplicates, and omitted files reject the save.
+
+Agent tools: `get_review_guide_context` and `save_review_guide`. Existing agent
+sessions can use `bb multirepo guide-context <url>` and
+`bb multirepo guide-save <url> <base> <head> '<JSON>'`. The context handoff is
+bounded; oversized diffs return an explicit instruction to inspect the PR with
+`gh` instead. Nothing is sent to GitHub. Unlinking a PR or deleting its thread
+removes its guide.
+
+The organizer prompt and guide format are adapted from
+[Plannotator](https://github.com/backnotprop/plannotator) commit
+`4afdd4cd89e863c997900c1860355dc10d9294b6`.
+Its MIT notice is retained in `src/PLANNOTATOR-LICENSE`. Chapter-card layout is also adapted from Plannotator;
+BB storage and diff/composer integration are implemented locally.
+
 ### Effect backend
 
 Git and GitHub workflows compose in Effect v4 (`4.0.0-rc.112`, pinned in the

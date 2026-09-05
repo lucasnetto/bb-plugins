@@ -1,3 +1,4 @@
+import { GuideModelSettings } from "./review/GuideGenerator";
 import { LinkedPrsPanel, LinkedPrHeader } from "./linked-prs";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -552,6 +553,12 @@ function InboxPage() {
   return <Workspace initialView="prs" />;
 }
 export default definePluginApp((app) => {
+  app.slots.settingsSection({
+    id: "guide-model",
+    title: "Guided review model",
+    description: "Default provider and model for PR guides, with optional project overrides.",
+    component: GuideModelSettings,
+  });
   app.slots.experimental_threadHeaderAction({
     id: "linked-prs",
     title: "Linked PRs",

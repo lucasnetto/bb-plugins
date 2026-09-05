@@ -1,6 +1,8 @@
+import { registerGuideGeneration } from "./guide-generation";
 import { Effect } from "effect";
 import { call, sync, createRuntime, handler, fail, decodeSchema } from "./server-effects";
 import { registerLinks } from "./links-server";
+import { registerGuides } from "./guides-server";
 import { reasonSchema } from "../shared/links-contract";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { hostContract, rpcContract } from "../shared/contract";
@@ -34,6 +36,9 @@ export default function plugin(bb: BbPluginApi) {
     };
   });
   const links = registerLinks(bb, runtime);
+  const guides = registerGuides(bb, runtime, links);
+  const generation = registerGuideGeneration(bb, runtime, guides);
+  links.onUnlink(generation.guideCancel);
   const operations = {
     ...links,
     workspace,
@@ -107,6 +112,15 @@ export default function plugin(bb: BbPluginApi) {
       }),
   };
   bb.rpc.register(rpcContract, {
+    guideStart: handler(runtime, generation.guideStart),
+    guideJob: handler(runtime, generation.guideJob),
+    guideCancel: handler(runtime, generation.guideCancel),
+    guideOptions: handler(runtime, generation.guideOptions),
+    guideSettings: handler(runtime, generation.guideSettings),
+    guideDefaultsSave: handler(runtime, generation.guideDefaultsSave),
+    guideGet: handler(runtime, guides.guideGet),
+    guideRequest: handler(runtime, guides.guideRequest),
+    guideProgress: handler(runtime, guides.guideProgress),
     stageReviewComment: handler(runtime, operations.stageReviewComment),
     linkedContents: handler(runtime, operations.linkedContents),
     linkedList: handler(runtime, operations.linkedList),
@@ -128,7 +142,25 @@ export default function plugin(bb: BbPluginApi) {
   ) {
     const [verb, repo, path, flag] = argv.filter((a) => a !== "--json");
     let result: unknown;
-    if (["links", "link", "unlink"].includes(verb)) {
+    if (verb === "guide-context" || verb === "guide-save") {
+      if (!ctx.threadId || !repo)
+        return yield* fail("Run inside a BB thread and provide a PR URL.");
+      if (verb === "guide-context")
+        return {
+          exitCode: 0,
+          stdout: yield* guides.guideContext({ threadId: ctx.threadId, url: repo }),
+        };
+      const guideJson = argv[4];
+      if (!path || !flag || !guideJson)
+        return yield* fail("Usage: bb multirepo guide-save <url> <base> <head> '<JSON>'");
+      result = yield* guides.guideSave({
+        threadId: ctx.threadId,
+        url: repo,
+        base: path,
+        head: flag,
+        guideJson,
+      });
+    } else if (["links", "link", "unlink"].includes(verb)) {
       if (!ctx.threadId) return yield* fail("Run this command inside a BB thread.");
       if (verb === "links") result = yield* links.linkedList({ threadId: ctx.threadId });
       else if (!repo) return yield* fail("A pull request URL is required.");
@@ -153,7 +185,7 @@ export default function plugin(bb: BbPluginApi) {
       return {
         exitCode: verb && verb !== "--help" ? 1 : 0,
         stdout:
-          "Usage: bb multirepo status | changes <repo> | files <repo> | prs <repo> | diff <repo> <path> [--staged]",
+          "Usage: bb multirepo status | changes <repo> | files <repo> | prs <repo> | diff <repo> <path> [--staged] | links | link <url> [reason] | unlink <url> | guide-context <url> | guide-save <url> <base> <head> '<JSON>'",
       };
     const stdout = yield* sync("CLI output", () => JSON.stringify(result, null, 2));
     if (Buffer.byteLength(stdout) > PLUGIN_CLI_OUTPUT_MAX_BYTES)
@@ -167,6 +199,16 @@ export default function plugin(bb: BbPluginApi) {
     name: "multirepo",
     summary: "Browse repositories in the configured workspace",
     commands: [
+      {
+        name: "guide-context",
+        summary: "Get a linked PR's guided review context",
+        usage: "bb multirepo guide-context <url>",
+      },
+      {
+        name: "guide-save",
+        summary: "Save a guided review",
+        usage: "bb multirepo guide-save <url> <base> <head> '<JSON>'",
+      },
       {
         name: "link",
         summary: "Link a PR to the current thread",
