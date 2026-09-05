@@ -43,3 +43,10 @@ export const handler =
   ) =>
   (...args: Args) =>
     runtime.runPromise(operation(...args));
+
+export const decodeSchema = Effect.fn("Backend.decode")(
+  <S extends Schema.Constraint>(operation: string, schema: S, input: unknown) =>
+    Schema.decodeUnknownEffect(schema)(input).pipe(
+      Effect.mapError((cause) => new BackendError({ operation, message: cause.message, cause })),
+    ),
+);

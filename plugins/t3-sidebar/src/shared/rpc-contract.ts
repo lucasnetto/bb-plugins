@@ -1,6 +1,8 @@
+import { standardSchema } from "./standard-schema";
+import { Schema } from "effect";
 import { snoozeContract } from "./snooze-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+
 import { projectSettingsContract } from "./project-settings-contract";
 import { projectThreadContract } from "./project-thread-contract";
 export type SettledMap = Record<string, number>;
@@ -10,37 +12,54 @@ export const rpcContract = defineRpcContract({
   ...projectSettingsContract,
   ...projectThreadContract,
   project_hosts: {
-    input: z.null(),
-    output: z.array(z.object({ id: z.string(), name: z.string() })),
+    input: standardSchema(Schema.Null),
+    output: standardSchema(
+      Schema.mutable(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))),
+    ),
   },
   project_directory: {
-    input: z.object({
-      hostId: z.string().min(1),
-      path: z.string().min(1).optional(),
-    }),
-    output: z.object({
-      directory: z.string(),
-      parent: z.string().nullable(),
-      entries: z.array(z.object({ name: z.string(), path: z.string() })),
-    }),
+    input: standardSchema(
+      Schema.Struct({
+        hostId: Schema.String.check(Schema.isMinLength(1)),
+        path: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))),
+      }),
+    ),
+    output: standardSchema(
+      Schema.Struct({
+        directory: Schema.String,
+        parent: Schema.NullOr(Schema.String),
+        entries: Schema.mutable(
+          Schema.Array(Schema.Struct({ name: Schema.String, path: Schema.String })),
+        ),
+      }),
+    ),
   },
   project_create: {
-    input: z.object({ hostId: z.string().min(1), path: z.string().min(1) }),
-    output: z.object({ id: z.string() }),
+    input: standardSchema(
+      Schema.Struct({
+        hostId: Schema.String.check(Schema.isMinLength(1)),
+        path: Schema.String.check(Schema.isMinLength(1)),
+      }),
+    ),
+    output: standardSchema(Schema.Struct({ id: Schema.String })),
   },
   project_remove: {
-    input: z.object({ projectId: z.string().min(1) }),
-    output: z.null(),
+    input: standardSchema(Schema.Struct({ projectId: Schema.String.check(Schema.isMinLength(1)) })),
+    output: standardSchema(Schema.Null),
   },
   settled_list: {
-    input: z.null(),
-    output: z.object({ settled: z.record(z.string(), z.number()) }),
+    input: standardSchema(Schema.Null),
+    output: standardSchema(Schema.Struct({ settled: Schema.Record(Schema.String, Schema.Finite) })),
   },
   settled_set: {
-    input: z.object({
-      threadIds: z.array(z.string().min(1)).min(1).max(500),
-      settled: z.boolean(),
-    }),
-    output: z.object({ settled: z.record(z.string(), z.number()) }),
+    input: standardSchema(
+      Schema.Struct({
+        threadIds: Schema.mutable(Schema.Array(Schema.String.check(Schema.isMinLength(1))))
+          .check(Schema.isMinLength(1))
+          .check(Schema.isMaxLength(500)),
+        settled: Schema.Boolean,
+      }),
+    ),
+    output: standardSchema(Schema.Struct({ settled: Schema.Record(Schema.String, Schema.Finite) })),
   },
 });

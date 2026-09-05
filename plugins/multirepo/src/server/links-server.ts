@@ -1,12 +1,13 @@
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { Effect } from "effect";
-import { call, sync, createRuntime } from "./server-effects";
+import { Effect, Schema } from "effect";
+import { call, sync, createRuntime, decodeSchema, fail } from "./server-effects";
 import { randomUUID } from "node:crypto";
 import { hostContract, reviewCommentInput } from "../shared/contract";
 import {
   linkedContentsInput,
   linkInput,
+  reasonSchema,
   linkedPrSchema,
   LINKS_CHANGED,
   parsePrUrl,
@@ -28,13 +29,17 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     "CREATE TABLE review_comments (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, context TEXT NOT NULL)",
   ]);
   const host = bb.hosts.experimental_client({ contract: hostContract });
-  const listRows = (threadId: string) =>
-    db
-      .prepare("SELECT data FROM linked_prs WHERE thread_id = ? ORDER BY rowid")
-      .all(threadId)
-      .map((row) =>
-        linkedPrSchema.parse(JSON.parse(z.object({ data: z.string() }).parse(row).data)),
-      );
+  const listRows = Effect.fn("LinkedPr.rows")(function* (threadId: string) {
+    const rows = yield* sync("linked PR.list", () =>
+      db.prepare("SELECT data FROM linked_prs WHERE thread_id = ? ORDER BY rowid").all(threadId),
+    );
+    const decoded = yield* decodeSchema(
+      "linked PR.decode",
+      Schema.Array(Schema.Struct({ data: Schema.fromJsonString(linkedPrSchema) })),
+      rows,
+    );
+    return decoded.map(({ data }) => data);
+  });
   const changed = (threadId: string) => bb.realtime.publish(LINKS_CHANGED, { threadId });
   const environment = Effect.fn("LinkedPr.environment")(function* (threadId: string) {
     const thread = yield* call("threads.get", () => bb.sdk.threads.get({ threadId }));
@@ -60,34 +65,41 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
           const row = db.prepare("SELECT context FROM review_comments WHERE id = ?").get(id);
           if (!row)
             throw new Error("This code comment is no longer available. Select the code again.");
-          return z.object({ context: z.string() }).parse(row);
-        }),
+          return row;
+        }).pipe(
+          Effect.flatMap((row) =>
+            decodeSchema("review comment.decode", Schema.Struct({ context: Schema.String }), row),
+          ),
+        ),
       ),
   });
   const handlers = {
-    stageReviewComment: Effect.fn("LinkedPr.stageComment")(
-      (input: z.infer<typeof reviewCommentInput>) =>
-        sync("review comment.insert", () => {
-          const ref = parsePrUrl(input.url);
-          if (!listRows(input.threadId).some((pr) => pr.url === ref.url))
-            throw new Error("This PR is not linked to this thread.");
-          const id = randomUUID();
-          db.prepare("INSERT INTO review_comments (id, thread_id, context) VALUES (?, ?, ?)").run(
-            id,
-            input.threadId,
-            input.context,
-          );
-          return { id };
-        }),
-    ),
+    stageReviewComment: Effect.fn("LinkedPr.stageComment")(function* (
+      input: Schema.Schema.Type<typeof reviewCommentInput>,
+    ) {
+      const rows = yield* listRows(input.threadId);
+      return yield* sync("review comment.insert", () => {
+        const ref = parsePrUrl(input.url);
+        if (!rows.some((pr) => pr.url === ref.url))
+          throw new Error("This PR is not linked to this thread.");
+        const id = randomUUID();
+        db.prepare("INSERT INTO review_comments (id, thread_id, context) VALUES (?, ?, ?)").run(
+          id,
+          input.threadId,
+          input.context,
+        );
+        return { id };
+      });
+    }),
     linkedContents: ({
       threadId,
       ...input
-    }: z.infer<typeof linkedContentsInput> & { threadId: string }) =>
+    }: Schema.Schema.Type<typeof linkedContentsInput> & { threadId: string }) =>
       Effect.gen(function* () {
+        const rows = yield* listRows(threadId);
         const ref = yield* sync("linked contents input", () => {
           const ref = parsePrUrl(input.url);
-          if (!listRows(threadId).some((pr) => pr.url === ref.url))
+          if (!rows.some((pr) => pr.url === ref.url))
             throw new Error("This PR is not linked to this thread.");
           return ref;
         });
@@ -101,14 +113,15 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         );
       }),
     linkedList: Effect.fn("LinkedPr.list")(({ threadId }: { threadId: string }) =>
-      sync("linked PR.list", () => listRows(threadId)),
+      listRows(threadId),
     ),
-    linkedLink: ({ threadId, ...input }: z.infer<typeof linkInput> & { threadId: string }) =>
+    linkedLink: ({
+      threadId,
+      ...input
+    }: Schema.Schema.Type<typeof linkInput> & { threadId: string }) =>
       Effect.gen(function* () {
         const ref = yield* sync("parse PR URL", () => parsePrUrl(input.url));
-        const existing = yield* sync("linked PR lookup", () =>
-          listRows(threadId).find((pr) => pr.url === ref.url),
-        );
+        const existing = (yield* listRows(threadId)).find((pr) => pr.url === ref.url);
         if (existing) return existing;
         const env = yield* environment(threadId);
         const summary = yield* call("host.linkedSummary", (signal) =>
@@ -118,21 +131,21 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
             { hostId: env.hostId, signal },
           ),
         );
-        return yield* sync("save linked PR", () => {
-          const entry = linkedPrSchema.parse({
-            ...summary,
-            ...ref,
-            reason: input.reason,
-            linkedAt: Date.now(),
-          });
+        const entry = yield* decodeSchema("linked PR.entry", linkedPrSchema, {
+          ...summary,
+          ...ref,
+          reason: input.reason,
+          linkedAt: Date.now(),
+        });
+        yield* sync("save linked PR", () => {
           db.prepare(
             "INSERT OR IGNORE INTO linked_prs (thread_id, url, data) VALUES (?, ?, ?)",
           ).run(threadId, ref.url, JSON.stringify(entry));
           changed(threadId);
-          const saved = listRows(threadId).find((pr) => pr.url === ref.url);
-          if (!saved) throw new Error("Linked PR was not saved.");
-          return saved;
         });
+        const saved = (yield* listRows(threadId)).find((pr) => pr.url === ref.url);
+        if (!saved) return yield* fail("Linked PR was not saved.");
+        return saved;
       }),
     linkedUnlink: Effect.fn("LinkedPr.unlink")(
       ({ threadId, url }: { threadId: string; url: string }) =>
@@ -147,9 +160,10 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     ),
     linkedDetail: ({ threadId, url }: { threadId: string; url: string }) =>
       Effect.gen(function* () {
+        const rows = yield* listRows(threadId);
         const ref = yield* sync("linked detail input", () => {
           const ref = parsePrUrl(url);
-          if (!listRows(threadId).some((pr) => pr.url === ref.url))
+          if (!rows.some((pr) => pr.url === ref.url))
             throw new Error("This PR is not linked to this thread.");
           return ref;
         });
@@ -161,8 +175,8 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
             { hostId: env.hostId, signal },
           ),
         );
+        const current = (yield* listRows(threadId)).find((pr) => pr.url === ref.url);
         yield* sync("refresh linked PR", () => {
-          const current = listRows(threadId).find((pr) => pr.url === ref.url);
           if (current) {
             db.prepare("UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ?").run(
               JSON.stringify({ ...current, ...detail.pr, ...ref }),
@@ -175,13 +189,14 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         return detail;
       }),
   };
+  // The SDK requires Zod for validated agent-tool parameters. RPC uses Standard Schema.
   bb.agents.registerTool({
     name: "link_pull_request",
     description:
       "Link a GitHub pull request to the current BB thread. Supports several repositories and PRs. Does not post to GitHub.",
     instructions:
       "Call link_pull_request after successfully creating a PR, when the user asks you to review or work on a PR, or explicitly asks to link one. Use created-here, requested-review, requested-work, or manual as the reason. Do not link PRs mentioned only as examples or background. Preserve existing links. Use unlink_pull_request when asked to remove a link; list_linked_pull_requests shows current links. If these tools are unavailable in an existing session, use bb multirepo link <url> <reason>, unlink <url>, or links in the current thread.",
-    parameters: linkInput,
+    parameters: z.object({ url: z.string(), reason: z.enum(reasonSchema.literals) }),
     execute: (input, ctx) =>
       runtime.runPromise(
         handlers
@@ -230,8 +245,12 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     runtime.runPromise(
       Effect.gen(function* () {
         const raw = yield* call("linked PR request", () => c.req.json());
-        const { threadIds } = yield* sync("linked PR input", () =>
-          z.object({ threadIds: z.array(z.string().min(1)) }).parse(raw),
+        const { threadIds } = yield* decodeSchema(
+          "linked PR input",
+          Schema.Struct({
+            threadIds: Schema.mutable(Schema.Array(Schema.String.check(Schema.isMinLength(1)))),
+          }),
+          raw,
         );
         const entries = yield* Effect.forEach(threadIds, (threadId) =>
           handlers.linkedList({ threadId }).pipe(Effect.map((rows) => [threadId, rows] as const)),

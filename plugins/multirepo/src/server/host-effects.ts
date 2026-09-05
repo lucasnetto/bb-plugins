@@ -77,7 +77,7 @@ export const fileRead = <A>(operation: string, read: (signal: AbortSignal) => Pr
     try: read,
     catch: (cause) => new FileError({ operation, message: String(cause), cause }),
   });
-// Retain Zod at existing public contracts and classify decoding failures here.
+// Classify failures from non-schema parsers such as PR URLs and Git paths.
 export const decode = <A>(read: () => A) =>
   Effect.try({
     try: read,
@@ -97,3 +97,10 @@ export const runHost = <A, E>(
   if (signal?.aborted) return Promise.reject<A>(signal.reason);
   return Effect.runPromise(effect.pipe(Effect.provide(run ? commandLayer(run) : live)), { signal });
 };
+
+export const decodeSchema = Effect.fn("Host.decode")(
+  <S extends Schema.Constraint>(schema: S, input: unknown) =>
+    Schema.decodeUnknownEffect(schema)(input).pipe(
+      Effect.mapError((cause) => new InputError({ message: cause.message })),
+    ),
+);

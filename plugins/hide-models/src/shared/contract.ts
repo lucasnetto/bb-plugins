@@ -1,42 +1,54 @@
+import { standardSchema } from "./standard-schema";
+import { Schema } from "effect";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-export const hiddenModelSchema = z.object({
-  providerId: z.string().min(1),
-  model: z.string().min(1),
+
+export const hiddenModelSchema = Schema.Struct({
+  providerId: Schema.String.check(Schema.isMinLength(1)),
+  model: Schema.String.check(Schema.isMinLength(1)),
   // Picker label at the time of hiding; the content script matches rows by
   // display name because bb's picker exposes no model-id DOM attribute.
-  displayName: z.string().min(1),
+  displayName: Schema.String.check(Schema.isMinLength(1)),
 });
-export type HiddenModel = z.infer<typeof hiddenModelSchema>;
+export type HiddenModel = Schema.Schema.Type<typeof hiddenModelSchema>;
 
-const catalogModelSchema = z.object({
-  model: z.string(),
-  displayName: z.string(),
-  description: z.string(),
-  isDefault: z.boolean(),
+const catalogModelSchema = Schema.Struct({
+  model: Schema.String,
+  displayName: Schema.String,
+  description: Schema.String,
+  isDefault: Schema.Boolean,
 });
-const catalogProviderSchema = z.object({
-  id: z.string(),
-  displayName: z.string(),
-  available: z.boolean(),
-  brandPrefix: z.string().nullable(),
-  models: z.array(catalogModelSchema),
-  loadError: z.string().nullable(),
+const catalogProviderSchema = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  available: Schema.Boolean,
+  brandPrefix: Schema.NullOr(Schema.String),
+  models: Schema.mutable(Schema.Array(catalogModelSchema)),
+  loadError: Schema.NullOr(Schema.String),
 });
-export type CatalogProvider = z.infer<typeof catalogProviderSchema>;
+export type CatalogProvider = Schema.Schema.Type<typeof catalogProviderSchema>;
 
 export const rpcContract = defineRpcContract({
   catalog: {
-    input: z.null(),
-    output: z.object({ providers: z.array(catalogProviderSchema) }),
+    input: standardSchema(Schema.Null),
+    output: standardSchema(
+      Schema.Struct({ providers: Schema.mutable(Schema.Array(catalogProviderSchema)) }),
+    ),
   },
   hidden_get: {
-    input: z.null(),
-    output: z.object({ hidden: z.array(hiddenModelSchema) }),
+    input: standardSchema(Schema.Null),
+    output: standardSchema(
+      Schema.Struct({ hidden: Schema.mutable(Schema.Array(hiddenModelSchema)) }),
+    ),
   },
   hidden_set: {
-    input: z.object({ hidden: z.array(hiddenModelSchema).max(500) }),
-    output: z.object({ hidden: z.array(hiddenModelSchema) }),
+    input: standardSchema(
+      Schema.Struct({
+        hidden: Schema.mutable(Schema.Array(hiddenModelSchema)).check(Schema.isMaxLength(500)),
+      }),
+    ),
+    output: standardSchema(
+      Schema.Struct({ hidden: Schema.mutable(Schema.Array(hiddenModelSchema)) }),
+    ),
   },
 });
 

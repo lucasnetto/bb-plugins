@@ -8,9 +8,9 @@
 // client of this bb through RPC + a realtime signal.
 import { createSnoozeHandlers } from "./lib/snooze";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-import { Effect, Semaphore } from "effect";
-import { call, sync, createRuntime } from "./lib/server-effects";
+
+import { Effect, Semaphore, Schema } from "effect";
+import { call, sync, createRuntime, decodeSchema } from "./lib/server-effects";
 import { AUTO_SETTLE_OPTIONS, SETTLED_CHANGED } from "../shared/contract";
 import { createProjectSettingsHandlers, registerProjectAutoPull } from "./lib/project-settings";
 import { createProjectThreadHandlers } from "./lib/project-thread-create";
@@ -34,7 +34,11 @@ export default function plugin(bb: BbPluginApi) {
   const settledLock = Semaphore.makeUnsafe(1);
   const read = Effect.fn("Settled.read")(function* () {
     const raw = yield* call("settled.read", () => bb.storage.kv.get(SETTLED_KEY));
-    return yield* sync("settled.decode", () => z.record(z.string(), z.number()).parse(raw ?? {}));
+    return yield* decodeSchema(
+      "settled.decode",
+      Schema.Record(Schema.String, Schema.Finite),
+      raw ?? {},
+    );
   });
   const setSettled = Effect.fn("Settled.set")(function* (
     threadIds: readonly string[],

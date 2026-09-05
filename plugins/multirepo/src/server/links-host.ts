@@ -1,18 +1,18 @@
 import { join } from "node:path";
-import { z } from "zod";
-import { Effect } from "effect";
+
+import { Effect, Schema } from "effect";
 import { discover } from "./git";
-import { command, decode, invalid } from "./host-effects";
+import { command, decode, invalid, decodeSchema } from "./host-effects";
 import { linkedContentsInput, parsePrUrl, prSummarySchema } from "../shared/links-contract";
-const viewSchema = z.object({
-  title: z.string(),
-  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
-  isDraft: z.boolean(),
-  body: z.string(),
-  headRefName: z.string(),
-  baseRefName: z.string(),
-  baseRefOid: z.string(),
-  headRefOid: z.string(),
+const viewSchema = Schema.Struct({
+  title: Schema.String,
+  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  isDraft: Schema.Boolean,
+  body: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  baseRefOid: Schema.String,
+  headRefOid: Schema.String,
 });
 const view = Effect.fn("LinkedPr.view")(function* (root: string, url: string) {
   const ref = yield* decode(() => parsePrUrl(url));
@@ -23,8 +23,8 @@ const view = Effect.fn("LinkedPr.view")(function* (root: string, url: string) {
     "--json",
     "title,state,isDraft,body,headRefName,baseRefName,baseRefOid,headRefOid",
   ]);
-  const data = yield* decode(() => viewSchema.parse(JSON.parse(raw)));
-  const pr = yield* decode(() => prSummarySchema.parse({ ...ref, ...data }));
+  const data = yield* decodeSchema(Schema.fromJsonString(viewSchema), raw);
+  const pr = yield* decodeSchema(prSummarySchema, { ...ref, ...data });
   return { pr, data };
 });
 export const linkedSummary = Effect.fn("LinkedPr.summary")((root: string, url: string) =>
@@ -47,21 +47,25 @@ export const linkedDetail = Effect.fn("LinkedPr.detail")(function* (root: string
     ],
     { concurrency: 3 },
   );
-  const files = yield* decode(() =>
-    z
-      .array(
-        z.array(
-          z.object({
-            filename: z.string(),
-            patch: z.string().optional(),
-            status: z.string(),
-            previous_filename: z.string().optional(),
-          }),
+  const files = yield* decodeSchema(
+    Schema.fromJsonString(
+      Schema.mutable(
+        Schema.Array(
+          Schema.mutable(
+            Schema.Array(
+              Schema.Struct({
+                filename: Schema.String,
+                patch: Schema.optionalKey(Schema.String),
+                status: Schema.String,
+                previous_filename: Schema.optionalKey(Schema.String),
+              }),
+            ),
+          ),
         ),
-      )
-      .parse(JSON.parse(rawFiles))
-      .flat(),
-  );
+      ),
+    ),
+    rawFiles,
+  ).pipe(Effect.map((decoded) => decoded.flat()));
   const matches = repos.filter((r) => r.remote?.toLowerCase() === ref.repository);
   return {
     pr,
@@ -83,16 +87,21 @@ export const linkedDetail = Effect.fn("LinkedPr.detail")(function* (root: string
 // Read immutable GitHub revisions, not files from the agent's working tree.
 export const linkedContents = Effect.fn("LinkedPr.contents")(function* (
   root: string,
-  input: z.infer<typeof linkedContentsInput>,
+  input: Schema.Schema.Type<typeof linkedContentsInput>,
 ) {
   const { repository } = yield* decode(() => parsePrUrl(input.url));
   const api = (path: string, extra: string[] = []) =>
     command(root, "gh", ["api", "--hostname", "github.com", ...extra, path]);
   const rawComparison = yield* api(`repos/${repository}/compare/${input.base}...${input.head}`);
-  const comparison = yield* decode(() =>
-    z
-      .object({ merge_base_commit: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/) }) })
-      .parse(JSON.parse(rawComparison)),
+  const comparison = yield* decodeSchema(
+    Schema.fromJsonString(
+      Schema.Struct({
+        merge_base_commit: Schema.Struct({
+          sha: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
+        }),
+      }),
+    ),
+    rawComparison,
   );
   const read = Effect.fn("LinkedPr.readRevision")(function* (path: string, sha: string) {
     const encoded = path.split("/").map(encodeURIComponent).join("/");

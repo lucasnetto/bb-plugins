@@ -34,3 +34,10 @@ export function createRuntime(bb: BbPluginApi) {
   bb.onDispose(() => runtime.dispose());
   return runtime;
 }
+
+export const decodeSchema = Effect.fn("Backend.decode")(
+  <S extends Schema.Constraint>(operation: string, schema: S, input: unknown) =>
+    Schema.decodeUnknownEffect(schema)(input).pipe(
+      Effect.mapError((cause) => new BackendError({ operation, message: cause.message, cause })),
+    ),
+);

@@ -35,8 +35,7 @@
     "hono": "catalog:",
     "sonner": "catalog:",
     "tailwind-merge": "catalog:",
-    "vaul": "catalog:",
-    "zod": "catalog:"
+    "vaul": "catalog:"
   },
   "engines": {
     "bb": ">=0.41",

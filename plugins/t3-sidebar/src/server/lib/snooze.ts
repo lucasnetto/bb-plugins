@@ -1,21 +1,21 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { Effect, Semaphore } from "effect";
 import { SNOOZED_CHANGED, snoozedMapSchema } from "../../shared/snooze-contract";
-import { call, createRuntime, sync } from "./server-effects";
+import { call, createRuntime, sync, decodeSchema } from "./server-effects";
 
 export function createSnoozeHandlers(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   const lock = Semaphore.makeUnsafe(1);
   const read = Effect.fn("Snooze.read")(function* () {
     const raw = yield* call("snooze.read", () => bb.storage.kv.get("snoozed"));
-    return yield* sync("snooze.decode", () => snoozedMapSchema.parse(raw ?? {}));
+    return yield* decodeSchema("snooze.decode", snoozedMapSchema, raw ?? {});
   });
   const update = Effect.fn("Snooze.update")(function* (
     threadId: string,
     until: number | null,
     remove = false,
   ) {
-    const current = yield* read();
+    const current = { ...(yield* read()) };
     const now = Date.now();
     if (until !== null) {
       yield* sync("snooze.validateTime", () => {

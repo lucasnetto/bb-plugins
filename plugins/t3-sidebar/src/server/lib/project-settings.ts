@@ -1,7 +1,7 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-import { Context, Effect, Layer, ManagedRuntime, RcMap, Semaphore } from "effect";
-import { call, sync, createRuntime } from "./server-effects";
+import type { BbPluginApi, StandardSchemaV1InferOutput } from "@get-bb/plugin-sdk";
+
+import { Context, Effect, Layer, ManagedRuntime, RcMap, Semaphore, Schema } from "effect";
+import { call, sync, createRuntime, decodeSchema } from "./server-effects";
 import { projectHostContract } from "../../shared/project-host-contract";
 
 import { preferencesSchema, projectSettingsContract } from "../../shared/project-settings-contract";
@@ -19,7 +19,7 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
   bb.onDispose(() => runtime.dispose());
   const read = Effect.fn("ProjectSettings.read")(function* (id: string) {
     const raw = yield* call("settings.read", () => bb.storage.kv.get(key(id)));
-    return yield* sync("settings.decode", () => preferencesSchema.parse(raw ?? {}));
+    return yield* decodeSchema("settings.decode", preferencesSchema, raw ?? {});
   });
   const get = Effect.fn("ProjectSettings.get")(function* ({ projectId }: { projectId: string }) {
     const project = yield* call("projects.get", () => bb.sdk.projects.get({ projectId }));
@@ -57,7 +57,9 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
     };
   });
   const update = Effect.fn("ProjectSettings.update")(function* (
-    input: z.infer<typeof projectSettingsContract.project_settings_update.input>,
+    input: StandardSchemaV1InferOutput<
+      typeof projectSettingsContract.project_settings_update.input
+    >,
   ) {
     const locks = yield* SettingsLocks;
     const lock = yield* RcMap.get(locks, input.projectId);
@@ -79,7 +81,9 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
   return {
     project_settings_get: (input: { projectId: string }) => runtime.runPromise(get(input)),
     project_settings_update: (
-      input: z.infer<typeof projectSettingsContract.project_settings_update.input>,
+      input: StandardSchemaV1InferOutput<
+        typeof projectSettingsContract.project_settings_update.input
+      >,
     ) => runtime.runPromise(update(input).pipe(Effect.scoped)),
   };
 }
@@ -95,8 +99,8 @@ export function registerProjectAutoPull(bb: BbPluginApi) {
     const projects = yield* call("projects.list", () => bb.sdk.projects.list());
     for (const project of projects) {
       const stored = yield* call("settings.read", () => bb.storage.kv.get(key(project.id)));
-      const prefs = preferencesSchema.safeParse(stored ?? {});
-      if (!prefs.success || !prefs.data.autoPull) continue;
+      const prefs = Schema.decodeUnknownResult(preferencesSchema)(stored ?? {});
+      if (prefs._tag === "Failure" || !prefs.success.autoPull) continue;
       for (const source of project.sources) {
         if (!connected.has(source.hostId)) continue;
         yield* call("host.pull", (signal) =>

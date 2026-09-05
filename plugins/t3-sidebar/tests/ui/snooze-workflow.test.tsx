@@ -30,8 +30,10 @@ test("context menu snoozes a thread; shelf can wake it without navigating", asyn
       rpc: {
         settled_list: () => ({ settled: {} }),
         snoozed_list: () => ({ snoozed }),
-        snoozed_set: (input) => {
-          const { threadId, until } = snoozeContract.snoozed_set.input.parse(input);
+        snoozed_set: async (input) => {
+          const result = await snoozeContract.snoozed_set.input["~standard"].validate(input);
+          if (result.issues) throw new Error("Invalid snooze input");
+          const { threadId, until } = result.value;
           snoozed = { ...snoozed, [threadId]: { at: Date.now(), until: until ?? Date.now() } };
           return { snoozed };
         },

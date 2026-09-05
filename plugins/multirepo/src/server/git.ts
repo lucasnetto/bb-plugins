@@ -1,16 +1,16 @@
 import { lstat, readdir, realpath, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { z } from "zod";
-import { Effect, Layer } from "effect";
+
+import { Effect, Layer, Schema } from "effect";
 import { DiscoveryError, DiscoveryIO, discoverRepositories } from "./discovery";
 import {
   Commands,
   command,
   fileRead,
-  decode,
   invalid,
   hasExitCode,
   MAX_BYTES,
+  decodeSchema,
 } from "./host-effects";
 import { prSchema, type Change } from "../shared/contract";
 const git = (cwd: string, args: string[]) =>
@@ -153,17 +153,17 @@ export const detail = Effect.fn("Git.detail")(function* (
     notice: buffer.includes(0) ? "Binary file. Open it in your editor." : null,
   };
 });
-const apiPr = z.object({
-  number: z.number(),
-  title: z.string(),
-  html_url: z.string(),
-  head: z.object({ ref: z.string() }),
-  base: z.object({ ref: z.string() }),
-  draft: z.boolean(),
-  user: z.object({ login: z.string() }).nullable(),
+const apiPr = Schema.Struct({
+  number: Schema.Finite,
+  title: Schema.String,
+  html_url: Schema.String,
+  head: Schema.Struct({ ref: Schema.String }),
+  base: Schema.Struct({ ref: Schema.String }),
+  draft: Schema.Boolean,
+  user: Schema.NullOr(Schema.Struct({ login: Schema.String })),
 });
-function normalizePr(pr: z.infer<typeof apiPr>) {
-  return prSchema.parse({
+function normalizePr(pr: Schema.Schema.Type<typeof apiPr>) {
+  return prSchema.make({
     number: pr.number,
     title: pr.title,
     url: pr.html_url,
@@ -186,9 +186,10 @@ export const prs = Effect.fn("Git.prs")(function* (path: string) {
     "--slurp",
     `repos/${r}/pulls?state=open&per_page=100`,
   ]);
-  return yield* decode(() =>
-    z.array(z.array(apiPr)).parse(JSON.parse(raw)).flat().map(normalizePr),
-  );
+  return yield* decodeSchema(
+    Schema.fromJsonString(Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(apiPr))))),
+    raw,
+  ).pipe(Effect.map((decoded) => decoded.flat().map(normalizePr)));
 });
 export const prFiles = Effect.fn("Git.prFiles")(function* (path: string, number: number) {
   const r = yield* ghRepo(path);
@@ -198,29 +199,38 @@ export const prFiles = Effect.fn("Git.prFiles")(function* (path: string, number:
     "--slurp",
     `repos/${r}/pulls/${number}/files?per_page=100`,
   ]);
-  return yield* decode(() =>
-    z
-      .array(
-        z.array(
-          z.object({
-            filename: z.string(),
-            status: z.string(),
-            patch: z.string().optional(),
-          }),
+  return yield* decodeSchema(
+    Schema.fromJsonString(
+      Schema.mutable(
+        Schema.Array(
+          Schema.mutable(
+            Schema.Array(
+              Schema.Struct({
+                filename: Schema.String,
+                status: Schema.String,
+                patch: Schema.optionalKey(Schema.String),
+              }),
+            ),
+          ),
         ),
-      )
-      .parse(JSON.parse(raw))
-      .flat()
-      .map((f) => ({
+      ),
+    ),
+    raw,
+  ).pipe(
+    Effect.map((decoded) =>
+      decoded.flat().map((f) => ({
         path: f.filename,
         status: f.status,
         patch: f.patch ?? null,
       })),
+    ),
   );
 });
 export const reviewTarget = Effect.fn("Git.reviewTarget")(function* (path: string, number: number) {
   const r = yield* ghRepo(path);
   const raw = yield* command(path, "gh", ["api", `repos/${r}/pulls/${number}`]);
-  const pr = yield* decode(() => normalizePr(apiPr.parse(JSON.parse(raw))));
+  const pr = yield* decodeSchema(Schema.fromJsonString(apiPr), raw).pipe(
+    Effect.map((decoded) => normalizePr(decoded)),
+  );
   return { path, remote: r, pr };
 });

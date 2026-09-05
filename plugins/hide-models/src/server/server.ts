@@ -4,9 +4,9 @@
 // frontend content script hides matching rows in bb's model picker, so this is
 // a UI-only filter (t3code-style "hide models from a provider").
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-import { Effect, Semaphore } from "effect";
-import { call, sync, createRuntime } from "./server-effects";
+
+import { Effect, Semaphore, Schema } from "effect";
+import { call, sync, createRuntime, decodeSchema } from "./server-effects";
 
 import {
   hiddenModelSchema,
@@ -28,7 +28,11 @@ export default function plugin(bb: BbPluginApi) {
   const mutationLock = Semaphore.makeUnsafe(1);
   const readHidden = Effect.fn("HiddenModels.read")(function* () {
     const raw = yield* call("hidden.read", () => bb.storage.kv.get(KV_KEY));
-    return yield* sync("hidden.decode", () => z.array(hiddenModelSchema).parse(raw ?? []));
+    return yield* decodeSchema(
+      "hidden.decode",
+      Schema.mutable(Schema.Array(hiddenModelSchema)),
+      raw ?? [],
+    );
   });
   const writeHidden = Effect.fn("HiddenModels.write")(function* (entries: HiddenModel[]) {
     const hidden = dedupe(entries);

@@ -1,3 +1,5 @@
+import { standardSchema } from "./standard-schema";
+import { Schema } from "effect";
 import {
   linkedContentsInput,
   linkedContentsSchema,
@@ -8,105 +10,213 @@ import {
   linkInput,
 } from "./links-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-export const repoInput = z.object({ repo: z.string().min(1) });
-const rootInput = z.object({ root: z.string().min(1) });
-export const changeSchema = z.object({
-  path: z.string(),
-  oldPath: z.string().nullable(),
-  index: z.string(),
-  worktree: z.string(),
+
+export const repoInput = Schema.Struct({ repo: Schema.String.check(Schema.isMinLength(1)) });
+const rootInput = Schema.Struct({ root: Schema.String.check(Schema.isMinLength(1)) });
+export const changeSchema = Schema.Struct({
+  path: Schema.String,
+  oldPath: Schema.NullOr(Schema.String),
+  index: Schema.String,
+  worktree: Schema.String,
 });
-export const repoSchema = z.object({
-  name: z.string(),
-  branch: z.string(),
-  remote: z.string().nullable(),
-  changes: z.number(),
-  error: z.string().nullable(),
+export const repoSchema = Schema.Struct({
+  name: Schema.String,
+  branch: Schema.String,
+  remote: Schema.NullOr(Schema.String),
+  changes: Schema.Finite,
+  error: Schema.NullOr(Schema.String),
 });
-export const prSchema = z.object({
-  number: z.number(),
-  title: z.string(),
-  url: z.string(),
-  headRefName: z.string(),
-  baseRefName: z.string(),
-  isDraft: z.boolean(),
-  author: z.string(),
+export const prSchema = Schema.Struct({
+  number: Schema.Finite,
+  title: Schema.String,
+  url: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  isDraft: Schema.Boolean,
+  author: Schema.String,
 });
-export const detailInput = repoInput.extend({
-  path: z.string().min(1),
-  mode: z.enum(["staged", "worktree", "source"]),
+export const detailInput = repoInput.pipe(
+  Schema.fieldsAssign({
+    path: Schema.String.check(Schema.isMinLength(1)),
+    mode: Schema.Literals(["staged", "worktree", "source"]),
+  }),
+);
+export const detailSchema = Schema.Struct({
+  path: Schema.String,
+  content: Schema.NullOr(Schema.String),
+  patch: Schema.NullOr(Schema.String),
+  notice: Schema.NullOr(Schema.String),
 });
-export const detailSchema = z.object({
-  path: z.string(),
-  content: z.string().nullable(),
-  patch: z.string().nullable(),
-  notice: z.string().nullable(),
-});
-export const prFileSchema = z.object({
-  path: z.string(),
-  status: z.string(),
-  patch: z.string().nullable(),
+export const prFileSchema = Schema.Struct({
+  path: Schema.String,
+  status: Schema.String,
+  patch: Schema.NullOr(Schema.String),
 });
 export const hostContract = defineRpcContract({
-  linkedContents: { input: rootInput.merge(linkedContentsInput), output: linkedContentsSchema },
-  linkedSummary: { input: rootInput.extend({ url: z.string() }), output: prSummarySchema },
-  linkedDetail: { input: rootInput.extend({ url: z.string() }), output: linkedDetailSchema },
-  discover: { input: rootInput, output: z.array(repoSchema) },
-  changes: { input: rootInput.merge(repoInput), output: z.array(changeSchema) },
-  files: { input: rootInput.merge(repoInput), output: z.array(z.string()) },
-  detail: { input: rootInput.merge(detailInput), output: detailSchema },
-  prs: { input: rootInput.merge(repoInput), output: z.array(prSchema) },
+  linkedContents: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(linkedContentsInput.fields))),
+    output: standardSchema(linkedContentsSchema),
+  },
+  linkedSummary: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    output: standardSchema(prSummarySchema),
+  },
+  linkedDetail: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    output: standardSchema(linkedDetailSchema),
+  },
+  discover: {
+    input: standardSchema(rootInput),
+    output: standardSchema(Schema.mutable(Schema.Array(repoSchema))),
+  },
+  changes: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(repoInput.fields))),
+    output: standardSchema(Schema.mutable(Schema.Array(changeSchema))),
+  },
+  files: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(repoInput.fields))),
+    output: standardSchema(Schema.mutable(Schema.Array(Schema.String))),
+  },
+  detail: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(detailInput.fields))),
+    output: standardSchema(detailSchema),
+  },
+  prs: {
+    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(repoInput.fields))),
+    output: standardSchema(Schema.mutable(Schema.Array(prSchema))),
+  },
   prFiles: {
-    input: rootInput.merge(repoInput).extend({ number: z.number().int().positive() }),
-    output: z.array(prFileSchema),
+    input: standardSchema(
+      rootInput.pipe(Schema.fieldsAssign(repoInput.fields)).pipe(
+        Schema.fieldsAssign({
+          number: Schema.Finite.check(
+            Schema.isInt(),
+            Schema.isBetween({
+              minimum: Number.MIN_SAFE_INTEGER,
+              maximum: Number.MAX_SAFE_INTEGER,
+            }),
+          ).check(Schema.isGreaterThan(0)),
+        }),
+      ),
+    ),
+    output: standardSchema(Schema.mutable(Schema.Array(prFileSchema))),
   },
   reviewTarget: {
-    input: rootInput.merge(repoInput).extend({ number: z.number().int().positive() }),
-    output: z.object({ path: z.string(), remote: z.string(), pr: prSchema }),
+    input: standardSchema(
+      rootInput.pipe(Schema.fieldsAssign(repoInput.fields)).pipe(
+        Schema.fieldsAssign({
+          number: Schema.Finite.check(
+            Schema.isInt(),
+            Schema.isBetween({
+              minimum: Number.MIN_SAFE_INTEGER,
+              maximum: Number.MAX_SAFE_INTEGER,
+            }),
+          ).check(Schema.isGreaterThan(0)),
+        }),
+      ),
+    ),
+    output: standardSchema(
+      Schema.Struct({ path: Schema.String, remote: Schema.String, pr: prSchema }),
+    ),
   },
 });
-export const reviewCommentInput = z.object({
-  threadId: z.string().min(1),
-  url: z.string(),
-  label: z.string().min(1).max(500),
-  context: z.string().min(1).max(200000),
+export const reviewCommentInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMinLength(1)),
+  url: Schema.String,
+  label: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(500)),
+  context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
 export const rpcContract = defineRpcContract({
-  stageReviewComment: { input: reviewCommentInput, output: z.object({ id: z.string() }) },
-  linkedContents: { input: threadInput.merge(linkedContentsInput), output: linkedContentsSchema },
-  linkedList: { input: threadInput, output: z.array(linkedPrSchema) },
-  linkedLink: { input: threadInput.merge(linkInput), output: linkedPrSchema },
+  stageReviewComment: {
+    input: standardSchema(reviewCommentInput),
+    output: standardSchema(Schema.Struct({ id: Schema.String })),
+  },
+  linkedContents: {
+    input: standardSchema(threadInput.pipe(Schema.fieldsAssign(linkedContentsInput.fields))),
+    output: standardSchema(linkedContentsSchema),
+  },
+  linkedList: {
+    input: standardSchema(threadInput),
+    output: standardSchema(Schema.mutable(Schema.Array(linkedPrSchema))),
+  },
+  linkedLink: {
+    input: standardSchema(threadInput.pipe(Schema.fieldsAssign(linkInput.fields))),
+    output: standardSchema(linkedPrSchema),
+  },
   linkedUnlink: {
-    input: threadInput.extend({ url: z.string() }),
-    output: z.object({ removed: z.boolean() }),
+    input: standardSchema(threadInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    output: standardSchema(Schema.Struct({ removed: Schema.Boolean })),
   },
-  linkedDetail: { input: threadInput.extend({ url: z.string() }), output: linkedDetailSchema },
+  linkedDetail: {
+    input: standardSchema(threadInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    output: standardSchema(linkedDetailSchema),
+  },
   workspace: {
-    input: z.null(),
-    output: z.object({
-      root: z.string(),
-      hostId: z.string(),
-      projectId: z.string(),
-      name: z.string(),
-    }),
+    input: standardSchema(Schema.Null),
+    output: standardSchema(
+      Schema.Struct({
+        root: Schema.String,
+        hostId: Schema.String,
+        projectId: Schema.String,
+        name: Schema.String,
+      }),
+    ),
   },
-  discover: { input: z.null(), output: z.array(repoSchema) },
-  changes: { input: repoInput, output: z.array(changeSchema) },
-  files: { input: repoInput, output: z.array(z.string()) },
-  detail: { input: detailInput, output: detailSchema },
-  prs: { input: repoInput, output: z.array(prSchema) },
+  discover: {
+    input: standardSchema(Schema.Null),
+    output: standardSchema(Schema.mutable(Schema.Array(repoSchema))),
+  },
+  changes: {
+    input: standardSchema(repoInput),
+    output: standardSchema(Schema.mutable(Schema.Array(changeSchema))),
+  },
+  files: {
+    input: standardSchema(repoInput),
+    output: standardSchema(Schema.mutable(Schema.Array(Schema.String))),
+  },
+  detail: {
+    input: standardSchema(detailInput),
+    output: standardSchema(detailSchema),
+  },
+  prs: {
+    input: standardSchema(repoInput),
+    output: standardSchema(Schema.mutable(Schema.Array(prSchema))),
+  },
   prFiles: {
-    input: repoInput.extend({ number: z.number().int().positive() }),
-    output: z.array(prFileSchema),
+    input: standardSchema(
+      repoInput.pipe(
+        Schema.fieldsAssign({
+          number: Schema.Finite.check(
+            Schema.isInt(),
+            Schema.isBetween({
+              minimum: Number.MIN_SAFE_INTEGER,
+              maximum: Number.MAX_SAFE_INTEGER,
+            }),
+          ).check(Schema.isGreaterThan(0)),
+        }),
+      ),
+    ),
+    output: standardSchema(Schema.mutable(Schema.Array(prFileSchema))),
   },
   review: {
-    input: repoInput.extend({ number: z.number().int().positive() }),
-    output: z.object({ threadId: z.string() }),
+    input: standardSchema(
+      repoInput.pipe(
+        Schema.fieldsAssign({
+          number: Schema.Finite.check(
+            Schema.isInt(),
+            Schema.isBetween({
+              minimum: Number.MIN_SAFE_INTEGER,
+              maximum: Number.MAX_SAFE_INTEGER,
+            }),
+          ).check(Schema.isGreaterThan(0)),
+        }),
+      ),
+    ),
+    output: standardSchema(Schema.Struct({ threadId: Schema.String })),
   },
 });
-export type Repo = z.infer<typeof repoSchema>;
-export type Change = z.infer<typeof changeSchema>;
-export type PullRequest = z.infer<typeof prSchema>;
-export type Detail = z.infer<typeof detailSchema>;
-export type PrFile = z.infer<typeof prFileSchema>;
+export type Repo = Schema.Schema.Type<typeof repoSchema>;
+export type Change = Schema.Schema.Type<typeof changeSchema>;
+export type PullRequest = Schema.Schema.Type<typeof prSchema>;
+export type Detail = Schema.Schema.Type<typeof detailSchema>;
+export type PrFile = Schema.Schema.Type<typeof prFileSchema>;

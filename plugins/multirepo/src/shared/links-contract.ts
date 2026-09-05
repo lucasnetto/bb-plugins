@@ -1,43 +1,51 @@
-import { z } from "zod";
+import { Schema, Struct } from "effect";
+
 export { LINKS_CHANGED } from "./links-events";
-export const reasonSchema = z.enum([
+export const reasonSchema = Schema.Literals([
   "created-here",
   "requested-review",
   "requested-work",
   "manual",
 ]);
-export const linkInput = z.object({ url: z.string(), reason: reasonSchema });
-export const threadInput = z.object({ threadId: z.string().min(1) });
-export const linkedPrSchema = z.object({
-  url: z.string(),
-  repository: z.string(),
-  number: z.number().int().positive(),
-  title: z.string(),
-  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
-  isDraft: z.boolean(),
+export const linkInput = Schema.Struct({ url: Schema.String, reason: reasonSchema });
+export const threadInput = Schema.Struct({ threadId: Schema.String.check(Schema.isMinLength(1)) });
+export const linkedPrSchema = Schema.Struct({
+  url: Schema.String,
+  repository: Schema.String,
+  number: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
+  ).check(Schema.isGreaterThan(0)),
+  title: Schema.String,
+  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  isDraft: Schema.Boolean,
   reason: reasonSchema,
-  linkedAt: z.number(),
+  linkedAt: Schema.Finite,
 });
-export const prSummarySchema = linkedPrSchema.omit({ reason: true, linkedAt: true });
-export const linkedDetailSchema = z.object({
+export const prSummarySchema = Schema.Struct(
+  Struct.omit(linkedPrSchema.fields, ["reason", "linkedAt"]),
+);
+export const linkedDetailSchema = Schema.Struct({
   pr: prSummarySchema,
-  body: z.string(),
-  headRefName: z.string(),
-  baseRefName: z.string(),
-  repositoryRoot: z.string().nullable(),
-  baseRefOid: z.string().optional(),
-  headRefOid: z.string().optional(),
-  files: z.array(
-    z.object({
-      path: z.string(),
-      patch: z.string().nullable(),
-      status: z.string().optional(),
-      previousPath: z.string().optional(),
-    }),
+  body: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  repositoryRoot: Schema.NullOr(Schema.String),
+  baseRefOid: Schema.optionalKey(Schema.String),
+  headRefOid: Schema.optionalKey(Schema.String),
+  files: Schema.mutable(
+    Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        patch: Schema.NullOr(Schema.String),
+        status: Schema.optionalKey(Schema.String),
+        previousPath: Schema.optionalKey(Schema.String),
+      }),
+    ),
   ),
 });
-export type LinkedPr = z.infer<typeof linkedPrSchema>;
-export type LinkedDetail = z.infer<typeof linkedDetailSchema>;
+export type LinkedPr = Schema.Schema.Type<typeof linkedPrSchema>;
+export type LinkedDetail = Schema.Schema.Type<typeof linkedDetailSchema>;
 export function parsePrUrl(value: string) {
   const url = new URL(value.trim());
   const match = url.pathname.match(
@@ -58,12 +66,15 @@ export function parsePrUrl(value: string) {
   return { url: `https://github.com/${repository}/pull/${number}`, repository, number };
 }
 
-export const linkedContentsInput = z.object({
-  url: z.string(),
-  path: z.string().min(1),
-  oldPath: z.string().min(1),
-  base: z.string().regex(/^[a-f0-9]{40}$/),
-  head: z.string().regex(/^[a-f0-9]{40}$/),
-  changeType: z.enum(["new", "deleted", "change", "rename-changed", "rename-pure"]),
+export const linkedContentsInput = Schema.Struct({
+  url: Schema.String,
+  path: Schema.String.check(Schema.isMinLength(1)),
+  oldPath: Schema.String.check(Schema.isMinLength(1)),
+  base: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
+  head: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
+  changeType: Schema.Literals(["new", "deleted", "change", "rename-changed", "rename-pure"]),
 });
-export const linkedContentsSchema = z.object({ oldContents: z.string(), newContents: z.string() });
+export const linkedContentsSchema = Schema.Struct({
+  oldContents: Schema.String,
+  newContents: Schema.String,
+});

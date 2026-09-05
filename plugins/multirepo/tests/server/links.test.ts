@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { Schema } from "effect";
+
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -14,7 +15,9 @@ function setup() {
     },
     experimental_callHostRpc: async ({ method, input, hostId }) => {
       assert.equal(hostId, "remote-host");
-      const request = z.object({ root: z.string(), url: z.string() }).parse(input);
+      const request = Schema.decodeUnknownSync(
+        Schema.Struct({ root: Schema.String, url: Schema.String }),
+      )(input);
       assert.equal(request.root, "/parent");
       const ref = parsePrUrl(request.url);
       if (ref.number === 404) throw new Error("PR not found");
@@ -135,9 +138,9 @@ test("code comment chips resolve their exact snapshot after reload and reject un
     };
     await assert.rejects(() => harness.behavior.callRpc("stageReviewComment", input));
     await harness.behavior.callRpc("linkedLink", { threadId: "t1", url, reason: "manual" });
-    const { id } = z
-      .object({ id: z.string() })
-      .parse(await harness.behavior.callRpc("stageReviewComment", input));
+    const { id } = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))(
+      await harness.behavior.callRpc("stageReviewComment", input),
+    );
     ({ harness } = await harness.lifecycle.reload(plugin));
     const provider = harness.inspection.registrations.mentionProviders.find(
       (p) => p.id === "review-comment",

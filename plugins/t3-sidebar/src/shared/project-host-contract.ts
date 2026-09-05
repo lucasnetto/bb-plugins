@@ -1,8 +1,14 @@
+import { standardSchema } from "./standard-schema";
+import { Schema } from "effect";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+
 export const projectHostContract = defineRpcContract({
   pull: {
-    input: z.object({ path: z.string().min(1) }).strict(),
-    output: z.object({ pulled: z.boolean() }),
+    input: standardSchema(
+      Schema.Struct({ path: Schema.String.check(Schema.isMinLength(1)) }).annotate({
+        parseOptions: { onExcessProperty: "error" },
+      }),
+    ),
+    output: standardSchema(Schema.Struct({ pulled: Schema.Boolean })),
   },
 });

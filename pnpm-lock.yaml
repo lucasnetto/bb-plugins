@@ -213,9 +213,6 @@ importers:
       vaul:
         specifier: 'catalog:'
         version: 1.1.2(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      zod:
-        specifier: 'catalog:'
-        version: 4.5.4
 
   plugins/hide-models:
     dependencies:
@@ -234,9 +231,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      zod:
-        specifier: 'catalog:'
-        version: 4.5.4
     devDependencies:
       '@get-bb/plugin-sdk':
         specifier: 'catalog:'
@@ -440,9 +434,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      zod:
-        specifier: 'catalog:'
-        version: 4.5.4
     devDependencies:
       '@get-bb/plugin-sdk':
         specifier: 'catalog:'

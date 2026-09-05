@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { call, sync, createRuntime, handler, fail } from "./server-effects";
+import { call, sync, createRuntime, handler, fail, decodeSchema } from "./server-effects";
 import { registerLinks } from "./links-server";
 import { reasonSchema } from "../shared/links-contract";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
@@ -138,7 +138,7 @@ export default function plugin(bb: BbPluginApi) {
         result = yield* links.linkedLink({
           threadId: ctx.threadId,
           url: repo,
-          reason: yield* sync("link reason", () => reasonSchema.parse(path ?? "manual")),
+          reason: yield* decodeSchema("link reason", reasonSchema, path ?? "manual"),
         });
     } else if (verb === "status") result = yield* operations.discover();
     else if (repo && (verb === "changes" || verb === "files" || verb === "prs"))
