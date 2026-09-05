@@ -1,0 +1,12 @@
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+  lint: {
+    options: { typeAware: true, typeCheck: true },
+    ignorePatterns: ["**/dist/**"],
+  },
+  fmt: { ignorePatterns: ["**/dist/**", "pnpm-lock.yaml"] },
+  test: {
+    projects: ["plugins/multirepo", "plugins/t3-sidebar"],
+  },
+});

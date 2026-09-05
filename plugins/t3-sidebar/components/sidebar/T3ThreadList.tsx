@@ -3,10 +3,7 @@ import { Button } from "@/components/ui/button";
 import { LinkedPrProvider } from "./LinkedPrs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type {
-  PluginSidebarThread,
-  PluginThreadListProps,
-} from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import {
   experimental_useProviders,
   experimental_useSidebarThreadActions,
@@ -37,11 +34,7 @@ import {
   settledTimestamp,
   visibleSettledThreads,
 } from "@/lib/sidebar-logic";
-import {
-  ThreadRow,
-  type ThreadRowActions,
-  type ThreadRowProvider,
-} from "./ThreadRow";
+import { ThreadRow, type ThreadRowActions, type ThreadRowProvider } from "./ThreadRow";
 
 const SCOPE_KEY = "t3-sidebar:project-scope";
 const SETTLED_EXPANDED_KEY = "t3-sidebar:settled-expanded";
@@ -55,10 +48,7 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function useLocalStorageState<T>(
-  key: string,
-  fallback: T,
-): [T, Dispatch<SetStateAction<T>>] {
+function useLocalStorageState<T>(key: string, fallback: T): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => readStorage(key, fallback));
   useEffect(() => {
     try {
@@ -87,8 +77,7 @@ function useSettledMap() {
   const refetch = useCallback(() => {
     rpc.call("settled_list").then(
       (result) => setSettled(result.settled),
-      (cause: unknown) =>
-        console.warn("[t3-sidebar] settled_list failed", cause),
+      (cause: unknown) => console.warn("[t3-sidebar] settled_list failed", cause),
     );
   }, [rpc]);
   useEffect(refetch, [refetch]);
@@ -104,22 +93,16 @@ function useSettledMap() {
               ...current,
               ...Object.fromEntries(threadIds.map((id) => [id, now])),
             }
-          : Object.fromEntries(
-              Object.entries(current).filter(([id]) => !threadIds.includes(id)),
-            );
+          : Object.fromEntries(Object.entries(current).filter(([id]) => !threadIds.includes(id)));
       });
-      rpc
-        .call("settled_set", { threadIds: [...threadIds], settled: value })
-        .then(
-          (result) => setSettled(result.settled),
-          (cause: unknown) => {
-            toast.error(
-              value ? "Could not settle thread" : "Could not un-settle thread",
-            );
-            console.warn("[t3-sidebar] settled_set failed", cause);
-            refetch();
-          },
-        );
+      rpc.call("settled_set", { threadIds: [...threadIds], settled: value }).then(
+        (result) => setSettled(result.settled),
+        (cause: unknown) => {
+          toast.error(value ? "Could not settle thread" : "Could not un-settle thread");
+          console.warn("[t3-sidebar] settled_set failed", cause);
+          refetch();
+        },
+      );
     },
     [refetch, rpc],
   );
@@ -164,9 +147,7 @@ function ProjectScopePicker(props: {
   onAddProject: () => void;
   onProjectSettings: (project: { id: string; name: string }) => void;
 }) {
-  const scoped =
-    props.projects.find((project) => project.id === props.scopeProjectId) ??
-    null;
+  const scoped = props.projects.find((project) => project.id === props.scopeProjectId) ?? null;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const openingSettings = useRef(false);
@@ -191,17 +172,9 @@ function ProjectScopePicker(props: {
             aria-label="Filter threads by project"
             className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground/90 outline-none hover:bg-state-hover focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-state-active"
           >
-            <Icon
-              name="Folder"
-              className="size-4 shrink-0 text-muted-foreground"
-            />
-            <span className="min-w-0 flex-1 truncate">
-              {scoped?.name ?? "All projects"}
-            </span>
-            <Icon
-              name="ChevronDown"
-              className="-mr-px size-4 shrink-0 text-muted-foreground"
-            />
+            <Icon name="Folder" className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{scoped?.name ?? "All projects"}</span>
+            <Icon name="ChevronDown" className="-mr-px size-4 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -217,8 +190,7 @@ function ProjectScopePicker(props: {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key !== "Escape" && event.key !== "Tab")
-                event.stopPropagation();
+              if (event.key !== "Escape" && event.key !== "Tab") event.stopPropagation();
             }}
             className="mb-1 h-8 w-full border-b bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
           />
@@ -237,9 +209,7 @@ function ProjectScopePicker(props: {
                 if (openingSettings.current) event.preventDefault();
                 else props.onChange(project.id);
               }}
-              className={cn(
-                project.id === props.scopeProjectId && "font-medium",
-              )}
+              className={cn(project.id === props.scopeProjectId && "font-medium")}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-muted text-[9px] font-semibold text-muted-foreground">
                 {project.name.trim().charAt(0).toUpperCase()}
@@ -267,9 +237,7 @@ function ProjectScopePicker(props: {
             </DropdownMenuItem>
           ))}
           {!matchingProjects.length ? (
-            <p className="px-2 py-3 text-xs text-muted-foreground">
-              No matching projects.
-            </p>
+            <p className="px-2 py-3 text-xs text-muted-foreground">No matching projects.</p>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -315,21 +283,13 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const { settled: settledAt, set: setSettled } = useSettledMap();
   const nowMs = useNowMinute();
 
-  const [scopeProjectId, setScopeProjectId] = useLocalStorageState<
-    string | null
-  >(SCOPE_KEY, null);
-  const [settledExpanded, setSettledExpanded] = useLocalStorageState(
-    SETTLED_EXPANDED_KEY,
-    false,
-  );
-  const [settledVisibleCount, setSettledVisibleCount] = useState(
-    SETTLED_TAIL_INITIAL_COUNT,
-  );
+  const [scopeProjectId, setScopeProjectId] = useLocalStorageState<string | null>(SCOPE_KEY, null);
+  const [settledExpanded, setSettledExpanded] = useLocalStorageState(SETTLED_EXPANDED_KEY, false);
+  const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
 
   // A scope pointing at a project that no longer exists falls back to all.
   const effectiveScope =
-    scopeProjectId !== null &&
-    projects.some((project) => project.id === scopeProjectId)
+    scopeProjectId !== null && projects.some((project) => project.id === scopeProjectId)
       ? scopeProjectId
       : null;
   useEffect(() => {
@@ -354,9 +314,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   // re-settle the moment it goes quiet. Cleared once per id per wake.
   const clearedStaleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const fresh = partition.staleSettledIds.filter(
-      (id) => !clearedStaleRef.current.has(id),
-    );
+    const fresh = partition.staleSettledIds.filter((id) => !clearedStaleRef.current.has(id));
     if (fresh.length === 0) return;
     for (const id of fresh) clearedStaleRef.current.add(id);
     setSettled(fresh, false);
@@ -399,8 +357,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
         hostActions.open(threadId, options);
         onNavigate();
       },
-      setPinned: (threadId, pinned) =>
-        void hostActions.setPinned(threadId, pinned),
+      setPinned: (threadId, pinned) => void hostActions.setPinned(threadId, pinned),
       setRead: (threadId, read) => void hostActions.setRead(threadId, read),
       rename: (threadId, title) => void hostActions.rename(threadId, title),
       archive: (threadId) => hostActions.archive(threadId),
@@ -410,10 +367,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [hostActions, onNavigate, setSettled],
   );
 
-  const renderRow = (
-    thread: PluginSidebarThread,
-    section: "pinned" | "active" | "settled",
-  ) => (
+  const renderRow = (thread: PluginSidebarThread, section: "pinned" | "active" | "settled") => (
     <ThreadRow
       key={`${thread.id}:${section === "settled" ? "slim" : "card"}`}
       thread={thread}
@@ -421,31 +375,20 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       isActive={thread.id === activeThreadId}
       projectName={projectNameById.get(thread.projectId) ?? null}
       provider={providerById.get(thread.providerId) ?? null}
-      timeAnchorMs={
-        section === "settled"
-          ? settledTimestamp(thread, settledAt)
-          : thread.updatedAt
-      }
+      timeAnchorMs={section === "settled" ? settledTimestamp(thread, settledAt) : thread.updatedAt}
       nowMs={nowMs}
       actions={rowActions}
     />
   );
 
-  const total =
-    partition.pinned.length +
-    partition.active.length +
-    partition.settled.length;
-  const scopedProject =
-    projects.find((project) => project.id === effectiveScope) ?? null;
+  const total = partition.pinned.length + partition.active.length + partition.settled.length;
+  const scopedProject = projects.find((project) => project.id === effectiveScope) ?? null;
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex flex-col pb-1">
         {projectDialog ? (
-          <ProjectDialog
-            onClose={() => setProjectDialog(false)}
-            onCreated={setScopeProjectId}
-          />
+          <ProjectDialog onClose={() => setProjectDialog(false)} onCreated={setScopeProjectId} />
         ) : null}
         <ProjectScopePicker
           projects={projects}
@@ -467,10 +410,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
         <ul role="list" className="flex flex-col gap-px px-1.5">
           {partition.pinned.map((thread) => renderRow(thread, "pinned"))}
           {partition.pinned.length > 0 ? (
-            <li
-              aria-hidden
-              className="mx-2.5 my-1.5 h-px list-none bg-border/60"
-            />
+            <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
           ) : null}
           {partition.active.map((thread) => renderRow(thread, "active"))}
           {partition.settled.length > 0 ? (
@@ -486,19 +426,11 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             <li className="list-none">
               <button
                 type="button"
-                onClick={() =>
-                  setSettledVisibleCount(
-                    (count) => count + SETTLED_TAIL_PAGE_COUNT,
-                  )
-                }
+                onClick={() => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT)}
                 className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-muted-foreground/55 hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="Plus" className="size-4 shrink-0" />
-                Show {Math.min(
-                  hiddenSettledCount,
-                  SETTLED_TAIL_PAGE_COUNT,
-                )}{" "}
-                more
+                Show {Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
               </button>
             </li>
           ) : null}

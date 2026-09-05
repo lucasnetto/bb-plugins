@@ -98,14 +98,31 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
   const { pullRequest } = experimental_useSidebarThreadPullRequest(threadId);
   const linked = useLinkedPrs(threadId);
   const actions = experimental_useSidebarThreadActions();
-  if (linked.length) return <>{linked.map(pr => <a key={pr.url} href={pr.url} onPointerDown={event => event.stopPropagation()} onClick={event => {
-    event.stopPropagation();
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    sessionStorage.setItem(`bb:multirepo:open-review:${threadId}`, pr.url);
-    actions.open(threadId);
-    window.dispatchEvent(new Event('bb:multirepo:open-review'));
-  }} className="shrink-0 text-xs tabular-nums hover:underline" title={`${pr.title} (${pr.state}, last fetched)`} aria-label={`${pr.repository} #${pr.number}: ${pr.title} (${pr.state})`}>{pr.repository.split("/").pop()}#{pr.number}</a>)}</>;
+  if (linked.length)
+    return (
+      <>
+        {linked.map((pr) => (
+          <a
+            key={pr.url}
+            href={pr.url}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              sessionStorage.setItem(`bb:multirepo:open-review:${threadId}`, pr.url);
+              actions.open(threadId);
+              window.dispatchEvent(new Event("bb:multirepo:open-review"));
+            }}
+            className="shrink-0 text-xs tabular-nums hover:underline"
+            title={`${pr.title} (${pr.state}, last fetched)`}
+            aria-label={`${pr.repository} #${pr.number}: ${pr.title} (${pr.state})`}
+          >
+            {pr.repository.split("/").pop()}#{pr.number}
+          </a>
+        ))}
+      </>
+    );
   if (pullRequest === null) return null;
   return (
     <a
@@ -164,9 +181,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const topStatus = resolveTopStatus({ status, isUnread: thread.isUnread, isActive });
   const recede = shouldRecede({ status, isUnread: thread.isUnread, isActive });
   const title = threadTitle(thread);
-  const { splitProps, isAvailable: splitAvailable } = experimental_useSidebarThreadSplit(
-    thread.id,
-  );
+  const { splitProps, isAvailable: splitAvailable } = experimental_useSidebarThreadSplit(thread.id);
 
   // Inline rename: double-click a row, Enter commits, Escape cancels.
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -338,7 +353,10 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       <li data-thread-item className="list-none">
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <a {...anchorProps} className={cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")}>
+            <a
+              {...anchorProps}
+              className={cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")}
+            >
               {/* Settled history recedes: dimmed mark at rest, restored on hover. */}
               <ProjectMark
                 name={props.projectName}
@@ -409,10 +427,16 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
                   >
                     {topStatus ? (
                       <span
-                        className={cn("inline-flex items-center gap-1 font-medium", topStatus.className)}
+                        className={cn(
+                          "inline-flex items-center gap-1 font-medium",
+                          topStatus.className,
+                        )}
                       >
                         {topStatus.icon === "working" ? (
-                          <Icon name="Spinner" className="size-4 shrink-0 animate-spin [animation-duration:2.5s]" />
+                          <Icon
+                            name="Spinner"
+                            className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
+                          />
                         ) : topStatus.icon === "done" ? (
                           <Icon name="CircleCheck" className="size-4 shrink-0" />
                         ) : topStatus.icon === "monitoring" ? (

@@ -7,12 +7,7 @@ import { prSchema, type Change, type Repo } from "./contract";
 const exec = promisify(execFile);
 // A host RPC result is limited to 8 MiB. Reserve half for JSON escaping and metadata.
 const MAX_BYTES = 4 * 1024 * 1024;
-export async function command(
-  cwd: string,
-  program: string,
-  args: string[],
-  signal?: AbortSignal,
-) {
+export async function command(cwd: string, program: string, args: string[], signal?: AbortSignal) {
   const { stdout } = await exec(program, args, {
     cwd,
     signal,
@@ -31,18 +26,14 @@ const git = (cwd: string, args: string[], signal?: AbortSignal) =>
   command(cwd, "git", ["--no-pager", "--literal-pathspecs", ...args], signal);
 function inside(root: string, path: string) {
   const rel = relative(root, path);
-  return (
-    rel === "" ||
-    (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`))
-  );
+  return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`));
 }
 export async function repository(root: string, repo: string) {
   const base = await realpath(root);
   if (isAbsolute(repo) || repo.split(/[\\/]/).includes(".."))
     throw new Error("Invalid repository path");
   const path = await realpath(resolve(base, repo));
-  if (!inside(base, path))
-    throw new Error("Repository is outside the workspace");
+  if (!inside(base, path)) throw new Error("Repository is outside the workspace");
   await lstat(join(path, ".git"));
   return path;
 }
@@ -62,11 +53,7 @@ export function parseStatus(raw: string): Change[] {
 }
 export async function changes(path: string, signal?: AbortSignal) {
   return parseStatus(
-    await git(
-      path,
-      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      signal,
-    ),
+    await git(path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], signal),
   );
 }
 export function githubRemote(value: string): string | null {
@@ -78,14 +65,9 @@ export function githubRemote(value: string): string | null {
   return match?.[1] ?? null;
 }
 async function remote(path: string, signal?: AbortSignal) {
-  return githubRemote(
-    await git(path, ["remote", "get-url", "origin"], signal).catch(() => ""),
-  );
+  return githubRemote(await git(path, ["remote", "get-url", "origin"], signal).catch(() => ""));
 }
-export async function discover(
-  root: string,
-  signal?: AbortSignal,
-): Promise<Repo[]> {
+export async function discover(root: string, signal?: AbortSignal): Promise<Repo[]> {
   const base = await realpath(root);
   const result: Repo[] = [];
   async function visit(path: string) {
@@ -132,13 +114,7 @@ export async function discover(
 export async function files(path: string, signal?: AbortSignal) {
   return [
     ...new Set(
-      (
-        await git(
-          path,
-          ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-          signal,
-        )
-      )
+      (await git(path, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], signal))
         .split("\0")
         .filter(Boolean),
     ),
@@ -151,8 +127,7 @@ export async function detail(
   signal?: AbortSignal,
 ) {
   repoPath = await realpath(repoPath);
-  if (isAbsolute(path) || path.split(/[\\/]/).includes(".."))
-    throw new Error("Invalid file path");
+  if (isAbsolute(path) || path.split(/[\\/]/).includes("..")) throw new Error("Invalid file path");
   if (mode !== "source") {
     const patch = await git(
       repoPath,
@@ -170,14 +145,11 @@ export async function detail(
       path,
       patch,
       content: null,
-      notice: patch
-        ? null
-        : "No diff in this view. Untracked files can be opened as source.",
+      notice: patch ? null : "No diff in this view. Untracked files can be opened as source.",
     };
   }
   const target = await realpath(join(repoPath, path));
-  if (!inside(repoPath, target))
-    throw new Error("File resolves outside the repository");
+  if (!inside(repoPath, target)) throw new Error("File resolves outside the repository");
   const stat = await lstat(target);
   if (!stat.isFile())
     return {
@@ -191,8 +163,7 @@ export async function detail(
       path,
       patch: null,
       content: null,
-      notice:
-        "File exceeds the host preview transport limit. Open it in your editor.",
+      notice: "File exceeds the host preview transport limit. Open it in your editor.",
     };
   const buffer = await readFile(target, { signal });
   return {
@@ -233,33 +204,19 @@ export async function prs(path: string, signal?: AbortSignal) {
     await command(
       path,
       "gh",
-      [
-        "api",
-        "--paginate",
-        "--slurp",
-        `repos/${r}/pulls?state=open&per_page=100`,
-      ],
+      ["api", "--paginate", "--slurp", `repos/${r}/pulls?state=open&per_page=100`],
       signal,
     ),
   );
   return z.array(z.array(apiPr)).parse(pages).flat().map(normalizePr);
 }
-export async function prFiles(
-  path: string,
-  number: number,
-  signal?: AbortSignal,
-) {
+export async function prFiles(path: string, number: number, signal?: AbortSignal) {
   const r = await ghRepo(path, signal);
   const pages = JSON.parse(
     await command(
       path,
       "gh",
-      [
-        "api",
-        "--paginate",
-        "--slurp",
-        `repos/${r}/pulls/${number}/files?per_page=100`,
-      ],
+      ["api", "--paginate", "--slurp", `repos/${r}/pulls/${number}/files?per_page=100`],
       signal,
     ),
   );
@@ -281,22 +238,11 @@ export async function prFiles(
       patch: f.patch ?? null,
     }));
 }
-export async function reviewTarget(
-  path: string,
-  number: number,
-  signal?: AbortSignal,
-) {
+export async function reviewTarget(path: string, number: number, signal?: AbortSignal) {
   const r = await ghRepo(path, signal);
   const pr = normalizePr(
     apiPr.parse(
-      JSON.parse(
-        await command(
-          path,
-          "gh",
-          ["api", `repos/${r}/pulls/${number}`],
-          signal,
-        ),
-      ),
+      JSON.parse(await command(path, "gh", ["api", `repos/${r}/pulls/${number}`], signal)),
     ),
   );
   return { path, remote: r, pr };

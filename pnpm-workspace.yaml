@@ -1,12 +1,12 @@
 packages:
-  - 'plugins/*'
+  - "plugins/*"
 
 allowBuilds:
   better-sqlite3: true
   esbuild: true
 
 minimumReleaseAgeExclude:
-  - '@get-bb/plugin-sdk@0.4.47'
+  - "@get-bb/plugin-sdk@0.4.47"
 
 # Keep dependency versions shared across all plugins.
 catalogMode: strict
@@ -44,8 +44,6 @@ catalog:
   "react-dom": "^19.2.8"
   "sonner": "^1.7.4"
   "tailwind-merge": "^3.4.0"
-  "tsx": "^4.23.13"
-  "typescript": "^5.7.0"
   "vaul": "^1.1.2"
-  "vitest": "^4.1.11"
+  vite-plus: 0.3.0
   "zod": "^4.3.6"

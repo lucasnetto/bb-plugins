@@ -51,8 +51,9 @@ const KV_KEY = "hidden";
 
 const keyOf = (entry: HiddenModel) => `${entry.providerId}\u0000${entry.model}`;
 
-const dedupe = (entries: HiddenModel[]): HiddenModel[] =>
-  [...new Map(entries.map((entry) => [keyOf(entry), entry])).values()];
+const dedupe = (entries: HiddenModel[]): HiddenModel[] => [
+  ...new Map(entries.map((entry) => [keyOf(entry), entry])).values(),
+];
 
 export default async function plugin(bb: BbPluginApi) {
   const readHidden = async (): Promise<HiddenModel[]> =>
@@ -102,9 +103,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // Same-origin read for the content script (it has no React hooks).
-  bb.http.route("GET", "/hidden", async (context) =>
-    context.json({ hidden: await readHidden() }),
-  );
+  bb.http.route("GET", "/hidden", async (context) => context.json({ hidden: await readHidden() }));
 
   const usage = [
     "Usage:",

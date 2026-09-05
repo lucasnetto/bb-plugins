@@ -14,10 +14,7 @@ import {
   createProjectSettingsHandlers,
   registerProjectAutoPull,
 } from "./lib/project-settings";
-import {
-  projectThreadContract,
-  createProjectThreadHandlers,
-} from "./lib/project-thread-create";
+import { projectThreadContract, createProjectThreadHandlers } from "./lib/project-thread-create";
 
 export type SettledMap = Record<string, number>;
 
@@ -91,9 +88,7 @@ export default async function plugin(bb: BbPluginApi) {
     const now = Date.now();
     const next: SettledMap = settled
       ? { ...current, ...Object.fromEntries(threadIds.map((id) => [id, now])) }
-      : Object.fromEntries(
-          Object.entries(current).filter(([id]) => !threadIds.includes(id)),
-        );
+      : Object.fromEntries(Object.entries(current).filter(([id]) => !threadIds.includes(id)));
     return write(next);
   };
 

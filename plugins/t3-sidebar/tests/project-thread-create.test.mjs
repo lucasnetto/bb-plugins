@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import plugin from "../dist/server.js";
+import plugin from "../server.ts";
 
 const request = {
   projectId: "selected-project",
@@ -29,15 +29,23 @@ const request = {
     {
       type: "text",
       text: "Review @thread",
-      mentions: [{
-        start: 7,
-        end: 14,
-        resource: { kind: "thread", label: "thread", threadId: "thread-reference" },
-      }],
+      mentions: [
+        {
+          start: 7,
+          end: 14,
+          resource: { kind: "thread", label: "thread", threadId: "thread-reference" },
+        },
+      ],
     },
     { type: "image", url: "data:image/png;base64,AAAA" },
     { type: "localImage", path: "/tmp/image.png" },
-    { type: "localFile", path: "/tmp/report.txt", name: "report.txt", mimeType: "text/plain", sizeBytes: 12 },
+    {
+      type: "localFile",
+      path: "/tmp/report.txt",
+      name: "report.txt",
+      mimeType: "text/plain",
+      sizeBytes: 12,
+    },
   ],
 };
 
@@ -45,10 +53,14 @@ test("new thread preserves native composer selections, provenance, prompt varian
   const spawned = [];
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
-    sdk: { threads: { spawn: async (input) => {
-      spawned.push(input);
-      return { id: "created-thread" };
-    } } },
+    sdk: {
+      threads: {
+        spawn: async (input) => {
+          spawned.push(input);
+          return { id: "created-thread" };
+        },
+      },
+    },
   });
   try {
     await plugin(bb);
@@ -83,10 +95,14 @@ test("new thread rejects malformed RPC payloads before spawning and propagates h
   let spawnCount = 0;
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
-    sdk: { threads: { spawn: async () => {
-      spawnCount++;
-      throw new Error("Workspace unavailable");
-    } } },
+    sdk: {
+      threads: {
+        spawn: async () => {
+          spawnCount++;
+          throw new Error("Workspace unavailable");
+        },
+      },
+    },
   });
   try {
     await plugin(bb);

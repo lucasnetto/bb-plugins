@@ -2,6 +2,43 @@
   "name": "bb-plugin-hide-models",
   "version": "0.1.0",
   "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/hide-models"
+  },
+  "dependencies": {
+    "@hugeicons/core-free-icons": "catalog:",
+    "@hugeicons/react": "catalog:",
+    "@radix-ui/react-checkbox": "catalog:",
+    "@radix-ui/react-slot": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@pierre/diffs": "catalog:",
+    "@radix-ui/react-alert-dialog": "catalog:",
+    "@radix-ui/react-context-menu": "catalog:",
+    "@radix-ui/react-dialog": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@radix-ui/react-hover-card": "catalog:",
+    "@radix-ui/react-menubar": "catalog:",
+    "@radix-ui/react-navigation-menu": "catalog:",
+    "@radix-ui/react-popover": "catalog:",
+    "@radix-ui/react-select": "catalog:",
+    "@radix-ui/react-tooltip": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "sonner": "catalog:",
+    "tailwind-merge": "catalog:",
+    "vaul": "catalog:"
+  },
   "engines": {
     "bb": ">=0.41",
     "bbPluginSdk": ">=0.4.47"
@@ -15,43 +52,5 @@
     "server": "./server.ts",
     "app": "./app.tsx",
     "skills": []
-  },
-  "dependencies": {
-    "@hugeicons/core-free-icons": "catalog:",
-    "@hugeicons/react": "catalog:",
-    "@radix-ui/react-checkbox": "catalog:",
-    "@radix-ui/react-slot": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@get-bb/plugin-sdk": "catalog:",
-    "@types/better-sqlite3": "catalog:",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "better-sqlite3": "catalog:",
-    "cron-parser": "catalog:",
-    "hono": "catalog:",
-    "typescript": "catalog:",
-    "@pierre/diffs": "catalog:",
-    "@radix-ui/react-alert-dialog": "catalog:",
-    "@radix-ui/react-context-menu": "catalog:",
-    "@radix-ui/react-dialog": "catalog:",
-    "@radix-ui/react-dropdown-menu": "catalog:",
-    "@radix-ui/react-hover-card": "catalog:",
-    "@radix-ui/react-menubar": "catalog:",
-    "@radix-ui/react-navigation-menu": "catalog:",
-    "@radix-ui/react-popover": "catalog:",
-    "@radix-ui/react-select": "catalog:",
-    "@radix-ui/react-tooltip": "catalog:",
-    "class-variance-authority": "catalog:",
-    "clsx": "catalog:",
-    "sonner": "catalog:",
-    "tailwind-merge": "catalog:",
-    "vaul": "catalog:"
-  },
-  "scripts": {
-    "build": "bb plugin build",
-    "typecheck": "tsc --noEmit"
   }
 }

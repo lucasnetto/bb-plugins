@@ -38,9 +38,9 @@ The plugin provides its own Repos panel. It does not alter bb's native Git envir
 ## Development
 
 ```sh
-pnpm install
-pnpm typecheck
-pnpm test
+vp install
+vp run typecheck
+vp test
 bb plugin build
 bb plugin install . --yes
 ```

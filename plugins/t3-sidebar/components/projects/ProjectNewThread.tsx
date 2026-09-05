@@ -21,36 +21,59 @@ export function ProjectNewThread({ projectId }: { projectId: string }) {
     setSettings(null);
     setError(null);
     rpc.call("project_settings_get", { projectId }).then(
-      (result) => { if (!cancelled) setSettings(result); },
-      (cause) => { if (!cancelled) setError(String(cause)); },
+      (result) => {
+        if (!cancelled) setSettings(result);
+      },
+      (cause) => {
+        if (!cancelled) setError(String(cause));
+      },
     );
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [rpc, projectId, attempt]);
 
   if (!settings || settings.id !== projectId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6">
-        {error ? <>
-          <p role="alert" className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>Retry</Button>
-        </> : <p role="status" className="text-sm text-muted-foreground">Loading project…</p>}
+        {error ? (
+          <>
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+            <Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>
+              Retry
+            </Button>
+          </>
+        ) : (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading project…
+          </p>
+        )}
       </div>
     );
   }
 
   const model = settings.model;
   const environment: NewThreadComposerProps["defaultEnvironment"] =
-    settings.workspace === "default" ? undefined : {
-      type: "host",
-      ...(settings.hostId ? { hostId: settings.hostId } : {}),
-      workspace: settings.workspace === "local"
-        ? { type: "unmanaged", path: null }
-        : { type: "managed-worktree", baseBranch: { kind: "default" } },
-    };
+    settings.workspace === "default"
+      ? undefined
+      : {
+          type: "host",
+          ...(settings.hostId ? { hostId: settings.hostId } : {}),
+          workspace:
+            settings.workspace === "local"
+              ? { type: "unmanaged", path: null }
+              : { type: "managed-worktree", baseBranch: { kind: "default" } },
+        };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {error && <p role="alert" className="px-6 pt-4 text-sm text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="px-6 pt-4 text-sm text-destructive">
+          {error}
+        </p>
+      )}
       <NewThreadComposer
         key={projectId}
         className="min-h-0 flex-1"

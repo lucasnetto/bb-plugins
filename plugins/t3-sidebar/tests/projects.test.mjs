@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import plugin from "../dist/server.js";
+import plugin from "../server.ts";
 
 test("project controls route folders and mutations through BB and protect personal projects", async () => {
   const created = [];
@@ -71,12 +71,8 @@ test("project controls route folders and mutations through BB and protect person
         source: { type: "local_path", hostId: "online", path: "/work/repo/" },
       },
     ]);
-    await assert.rejects(
-      harness.behavior.callRpc("project_remove", { projectId: "personal" }),
-    );
-    await assert.rejects(
-      harness.behavior.callRpc("project_remove", { projectId: "missing" }),
-    );
+    await assert.rejects(harness.behavior.callRpc("project_remove", { projectId: "personal" }));
+    await assert.rejects(harness.behavior.callRpc("project_remove", { projectId: "missing" }));
     assert.deepEqual(deleted, []);
     await harness.behavior.callRpc("project_remove", { projectId: "project" });
     assert.deepEqual(deleted, [{ projectId: "project" }]);

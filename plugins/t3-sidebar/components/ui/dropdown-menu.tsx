@@ -32,12 +32,11 @@ const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
 const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
   "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
-const ResponsiveMenuContext =
-  React.createContext<ResponsiveOverlayContextValue>({
-    isCompactViewport: false,
-    open: false,
-    onOpenChange: () => {},
-  });
+const ResponsiveMenuContext = React.createContext<ResponsiveOverlayContextValue>({
+  isCompactViewport: false,
+  open: false,
+  onOpenChange: () => {},
+});
 
 function useResponsiveMenu() {
   return React.useContext(ResponsiveMenuContext);
@@ -49,30 +48,18 @@ function DropdownMenu({
   onOpenChange: controlledOnChange,
   defaultOpen,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  const ctx = useResponsiveRoot(
-    controlledOpen,
-    controlledOnChange,
-    defaultOpen,
-  );
+}: Omit<React.ComponentProps<typeof DropdownMenuPrimitive.Root>, "onOpenChange"> & {
+  onOpenChange?: (this: void, open: boolean) => void;
+}) {
+  const ctx = useResponsiveRoot(controlledOpen, controlledOnChange, defaultOpen);
 
   if (ctx.isCompactViewport) {
-    return (
-      <ResponsiveMenuContext.Provider value={ctx}>
-        {children}
-      </ResponsiveMenuContext.Provider>
-    );
+    return <ResponsiveMenuContext.Provider value={ctx}>{children}</ResponsiveMenuContext.Provider>;
   }
 
   return (
-    <DropdownMenuPrimitive.Root
-      open={ctx.open}
-      onOpenChange={ctx.onOpenChange}
-      {...props}
-    >
-      <ResponsiveMenuContext.Provider value={ctx}>
-        {children}
-      </ResponsiveMenuContext.Provider>
+    <DropdownMenuPrimitive.Root open={ctx.open} onOpenChange={ctx.onOpenChange} {...props}>
+      <ResponsiveMenuContext.Provider value={ctx}>{children}</ResponsiveMenuContext.Provider>
     </DropdownMenuPrimitive.Root>
   );
 }
@@ -123,68 +110,56 @@ const DropdownMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> & {
     mobileTitle?: string;
   }
->(
-  (
-    {
-      className,
-      sideOffset = 4,
-      children,
-      mobileTitle,
-      onCloseAutoFocus,
-      ...props
-    },
-    ref,
-  ) => {
-    const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
-    const scopeProps = usePortalScopeProps();
+>(({ className, sideOffset = 4, children, mobileTitle, onCloseAutoFocus, ...props }, ref) => {
+  const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
+  const scopeProps = usePortalScopeProps();
 
-    if (isCompactViewport) {
-      const domProps = stripRadixContentProps(props);
-      return (
-        <ResponsiveDrawerShell
-          open={open}
-          onOpenChange={onOpenChange}
-          srLabel={mobileTitle ?? "Menu"}
-        >
-          <div
-            ref={ref}
-            className={cn(
-              "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
-              className,
-            )}
-            style={{ minWidth: "auto", maxWidth: "none", width: "auto" }}
-            {...domProps}
-          >
-            {children}
-          </div>
-        </ResponsiveDrawerShell>
-      );
-    }
-
+  if (isCompactViewport) {
+    const domProps = stripRadixContentProps(props);
     return (
-      <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
+      <ResponsiveDrawerShell
+        open={open}
+        onOpenChange={onOpenChange}
+        srLabel={mobileTitle ?? "Menu"}
+      >
+        <div
           ref={ref}
-          {...scopeProps}
-          sideOffset={sideOffset}
-          onCloseAutoFocus={(event) => {
-            if (!isLastInputKeyboard()) {
-              event.preventDefault();
-            }
-            onCloseAutoFocus?.(event);
-          }}
           className={cn(
-            "z-50 min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+            "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
             className,
           )}
-          {...props}
+          style={{ minWidth: "auto", maxWidth: "none", width: "auto" }}
+          {...domProps}
         >
-          <MenuHoverProvider>{children}</MenuHoverProvider>
-        </DropdownMenuPrimitive.Content>
-      </DropdownMenuPrimitive.Portal>
+          {children}
+        </div>
+      </ResponsiveDrawerShell>
     );
-  },
-);
+  }
+
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        {...scopeProps}
+        sideOffset={sideOffset}
+        onCloseAutoFocus={(event) => {
+          if (!isLastInputKeyboard()) {
+            event.preventDefault();
+          }
+          onCloseAutoFocus?.(event);
+        }}
+        className={cn(
+          "z-50 min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className,
+        )}
+        {...props}
+      >
+        <MenuHoverProvider>{children}</MenuHoverProvider>
+      </DropdownMenuPrimitive.Content>
+    </DropdownMenuPrimitive.Portal>
+  );
+});
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
 function createSelectEvent(): Event {
@@ -309,9 +284,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
           ref={ref as React.RefCallback<HTMLButtonElement> | null}
           type="button"
           role="menuitemcheckbox"
-          aria-checked={
-            checked === "indeterminate" ? "mixed" : checked === true
-          }
+          aria-checked={checked === "indeterminate" ? "mixed" : checked === true}
           disabled={disabled}
           aria-disabled={disabled || undefined}
           className={cn(
@@ -388,11 +361,7 @@ function DropdownMenuRadioGroup({
     return null;
   }
 
-  return (
-    <DropdownMenuPrimitive.RadioGroup {...props}>
-      {children}
-    </DropdownMenuPrimitive.RadioGroup>
-  );
+  return <DropdownMenuPrimitive.RadioGroup {...props}>{children}</DropdownMenuPrimitive.RadioGroup>;
 }
 
 const DropdownMenuRadioItem = React.forwardRef<
@@ -400,13 +369,7 @@ const DropdownMenuRadioItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
 >(
   (
-    {
-      className,
-      children,
-      onPointerEnter: callerPointerEnter,
-      onKeyDown: callerKeyDown,
-      ...props
-    },
+    { className, children, onPointerEnter: callerPointerEnter, onKeyDown: callerKeyDown, ...props },
     ref,
   ) => {
     const { isCompactViewport } = useResponsiveMenu();
@@ -574,8 +537,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     );
   },
 );
-DropdownMenuSubTrigger.displayName =
-  DropdownMenuPrimitive.SubTrigger.displayName;
+DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
 
 const DropdownMenuSubContent = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.SubContent>,
@@ -591,18 +553,11 @@ const DropdownMenuSubContent = React.forwardRef<
     {...props}
   />
 ));
-DropdownMenuSubContent.displayName =
-  DropdownMenuPrimitive.SubContent.displayName;
+DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
 
-const DropdownMenuShortcut = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLSpanElement>) => {
+const DropdownMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) => {
   return (
-    <span
-      className={cn("ml-auto text-xs tracking-widest opacity-60", className)}
-      {...props}
-    />
+    <span className={cn("ml-auto text-xs tracking-widest opacity-60", className)} {...props} />
   );
 };
 DropdownMenuShortcut.displayName = "DropdownMenuShortcut";

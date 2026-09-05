@@ -23,8 +23,7 @@ const HIDDEN_CHANGED = "hidden-changed";
 
 type CachedEntry = { providerId: string; name: string };
 
-const normalize = (label: string) =>
-  label.split(" · ")[0]?.trim().toLowerCase() ?? "";
+const normalize = (label: string) => label.split(" · ")[0]?.trim().toLowerCase() ?? "";
 
 const serializeCache = (hidden: readonly HiddenModel[]) =>
   JSON.stringify(
@@ -64,9 +63,7 @@ const writeCache = (hidden: readonly HiddenModel[]) => {
 const matches = (title: string, entries: readonly CachedEntry[]) => {
   const label = normalize(title);
   if (label.length < 3) return false;
-  return entries.some(
-    ({ name }) => name === label || (label.length >= 4 && name.endsWith(label)),
-  );
+  return entries.some(({ name }) => name === label || (label.length >= 4 && name.endsWith(label)));
 };
 
 // Provider tabs: `<button title="Codex"><span data-provider-logo="/api/v1/system/providers/<id>/logo…">`;
@@ -82,9 +79,7 @@ const activeProviderIdIn = (picker: Element): string | null => {
 // bb's picker row is `<button role="option"?><span title="Label[ · qualifier]">…`.
 const PICKER_ROOT = "[data-radix-popper-content-wrapper], [role='dialog']";
 
-const pickerRowOf = (
-  el: Element,
-): { button: HTMLButtonElement; picker: Element } | null => {
+const pickerRowOf = (el: Element): { button: HTMLButtonElement; picker: Element } | null => {
   const button = el.closest("button");
   const picker = button?.closest(PICKER_ROOT) ?? null;
   return button !== null && picker !== null ? { button, picker } : null;
@@ -277,9 +272,7 @@ function ProviderCard({
       </header>
       {provider.models.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">
-          {provider.loadError
-            ? `No models (${provider.loadError}).`
-            : "No models discovered."}
+          {provider.loadError ? `No models (${provider.loadError}).` : "No models discovered."}
         </p>
       ) : (
         <ul className="divide-y divide-border px-4">
@@ -328,14 +321,16 @@ function HideModelsSettings() {
   );
 
   const toggle =
-    (provider: CatalogProvider) =>
-    (model: CatalogProvider["models"][number], hide: boolean) => {
+    (provider: CatalogProvider) => (model: CatalogProvider["models"][number], hide: boolean) => {
       const current = hidden ?? [];
       const key = keyOf(provider.id, model.model);
       const without = current.filter((e) => keyOf(e.providerId, e.model) !== key);
       save(
         hide
-          ? [...without, { providerId: provider.id, model: model.model, displayName: model.displayName }]
+          ? [
+              ...without,
+              { providerId: provider.id, model: model.model, displayName: model.displayName },
+            ]
           : without,
       );
     };
@@ -343,9 +338,7 @@ function HideModelsSettings() {
   // Entries whose provider/model no longer appears in the catalog.
   const stale = useMemo(() => {
     if (catalog === null || hidden === null) return [];
-    const known = new Set(
-      catalog.flatMap((p) => p.models.map((m) => keyOf(p.id, m.model))),
-    );
+    const known = new Set(catalog.flatMap((p) => p.models.map((m) => keyOf(p.id, m.model))));
     return hidden.filter((e) => !known.has(keyOf(e.providerId, e.model)));
   }, [catalog, hidden]);
 
@@ -353,8 +346,8 @@ function HideModelsSettings() {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Unchecked models are hidden from the picker. Discovery is unchanged;
-          a hidden model stays selectable via CLI/SDK and remains the provider default if it is one.
+          Unchecked models are hidden from the picker. Discovery is unchanged; a hidden model stays
+          selectable via CLI/SDK and remains the provider default if it is one.
         </p>
         <Button variant="ghost" size="sm" onClick={refetchCatalog} disabled={catalog === null}>
           <Icon name="ArrowReloadHorizontal" className="size-4" />
@@ -362,10 +355,15 @@ function HideModelsSettings() {
         </Button>
       </div>
       {error === null ? null : (
-        <p role="alert" className="text-sm text-destructive">{error}</p>
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
       )}
       {catalog === null ? (
-        <p role="status" className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground"
+        >
           Loading providers…
         </p>
       ) : (
@@ -382,14 +380,13 @@ function HideModelsSettings() {
         <section className="rounded-lg border border-border bg-card px-4 py-2.5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {stale.length} hidden {stale.length === 1 ? "entry" : "entries"} no longer in any catalog.
+              {stale.length} hidden {stale.length === 1 ? "entry" : "entries"} no longer in any
+              catalog.
             </p>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
-                save((hidden ?? []).filter((e) => !stale.includes(e)))
-              }
+              onClick={() => save((hidden ?? []).filter((e) => !stale.includes(e)))}
             >
               Remove
             </Button>

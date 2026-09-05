@@ -18,12 +18,7 @@ function AccountIcon({
   label: string;
 }) {
   return (
-    <svg
-      aria-label={label}
-      className={className}
-      role="img"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-label={label} className={className} role="img" viewBox="0 0 24 24">
       <path d={cursorPath} fill="currentColor" />
       <circle
         cx="17.25"
@@ -51,24 +46,12 @@ function AccountIcon({
 }
 
 function WorkIcon({ className }: ProviderIconProps) {
-  return (
-    <AccountIcon
-      badge="W"
-      badgeColor="#2563eb"
-      className={className}
-      label="Cursor Work"
-    />
-  );
+  return <AccountIcon badge="W" badgeColor="#2563eb" className={className} label="Cursor Work" />;
 }
 
 function PersonalIcon({ className }: ProviderIconProps) {
   return (
-    <AccountIcon
-      badge="P"
-      badgeColor="#9333ea"
-      className={className}
-      label="Cursor Personal"
-    />
+    <AccountIcon badge="P" badgeColor="#9333ea" className={className} label="Cursor Personal" />
   );
 }
 

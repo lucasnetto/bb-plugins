@@ -146,7 +146,16 @@ export function DiffFileTree({
         <span className="ml-auto tabular-nums">{entries.length}</span>
         {headerAccessory}
         {directoryPaths.length > 0 ? (
-          <Button size="sm" variant="ghost" aria-label={allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"} onClick={() => setAllDirectoriesExpanded(model, directoryPaths, !allDirectoriesExpanded)}>{allDirectoriesExpanded ? "−" : "+"}</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+            onClick={() =>
+              setAllDirectoriesExpanded(model, directoryPaths, !allDirectoriesExpanded)
+            }
+          >
+            {allDirectoriesExpanded ? "−" : "+"}
+          </Button>
         ) : null}
       </div>
       <FileTree

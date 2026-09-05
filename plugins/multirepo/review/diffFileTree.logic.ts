@@ -2,7 +2,9 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { FileTreeBatchOperation, GitStatus } from "@pierre/trees";
 
-function resolveFileDiffPath(file: FileDiffMetadata) { return file.name; }
+function resolveFileDiffPath(file: FileDiffMetadata) {
+  return file.name;
+}
 
 /** One changed file as the tree shows it: its current path and how it changed. */
 export interface DiffFileTreeEntry {

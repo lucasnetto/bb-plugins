@@ -1,10 +1,18 @@
 {
   "name": "bb-plugins",
   "private": true,
-  "packageManager": "pnpm@11.7.0",
+  "type": "module",
   "scripts": {
-    "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test"
-  }
+    "build": "vp run -r build",
+    "check": "vp check",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "typecheck": "vp check --no-fmt --no-lint",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "pnpm@11.7.0"
 }

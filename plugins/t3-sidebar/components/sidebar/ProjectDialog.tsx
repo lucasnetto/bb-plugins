@@ -100,9 +100,8 @@ export function ProjectDialog({
     }
   };
   const entries =
-    listing?.entries.filter((entry) =>
-      entry.name.toLowerCase().includes(query.toLowerCase()),
-    ) ?? [];
+    listing?.entries.filter((entry) => entry.name.toLowerCase().includes(query.toLowerCase())) ??
+    [];
   return (
     <Dialog.Root
       open
@@ -111,10 +110,7 @@ export function ProjectDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay
-          {...portalProps}
-          className="fixed inset-0 z-50 bg-black/50"
-        />
+        <Dialog.Overlay {...portalProps} className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content
           {...portalProps}
           className="fixed left-1/2 top-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-xl border bg-background p-5 shadow-xl"
@@ -125,9 +121,7 @@ export function ProjectDialog({
             if (pending) event.preventDefault();
           }}
         >
-          <Dialog.Title className="text-base font-semibold">
-            Add project
-          </Dialog.Title>
+          <Dialog.Title className="text-base font-semibold">Add project</Dialog.Title>
           <Dialog.Description className="text-sm text-muted-foreground">
             Choose a folder to add as a project.
           </Dialog.Description>
@@ -195,9 +189,7 @@ export function ProjectDialog({
               )}
               {!loading && listing && !entries.length ? (
                 <p className="text-sm text-muted-foreground">
-                  {query
-                    ? "No matching folders."
-                    : "No subfolders. You can add this folder."}
+                  {query ? "No matching folders." : "No subfolders. You can add this folder."}
                 </p>
               ) : null}
             </div>
@@ -216,10 +208,7 @@ export function ProjectDialog({
             <Button variant="ghost" disabled={pending} onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              disabled={!listing || loading || pending}
-              onClick={() => void submit()}
-            >
+            <Button disabled={!listing || loading || pending} onClick={() => void submit()}>
               {pending ? "Adding…" : "Add project"}
             </Button>
           </div>

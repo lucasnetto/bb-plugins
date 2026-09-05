@@ -2,20 +2,10 @@
   "name": "bb-plugin-t3-sidebar",
   "version": "0.1.0",
   "type": "module",
-  "engines": {
-    "bb": ">=0.42",
-    "bbPluginSdk": ">=0.4.47"
-  },
-  "bb": {
-    "name": "T3 Sidebar",
-    "description": "t3code-style sidebar: flat thread cards, pinned block, and a collapsible Settled shelf.",
-    "branding": {
-      "icon": "Layers"
-    },
-    "server": "./server.ts",
-    "host": "./host.ts",
-    "app": "./app.tsx",
-    "skills": []
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/t3-sidebar",
+    "test": "vp test"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "catalog:",
@@ -47,12 +37,22 @@
     "hono": "catalog:",
     "sonner": "catalog:",
     "tailwind-merge": "catalog:",
-    "typescript": "catalog:",
-    "vaul": "catalog:"
+    "vaul": "catalog:",
+    "vite-plus": "catalog:"
   },
-  "scripts": {
-    "build": "bb plugin build",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs"
+  "engines": {
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "T3 Sidebar",
+    "description": "t3code-style sidebar: flat thread cards, pinned block, and a collapsible Settled shelf.",
+    "branding": {
+      "icon": "Layers"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "app": "./app.tsx",
+    "skills": []
   }
 }

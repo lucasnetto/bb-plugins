@@ -1,6 +1,11 @@
 // Adapted from T3 Code reviewCommentContext.ts. See T3-LICENSE.
-import type {FileDiffMetadata, SelectedLineRange, SelectionSide} from '@pierre/diffs';
-interface DiffReviewLine {change:'context'|'add'|'delete'; oldLineNumber:number|null; newLineNumber:number|null; content:string;}
+import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
+interface DiffReviewLine {
+  change: "context" | "add" | "delete";
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+  content: string;
+}
 function stripTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value.slice(0, -1) : value;
 }
@@ -193,10 +198,17 @@ function findDiffReviewLineIndex(
     : findOnSide(selectedSide === "left" ? "right" : "left");
 }
 
-
-export function selectedFilePatch(fileDiff:FileDiffMetadata, range:SelectedLineRange) {
-  const start = findDiffReviewLineIndex(fileDiff,range.start,range.side);
-  const end = findDiffReviewLineIndex(fileDiff,range.end,range.endSide ?? range.side);
-  if (start < 0 || end < 0) throw new Error('Selection is no longer in this diff. Select the lines again.');
-  return buildDiffReviewLines(fileDiff,!fileDiff.isPartial,{startIndex:Math.min(start,end),endIndex:Math.max(start,end)}).map(row => `${row.change === 'add' ? '+' : row.change === 'delete' ? '-' : ' '}${row.content}`).join('\n');
+export function selectedFilePatch(fileDiff: FileDiffMetadata, range: SelectedLineRange) {
+  const start = findDiffReviewLineIndex(fileDiff, range.start, range.side);
+  const end = findDiffReviewLineIndex(fileDiff, range.end, range.endSide ?? range.side);
+  if (start < 0 || end < 0)
+    throw new Error("Selection is no longer in this diff. Select the lines again.");
+  return buildDiffReviewLines(fileDiff, !fileDiff.isPartial, {
+    startIndex: Math.min(start, end),
+    endIndex: Math.max(start, end),
+  })
+    .map(
+      (row) => `${row.change === "add" ? "+" : row.change === "delete" ? "-" : " "}${row.content}`,
+    )
+    .join("\n");
 }

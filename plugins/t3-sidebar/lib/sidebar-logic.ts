@@ -10,13 +10,7 @@ export const SETTLED_TAIL_PAGE_COUNT = 25;
 // t3code's five visual states, three colors: color is reserved for "act now"
 // (input), "in motion" (working), and "broken" (failed). Ready is the
 // unlabeled resting state. Unread completion is tracked separately (Done).
-export type SidebarThreadStatus =
-  | "input"
-  | "working"
-  | "monitoring"
-  | "plan"
-  | "failed"
-  | "ready";
+export type SidebarThreadStatus = "input" | "working" | "monitoring" | "plan" | "failed" | "ready";
 
 type StatusInput = Pick<
   PluginSidebarThread,
@@ -42,8 +36,7 @@ export function resolveThreadStatus(thread: StatusInput): SidebarThreadStatus {
     default:
       break;
   }
-  const { workflows, backgroundAgents, backgroundCommands, planMode, goals } =
-    thread.activity;
+  const { workflows, backgroundAgents, backgroundCommands, planMode, goals } = thread.activity;
   if (workflows + backgroundAgents + backgroundCommands > 0) return "working";
   if (planMode > 0) return "plan";
   if (goals > 0) return "monitoring";
@@ -124,9 +117,7 @@ export function shouldRecede(input: {
 }
 
 // ── Titles & time ────────────────────────────────────────────────────
-export function threadTitle(
-  thread: Pick<PluginSidebarThread, "title" | "titleFallback">,
-): string {
+export function threadTitle(thread: Pick<PluginSidebarThread, "title" | "titleFallback">): string {
   return thread.title?.trim() || thread.titleFallback?.trim() || "New thread";
 }
 
@@ -163,9 +154,7 @@ const AUTO_SETTLE_MS: Record<string, number> = {
 
 /** 0 means disabled. Unknown values fall back to the default (1 day). */
 export function parseAutoSettleMs(value: unknown): number {
-  return typeof value === "string" && value in AUTO_SETTLE_MS
-    ? AUTO_SETTLE_MS[value]!
-    : DAY;
+  return typeof value === "string" && value in AUTO_SETTLE_MS ? AUTO_SETTLE_MS[value]! : DAY;
 }
 
 // ── Partition ────────────────────────────────────────────────────────

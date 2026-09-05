@@ -24,7 +24,7 @@ via the pinned ref in `components.json`):
 npx shadcn add @bb/select @bb/table
 ```
 
-Run `pnpm install` once before `bb plugin build` — the vendored components'
+Run `vp install` once before `bb plugin build` — the vendored components'
 npm deps bundle into your dist. React, and BB-shimmed packages like the
 radix portal primitives and `sonner` (`import { toast } from "sonner"`
 reaches BB's own toaster), are provided by the BB app at runtime and never
@@ -72,7 +72,7 @@ From this directory (`bb plugin new` already ran the install; a fresh clone
 needs it):
 
 ```
-pnpm install
+vp install
 bb plugin install .
 ```
 
@@ -96,7 +96,7 @@ bb plugin reload cursor-account-labels
 
 The plugin API ships as the npm package `@get-bb/plugin-sdk`, pinned to an
 exact version (`0.4.47`) in the workspace catalog, referenced from
-`devDependencies` with `catalog:`. After `pnpm install`, the full surface is on disk
+`devDependencies` with `catalog:`. After `vp install`, the full surface is on disk
 at:
 
 ```

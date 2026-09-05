@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import plugin from "../dist/server.js";
+import plugin from "../server.ts";
 
 test("project settings persist independently, rename through BB, and serialize concurrent patches", async () => {
   const projects = {
@@ -45,8 +45,7 @@ test("project settings persist independently, rename through BB, and serialize c
   });
   try {
     await plugin(bb);
-    const get = (projectId) =>
-      harness.behavior.callRpc("project_settings_get", { projectId });
+    const get = (projectId) => harness.behavior.callRpc("project_settings_get", { projectId });
     const update = (patch) =>
       harness.behavior.callRpc("project_settings_update", {
         projectId: "one",
@@ -57,10 +56,7 @@ test("project settings persist independently, rename through BB, and serialize c
     assert.equal(before.autoPull, false);
     assert.equal(before.model, null);
     assert.deepEqual(before.resolvedModel, model);
-    await Promise.all([
-      update({ workspace: "local" }),
-      update({ autoPull: true }),
-    ]);
+    await Promise.all([update({ workspace: "local" }), update({ autoPull: true })]);
     await update({
       name: "Renamed",
       model: { ...model, reasoningLevel: "low" },

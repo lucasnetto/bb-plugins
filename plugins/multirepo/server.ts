@@ -1,24 +1,19 @@
 import { registerLinks } from "./links-server";
 import { reasonSchema } from "./links-contract";
-import {
-  PLUGIN_CLI_OUTPUT_MAX_BYTES,
-  type BbPluginApi,
-} from "@get-bb/plugin-sdk";
+import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { hostContract, rpcContract } from "./contract";
 export default function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     project: {
       type: "project",
       label: "Workspace project",
-      description:
-        "The project whose default source contains your repositories.",
+      description: "The project whose default source contains your repositories.",
     },
   });
   const host = bb.hosts.experimental_client({ contract: hostContract });
   async function workspace() {
     const { project } = await settings.get();
-    if (!project)
-      throw new Error("Select a Workspace project in Multirepo settings.");
+    if (!project) throw new Error("Select a Workspace project in Multirepo settings.");
     const p = await bb.sdk.projects.get({ projectId: project });
     const source = p.sources.find((s) => s.isDefault) ?? p.sources[0];
     if (!source || source.type !== "local_path")
@@ -40,19 +35,11 @@ export default function plugin(bb: BbPluginApi) {
     },
     changes: async (input: { repo: string }) => {
       const w = await workspace();
-      return host.call(
-        "changes",
-        { ...input, root: w.root },
-        { hostId: w.hostId },
-      );
+      return host.call("changes", { ...input, root: w.root }, { hostId: w.hostId });
     },
     files: async (input: { repo: string }) => {
       const w = await workspace();
-      return host.call(
-        "files",
-        { ...input, root: w.root },
-        { hostId: w.hostId },
-      );
+      return host.call("files", { ...input, root: w.root }, { hostId: w.hostId });
     },
     detail: async (input: {
       repo: string;
@@ -60,11 +47,7 @@ export default function plugin(bb: BbPluginApi) {
       mode: "staged" | "worktree" | "source";
     }) => {
       const w = await workspace();
-      return host.call(
-        "detail",
-        { ...input, root: w.root },
-        { hostId: w.hostId },
-      );
+      return host.call("detail", { ...input, root: w.root }, { hostId: w.hostId });
     },
     prs: async (input: { repo: string }) => {
       const w = await workspace();
@@ -72,11 +55,7 @@ export default function plugin(bb: BbPluginApi) {
     },
     prFiles: async (input: { repo: string; number: number }) => {
       const w = await workspace();
-      return host.call(
-        "prFiles",
-        { ...input, root: w.root },
-        { hostId: w.hostId },
-      );
+      return host.call("prFiles", { ...input, root: w.root }, { hostId: w.hostId });
     },
     review: async (input: { repo: string; number: number }) => {
       const w = await workspace();
@@ -109,9 +88,21 @@ export default function plugin(bb: BbPluginApi) {
     name: "multirepo",
     summary: "Browse repositories in the configured workspace",
     commands: [
-      { name: "link", summary: "Link a PR to the current thread", usage: "bb multirepo link <url> <created-here|requested-review|requested-work|manual>" },
-      { name: "unlink", summary: "Unlink a PR from the current thread", usage: "bb multirepo unlink <url>" },
-      { name: "links", summary: "List the current thread’s linked PRs", usage: "bb multirepo links" },
+      {
+        name: "link",
+        summary: "Link a PR to the current thread",
+        usage: "bb multirepo link <url> <created-here|requested-review|requested-work|manual>",
+      },
+      {
+        name: "unlink",
+        summary: "Unlink a PR from the current thread",
+        usage: "bb multirepo unlink <url>",
+      },
+      {
+        name: "links",
+        summary: "List the current thread’s linked PRs",
+        usage: "bb multirepo links",
+      },
       {
         name: "status",
         summary: "List repositories and change counts",
@@ -146,14 +137,16 @@ export default function plugin(bb: BbPluginApi) {
           if (!ctx.threadId) throw new Error("Run this command inside a BB thread.");
           if (verb === "links") result = await links.linkedList({ threadId: ctx.threadId });
           else if (!repo) throw new Error("A pull request URL is required.");
-          else if (verb === "unlink") result = await links.linkedUnlink({ threadId: ctx.threadId, url: repo });
-          else result = await links.linkedLink({ threadId: ctx.threadId, url: repo, reason: reasonSchema.parse(path ?? "manual") });
-        }
-        else if (verb === "status") result = await handlers.discover();
-        else if (
-          repo &&
-          (verb === "changes" || verb === "files" || verb === "prs")
-        )
+          else if (verb === "unlink")
+            result = await links.linkedUnlink({ threadId: ctx.threadId, url: repo });
+          else
+            result = await links.linkedLink({
+              threadId: ctx.threadId,
+              url: repo,
+              reason: reasonSchema.parse(path ?? "manual"),
+            });
+        } else if (verb === "status") result = await handlers.discover();
+        else if (repo && (verb === "changes" || verb === "files" || verb === "prs"))
           result = await handlers[verb]({ repo });
         else if (verb === "diff" && repo && path)
           result = await handlers.detail({

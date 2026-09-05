@@ -14,11 +14,11 @@ t3code's inbox model:
 - **Status vocabulary** (t3code hues): `Working` (sky), `Monitoring` (sky),
   `Input` (indigo), `Plan Ready` (violet), `Failed` (red), `Done` (emerald,
   unread only). Read, idle threads recede.
-- **Settled shelf.** Finished work you park (hover a card → *Settle*, or the
+- **Settled shelf.** Finished work you park (hover a card → _Settle_, or the
   context menu) collapses into slim rows under a collapsible `Settled (n)`
   header, sorted by when it wrapped up, paged 10 / +25. Hover a slim row to
   un-settle. A settled thread wakes on its own when it needs you again.
-- **Auto-settle** — *Settings → Plugins → T3 Sidebar*: read, idle threads
+- **Auto-settle** — _Settings → Plugins → T3 Sidebar_: read, idle threads
   with no new attention for 1h / 6h / 1 day / 3 days / 1 week (or Never)
   settle without a click. Pinned threads never auto-settle.
 - Right-click menu: open, open in split, pin, read/unread, settle, rename
@@ -58,7 +58,7 @@ It never switches branches or resets the checkout.
 ## Develop
 
 ```
-pnpm install
+vp install
 bb plugin install .
 bb plugin dev        # rebuild + reload on save
 ```
@@ -67,8 +67,8 @@ Run checks from the repository root:
 
 ```
 bb plugin build plugins/t3-sidebar
-pnpm --filter bb-plugin-t3-sidebar typecheck
-pnpm --filter bb-plugin-t3-sidebar test
+vp run --filter bb-plugin-t3-sidebar typecheck
+vp test --project t3-sidebar
 ```
 
 ## Multiple linked PRs

@@ -9,24 +9,13 @@ import {
   experimental_FileLink as FileLink,
   UrlLink,
 } from "@get-bb/plugin-sdk/app";
-import type {
-  rpcContract,
-  Repo,
-  PullRequest,
-  Change,
-  Detail,
-} from "./contract";
+import type { rpcContract, Repo, PullRequest, Change, Detail } from "./contract";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Badge } from "./components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
-import {
-  Empty,
-  EmptyHeader,
-  EmptyTitle,
-  EmptyDescription,
-} from "./components/ui/empty";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "./components/ui/empty";
 import { Skeleton } from "./components/ui/skeleton";
 import { cn } from "./lib/utils";
 
@@ -65,20 +54,12 @@ function ErrorMessage({ message }: { message: string }) {
     </Alert>
   );
 }
-function Blank({
-  title,
-  description,
-}: {
-  title: string;
-  description?: string;
-}) {
+function Blank({ title, description }: { title: string; description?: string }) {
   return (
     <Empty>
       <EmptyHeader>
         <EmptyTitle>{title}</EmptyTitle>
-        {description ? (
-          <EmptyDescription>{description}</EmptyDescription>
-        ) : null}
+        {description ? <EmptyDescription>{description}</EmptyDescription> : null}
       </EmptyHeader>
     </Empty>
   );
@@ -109,10 +90,7 @@ function FilePreview({
   revision: number;
 }) {
   const rpc = useRpc<typeof rpcContract>();
-  const load = useCallback(
-    () => rpc.call("detail", { repo, path, mode }),
-    [rpc, repo, path, mode],
-  );
+  const load = useCallback(() => rpc.call("detail", { repo, path, mode }), [rpc, repo, path, mode]);
   const state = useLoad<Detail>(load, revision);
   const [view, setView] = useState<"unified" | "split">("unified");
   return (
@@ -124,9 +102,7 @@ function FilePreview({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                setView((v) => (v === "split" ? "unified" : "split"))
-              }
+              onClick={() => setView((v) => (v === "split" ? "unified" : "split"))}
             >
               {view === "split" ? "Unified diff" : "Split diff"}
             </Button>
@@ -146,9 +122,7 @@ function FilePreview({
       ) : state.data ? (
         <>
           {state.data.notice ? <Blank title={state.data.notice} /> : null}
-          {state.data.patch ? (
-            <Diff patch={state.data.patch} path={path} view={view} />
-          ) : null}
+          {state.data.patch ? <Diff patch={state.data.patch} path={path} view={view} /> : null}
           {state.data.content !== null ? (
             <SourceCode content={state.data.content} path={path} />
           ) : null}
@@ -187,13 +161,8 @@ function FilesView({
     [rpc, repo, mode],
   );
   const state = useLoad(load, revision);
-  const matches = (path: string) =>
-    path.toLowerCase().includes(query.toLowerCase());
-  function entry(
-    path: string,
-    label: string,
-    fileMode: "staged" | "worktree" | "source",
-  ) {
+  const matches = (path: string) => path.toLowerCase().includes(query.toLowerCase());
+  function entry(path: string, label: string, fileMode: "staged" | "worktree" | "source") {
     return (
       <button
         key={`${fileMode}:${path}`}
@@ -224,47 +193,27 @@ function FilesView({
         ) : state.data ? (
           <div className="mt-3">
             {mode === "files" ? (
-              state.data.files
-                .filter(matches)
-                .map((path) => entry(path, "", "source"))
+              state.data.files.filter(matches).map((path) => entry(path, "", "source"))
             ) : (
               <>
-                <p className="py-2 text-xs font-medium text-muted-foreground">
-                  Staged
-                </p>
+                <p className="py-2 text-xs font-medium text-muted-foreground">Staged</p>
                 {state.data.changes
                   .filter((c) => c.index !== " " && c.index !== "?")
                   .filter((c) => matches(c.path))
                   .map((c) => entry(c.path, c.index, "staged"))}
-                <p className="py-2 text-xs font-medium text-muted-foreground">
-                  Working tree
-                </p>
+                <p className="py-2 text-xs font-medium text-muted-foreground">Working tree</p>
                 {state.data.changes
                   .filter((c) => c.worktree !== " ")
                   .filter((c) => matches(c.path))
-                  .map((c) =>
-                    entry(
-                      c.path,
-                      c.worktree,
-                      c.index === "?" ? "source" : "worktree",
-                    ),
-                  )}
-                {state.data.changes.length === 0 ? (
-                  <Blank title="Working tree clean" />
-                ) : null}
+                  .map((c) => entry(c.path, c.worktree, c.index === "?" ? "source" : "worktree"))}
+                {state.data.changes.length === 0 ? <Blank title="Working tree clean" /> : null}
               </>
             )}
           </div>
         ) : null}
       </div>
       {selected ? (
-        <FilePreview
-          {...selected}
-          repo={repo}
-          root={root}
-          hostId={hostId}
-          revision={revision}
-        />
+        <FilePreview {...selected} repo={repo} root={root} hostId={hostId} revision={revision} />
       ) : (
         <Blank
           title="Select a file"
@@ -357,13 +306,7 @@ function PullRequestDetail({ repo, pr }: { repo: string; pr: PullRequest }) {
     </div>
   );
 }
-function PullRequests({
-  repos,
-  revision,
-}: {
-  repos: Repo[];
-  revision: number;
-}) {
+function PullRequests({ repos, revision }: { repos: Repo[]; revision: number }) {
   const rpc = useRpc<typeof rpcContract>();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<{
@@ -402,18 +345,13 @@ function PullRequests({
             ← Pull requests
           </Button>
         </div>
-        <PullRequestDetail
-          key={`${selected.repo}:${selected.pr.number}`}
-          {...selected}
-        />
+        <PullRequestDetail key={`${selected.repo}:${selected.pr.number}`} {...selected} />
       </div>
     );
   const rows = state.data
     ?.flatMap((group) => group.prs.map((pr) => ({ repo: group.repo, pr })))
     .filter((row) =>
-      `${row.repo} ${row.pr.number} ${row.pr.title}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
+      `${row.repo} ${row.pr.number} ${row.pr.title}`.toLowerCase().includes(query.toLowerCase()),
     );
   return (
     <div className="flex-1 overflow-auto p-4">
@@ -453,9 +391,7 @@ function PullRequests({
               </button>
             ))}
           </div>
-          {rows?.length === 0 ? (
-            <Blank title="No matching open pull requests" />
-          ) : null}
+          {rows?.length === 0 ? <Blank title="No matching open pull requests" /> : null}
         </>
       )}
     </div>
@@ -476,11 +412,7 @@ function RepositoryView({
   // Stable identity keeps PR queries from restarting on unrelated UI state changes.
   const [singleRepo] = useState(() => [repo]);
   return (
-    <Tabs
-      value={tab}
-      onValueChange={setTab}
-      className="flex min-h-0 flex-1 flex-col gap-0"
-    >
+    <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
         <div>
           <p className="text-sm font-medium">{repo.name}</p>
@@ -502,13 +434,7 @@ function RepositoryView({
         />
       </TabsContent>
       <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
-        <FilesView
-          repo={repo.name}
-          mode="files"
-          root={root}
-          hostId={hostId}
-          revision={revision}
-        />
+        <FilesView repo={repo.name} mode="files" root={root} hostId={hostId} revision={revision} />
       </TabsContent>
       <TabsContent value="prs" className="flex min-h-0 flex-1 flex-col">
         <PullRequests repos={singleRepo} revision={revision} />
@@ -516,20 +442,13 @@ function RepositoryView({
     </Tabs>
   );
 }
-function Workspace({
-  initialView = "repos",
-}: {
-  initialView?: "repos" | "prs";
-}) {
+function Workspace({ initialView = "repos" }: { initialView?: "repos" | "prs" }) {
   const rpc = useRpc<typeof rpcContract>();
   const [revision, setRevision] = useState(0);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const [workspace, repos] = await Promise.all([
-      rpc.call("workspace"),
-      rpc.call("discover"),
-    ]);
+    const [workspace, repos] = await Promise.all([rpc.call("workspace"), rpc.call("discover")]);
     return { workspace, repos };
   }, [rpc]);
   const state = useLoad(load, revision);
@@ -579,9 +498,7 @@ function Workspace({
               />
               <div className="mt-3 flex flex-col gap-1">
                 {state.data.repos
-                  .filter((r) =>
-                    r.name.toLowerCase().includes(query.toLowerCase()),
-                  )
+                  .filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
                   .map((r) => (
                     <button
                       key={r.name}
@@ -597,9 +514,7 @@ function Workspace({
                           {r.error ? "Unavailable" : r.branch}
                         </p>
                       </div>
-                      {r.changes ? (
-                        <Badge variant="secondary">{r.changes}</Badge>
-                      ) : null}
+                      {r.changes ? <Badge variant="secondary">{r.changes}</Badge> : null}
                     </button>
                   ))}
               </div>
@@ -619,11 +534,7 @@ function Workspace({
                 )
               ) : (
                 <Blank
-                  title={
-                    state.data.repos.length
-                      ? "Choose a repository"
-                      : "No repositories found"
-                  }
+                  title={state.data.repos.length ? "Choose a repository" : "No repositories found"}
                   description="Browse files, inspect changes, or review a pull request."
                 />
               )}
@@ -641,9 +552,26 @@ function InboxPage() {
   return <Workspace initialView="prs" />;
 }
 export default definePluginApp((app) => {
-  app.slots.experimental_threadHeaderAction({ id: "linked-prs", title: "Linked PRs", component: LinkedPrHeader });
-  app.slots.threadPanelAction({ id: "linked-prs", title: "Linked PRs", icon: "GitPullRequest", layout: "flush", component: LinkedPrsPanel });
-  app.slots.commandPaletteAction({ id: "linked-prs", title: "Open linked PRs", isAvailable: ctx => !!ctx.threadId, run: ctx => { ctx.openPanel({ actionId: "linked-prs" }); } });
+  app.slots.experimental_threadHeaderAction({
+    id: "linked-prs",
+    title: "Linked PRs",
+    component: LinkedPrHeader,
+  });
+  app.slots.threadPanelAction({
+    id: "linked-prs",
+    title: "Linked PRs",
+    icon: "GitPullRequest",
+    layout: "flush",
+    component: LinkedPrsPanel,
+  });
+  app.slots.commandPaletteAction({
+    id: "linked-prs",
+    title: "Open linked PRs",
+    isAvailable: (ctx) => !!ctx.threadId,
+    run: (ctx) => {
+      ctx.openPanel({ actionId: "linked-prs" });
+    },
+  });
   app.slots.navPanel({
     id: "repos",
     title: "Repos",

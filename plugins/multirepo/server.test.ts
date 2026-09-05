@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
@@ -43,7 +43,7 @@ test("review launch uses the umbrella host/path and exact repository/PR context"
     },
   });
   try {
-    await plugin(bb);
+    plugin(bb);
     const result = await harness.behavior.callRpc("review", {
       repo: "api",
       number: 42,

@@ -152,13 +152,9 @@ export type IconName = CoreIconName | ExtendedIconName;
 
 const CORE_ICON_NAMES = Object.keys(CORE_ICON_MAP) as readonly CoreIconName[];
 
-export const ICON_NAMES: readonly IconName[] = [
-  ...CORE_ICON_NAMES,
-  ...EXTENDED_ICON_NAMES,
-];
+export const ICON_NAMES: readonly IconName[] = [...CORE_ICON_NAMES, ...EXTENDED_ICON_NAMES];
 
-const CORE_ICON_LOOKUP: Readonly<Record<string, IconSvgElement | undefined>> =
-  CORE_ICON_MAP;
+const CORE_ICON_LOOKUP: Readonly<Record<string, IconSvgElement | undefined>> = CORE_ICON_MAP;
 
 let extendedIconsLoad: Promise<void> | null = null;
 
@@ -222,13 +218,8 @@ function ExtendedIcon({
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
-  const extendedIcons: Readonly<
-    Record<string, IconSvgElement | undefined>
-  > | null = useSyncExternalStore(
-    subscribeExtendedIcons,
-    getExtendedIcons,
-    getExtendedIcons,
-  );
+  const extendedIcons: Readonly<Record<string, IconSvgElement | undefined>> | null =
+    useSyncExternalStore(subscribeExtendedIcons, getExtendedIcons, getExtendedIcons);
   const icon = extendedIcons?.[name];
   if (icon === undefined) {
     void preloadExtendedIcons().catch(() => undefined);

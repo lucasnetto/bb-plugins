@@ -11,13 +11,13 @@ side shows in the other at once.
 
 ## Commands
 
-| Command | Effect |
-| --- | --- |
-| `bb cursor-account-labels list` | Show every todo with its id. `[x]` marks a done todo. |
-| `bb cursor-account-labels add <title>` | Add a todo. Quote a title that has spaces. |
-| `bb cursor-account-labels done <todo-id>` | Mark a todo done. |
-| `bb cursor-account-labels undo <todo-id>` | Mark a todo not done. |
-| `bb cursor-account-labels remove <todo-id>` | Delete a todo. |
+| Command                                     | Effect                                                |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `bb cursor-account-labels list`             | Show every todo with its id. `[x]` marks a done todo. |
+| `bb cursor-account-labels add <title>`      | Add a todo. Quote a title that has spaces.            |
+| `bb cursor-account-labels done <todo-id>`   | Mark a todo done.                                     |
+| `bb cursor-account-labels undo <todo-id>`   | Mark a todo not done.                                 |
+| `bb cursor-account-labels remove <todo-id>` | Delete a todo.                                        |
 
 Add `--json` to any command when the output drives code.
 

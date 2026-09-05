@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,10 +39,7 @@ test("auto-pull fast-forwards only clean default checkouts without local commits
     assert.deepEqual(await pullCleanDefaultBranch(checkout), { pulled: false });
     git(checkout, "checkout", "main");
     assert.deepEqual(await pullCleanDefaultBranch(checkout), { pulled: true });
-    assert.equal(
-      git(checkout, "rev-parse", "HEAD"),
-      git(writer, "rev-parse", "HEAD"),
-    );
+    assert.equal(git(checkout, "rev-parse", "HEAD"), git(writer, "rev-parse", "HEAD"));
     await writeFile(join(checkout, "local"), "ahead");
     git(checkout, "add", ".");
     git(checkout, "commit", "-m", "local");

@@ -8,24 +8,32 @@ const object = (value: unknown): value is Record<string, unknown> =>
 
 // Validate the RPC envelope here. The host's spawn boundary owns the detailed
 // environment and prompt schemas, including mentions and attachment variants.
-const requestSchema = projectModelSchema.extend({
-  projectId: z.string().min(1),
-  permissionMode: z.enum(["accept-edits", "auto", "full"]),
-  executionInputSources: z.object({
-    providerId: z.enum(["explicit", "client-preference"]).optional(),
-    model: z.enum(["explicit", "client-preference"]).optional(),
-    reasoningLevel: z.enum(["explicit", "client-preference"]).optional(),
-    serviceTier: z.enum(["explicit", "client-preference"]).optional(),
-    permissionMode: z.enum(["explicit", "client-preference"]).optional(),
-  }).strict(),
-  environment: z.custom<NewThreadRequest["environment"]>((value) =>
-    object(value) && ["reuse", "host", "project-default"].includes(String(value.type)),
-  ),
-  input: z.array(z.custom<NewThreadRequest["input"][number]>((value) =>
-    object(value) && ["text", "image", "localImage", "localFile"].includes(String(value.type)),
-  )),
-  sendAt: z.number().finite().optional(),
-}).strict();
+const requestSchema = projectModelSchema
+  .extend({
+    projectId: z.string().min(1),
+    permissionMode: z.enum(["accept-edits", "auto", "full"]),
+    executionInputSources: z
+      .object({
+        providerId: z.enum(["explicit", "client-preference"]).optional(),
+        model: z.enum(["explicit", "client-preference"]).optional(),
+        reasoningLevel: z.enum(["explicit", "client-preference"]).optional(),
+        serviceTier: z.enum(["explicit", "client-preference"]).optional(),
+        permissionMode: z.enum(["explicit", "client-preference"]).optional(),
+      })
+      .strict(),
+    environment: z.custom<NewThreadRequest["environment"]>(
+      (value) => object(value) && ["reuse", "host", "project-default"].includes(String(value.type)),
+    ),
+    input: z.array(
+      z.custom<NewThreadRequest["input"][number]>(
+        (value) =>
+          object(value) &&
+          ["text", "image", "localImage", "localFile"].includes(String(value.type)),
+      ),
+    ),
+    sendAt: z.number().finite().optional(),
+  })
+  .strict();
 
 export const projectThreadContract = defineRpcContract({
   project_thread_create: {

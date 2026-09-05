@@ -1,17 +1,9 @@
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  command,
-  discover,
-  repository,
-  changes,
-  files,
-  detail,
-  githubRemote,
-} from "./git";
+import { command, discover, repository, changes, files, detail, githubRemote } from "./git";
 
 test("discovers nested repos and worktrees; separates changes and preserves unusual paths", async () => {
   const root = await mkdtemp(join(tmpdir(), "multirepo-"));
@@ -40,25 +32,13 @@ test("discovers nested repos and worktrees; separates changes and preserves unus
     assert.equal(found[0].changes, 0);
     assert.equal(found[1].changes, 3);
     const status = await changes(repo);
-    assert.equal(
-      status.find((c) => c.path === "new name.txt")?.oldPath,
-      "old name.txt",
-    );
+    assert.equal(status.find((c) => c.path === "new name.txt")?.oldPath, "old name.txt");
     assert.equal(status.find((c) => c.path === "mixed.txt")?.index, "M");
     assert.equal(status.find((c) => c.path === "mixed.txt")?.worktree, "M");
     assert.ok((await files(repo)).includes("new\nfile.txt"));
-    assert.match(
-      (await detail(repo, "mixed.txt", "staged")).patch!,
-      /\+staged/,
-    );
-    assert.match(
-      (await detail(repo, "mixed.txt", "worktree")).patch!,
-      /\+working/,
-    );
-    assert.equal(
-      (await detail(repo, "new\nfile.txt", "source")).content,
-      "untracked\n",
-    );
+    assert.match((await detail(repo, "mixed.txt", "staged")).patch!, /\+staged/);
+    assert.match((await detail(repo, "mixed.txt", "worktree")).patch!, /\+working/);
+    assert.equal((await detail(repo, "new\nfile.txt", "source")).content, "untracked\n");
     await assert.rejects(repository(root, "../escape"), /Invalid/);
     const outside = join(root, "outside.txt");
     await writeFile(outside, "secret");
@@ -73,9 +53,6 @@ test("discovers nested repos and worktrees; separates changes and preserves unus
 test("only recognizes GitHub origins, with SSH and HTTPS support", () => {
   assert.equal(githubRemote("git@github.com:180seg/api.git"), "180seg/api");
   assert.equal(githubRemote("https://github.com/180seg/api.git"), "180seg/api");
-  assert.equal(
-    githubRemote("ssh://git@github.com/180seg/api.git"),
-    "180seg/api",
-  );
+  assert.equal(githubRemote("ssh://git@github.com/180seg/api.git"), "180seg/api");
   assert.equal(githubRemote("https://evil.example/180seg/api"), null);
 });

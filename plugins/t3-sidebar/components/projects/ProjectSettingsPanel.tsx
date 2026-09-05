@@ -27,9 +27,7 @@ function SettingsRow({
     <div className="flex flex-col gap-4 border-b px-5 py-5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 sm:max-w-[65%]">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
       </div>
       <div className="shrink-0 sm:max-w-[45%]">{children}</div>
     </div>
@@ -43,8 +41,7 @@ export function ProjectsPanel({ subPath }: PluginNavPanelProps) {
   const projectId = parts[0];
   if (projectId && parts[1] === "new")
     return <ProjectNewThread key={projectId} projectId={projectId} />;
-  if (projectId)
-    return <ProjectSettingsPage key={projectId} projectId={projectId} />;
+  if (projectId) return <ProjectSettingsPage key={projectId} projectId={projectId} />;
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-10">
       <h1 className="mb-6 text-lg font-medium">Projects</h1>
@@ -56,26 +53,18 @@ export function ProjectsPanel({ subPath }: PluginNavPanelProps) {
               type="button"
               key={project.id}
               className="flex w-full items-center justify-between border-b px-5 py-4 text-left text-sm last:border-b-0 hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() =>
-                navigate.toPluginPanel("projects", { subPath: project.id })
-              }
+              onClick={() => navigate.toPluginPanel("projects", { subPath: project.id })}
             >
               {project.name}
-              <Icon
-                name="ChevronRight"
-                className="size-4 text-muted-foreground"
-              />
+              <Icon name="ChevronRight" className="size-4 text-muted-foreground" />
             </button>
           ))}
         {status !== "ready" ? (
           <p role="status" className="p-5 text-sm text-muted-foreground">
-            {status === "error"
-              ? "Could not load projects."
-              : "Loading projects…"}
+            {status === "error" ? "Could not load projects." : "Loading projects…"}
           </p>
         ) : null}
-        {status === "ready" &&
-        !projects.some((project) => !project.isPersonal) ? (
+        {status === "ready" && !projects.some((project) => !project.isPersonal) ? (
           <p className="p-5 text-sm text-muted-foreground">
             Add a project using the folder button in the sidebar.
           </p>
@@ -116,9 +105,7 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
   }, [projectId, revision, rpc]);
 
   async function save(
-    patch: Partial<
-      Pick<ProjectSettings, "name" | "model" | "workspace" | "autoPull">
-    >,
+    patch: Partial<Pick<ProjectSettings, "name" | "model" | "workspace" | "autoPull">>,
   ) {
     if (busy.current) return;
     busy.current = true;
@@ -177,10 +164,7 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
           >
             {error}
             {!settings ? (
-              <Button
-                variant="ghost"
-                onClick={() => setRevision((value) => value + 1)}
-              >
+              <Button variant="ghost" onClick={() => setRevision((value) => value + 1)}>
                 Retry
               </Button>
             ) : null}
@@ -188,24 +172,17 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
         ) : null}
         {!settings ? (
           <p role="status" className="text-sm text-muted-foreground">
-            {error
-              ? "Project settings unavailable."
-              : "Loading project settings…"}
+            {error ? "Project settings unavailable." : "Loading project settings…"}
           </p>
         ) : (
           <>
             <div className="mb-4 flex items-center justify-between px-5">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Project
-              </h2>
+              <h2 className="text-sm font-medium text-muted-foreground">Project</h2>
               <span role="status" className="text-xs text-muted-foreground">
                 {pending ? "Saving…" : saved ? "Saved" : ""}
               </span>
             </div>
-            <section
-              aria-label="Project settings"
-              className="overflow-hidden rounded-2xl border"
-            >
+            <section aria-label="Project settings" className="overflow-hidden rounded-2xl border">
               <SettingsRow
                 title="Name"
                 description="The name for this project in the sidebar and thread lists."
@@ -250,9 +227,7 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
                         : {})}
                     />
                   ) : (
-                    <span className="text-xs text-muted-foreground">
-                      No model available
-                    </span>
+                    <span className="text-xs text-muted-foreground">No model available</span>
                   )}
                   {settings.model ? (
                     <Button
@@ -276,8 +251,7 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
                   disabled={pending}
                   onChange={(event) =>
                     void save({
-                      workspace: event.target
-                        .value as ProjectSettings["workspace"],
+                      workspace: event.target.value as ProjectSettings["workspace"],
                     })
                   }
                   className="h-9 w-full rounded-lg border bg-muted/40 px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -324,13 +298,8 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
                 New thread
               </Button>
             </div>
-            <h2 className="mb-4 mt-10 px-5 text-sm font-medium text-muted-foreground">
-              Danger
-            </h2>
-            <section
-              aria-label="Danger"
-              className="overflow-hidden rounded-2xl border"
-            >
+            <h2 className="mb-4 mt-10 px-5 text-sm font-medium text-muted-foreground">Danger</h2>
+            <section aria-label="Danger" className="overflow-hidden rounded-2xl border">
               <SettingsRow
                 title="Remove project"
                 description="Removes this project and all of its threads. This cannot be undone."
@@ -359,20 +328,14 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay
-            {...portalProps}
-            className="fixed inset-0 z-50 bg-black/50"
-          />
+          <Dialog.Overlay {...portalProps} className="fixed inset-0 z-50 bg-black/50" />
           <Dialog.Content
             {...portalProps}
             className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background p-6 shadow-xl"
           >
-            <Dialog.Title className="text-base font-semibold">
-              Remove project?
-            </Dialog.Title>
+            <Dialog.Title className="text-base font-semibold">Remove project?</Dialog.Title>
             <Dialog.Description className="mt-3 text-sm text-muted-foreground">
-              Remove “{settings?.name}” and all of its threads? This cannot be
-              undone.
+              Remove “{settings?.name}” and all of its threads? This cannot be undone.
             </Dialog.Description>
             {error ? (
               <p role="alert" className="mt-3 text-sm text-destructive">
@@ -380,18 +343,10 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
               </p>
             ) : null}
             <div className="mt-6 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                disabled={pending}
-                onClick={() => setConfirmRemove(false)}
-              >
+              <Button variant="ghost" disabled={pending} onClick={() => setConfirmRemove(false)}>
                 Cancel
               </Button>
-              <Button
-                variant="destructive"
-                disabled={pending}
-                onClick={() => void remove()}
-              >
+              <Button variant="destructive" disabled={pending} onClick={() => void remove()}>
                 {pending ? "Removing…" : "Confirm removal"}
               </Button>
             </div>

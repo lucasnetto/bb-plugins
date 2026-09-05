@@ -1,4 +1,12 @@
-import { linkedContentsInput, linkedContentsSchema, linkedPrSchema, linkedDetailSchema, prSummarySchema, threadInput, linkInput } from "./links-contract";
+import {
+  linkedContentsInput,
+  linkedContentsSchema,
+  linkedPrSchema,
+  linkedDetailSchema,
+  prSummarySchema,
+  threadInput,
+  linkInput,
+} from "./links-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 export const repoInput = z.object({ repo: z.string().min(1) });
@@ -41,7 +49,7 @@ export const prFileSchema = z.object({
   patch: z.string().nullable(),
 });
 export const hostContract = defineRpcContract({
-  linkedContents: {input:rootInput.merge(linkedContentsInput), output:linkedContentsSchema},
+  linkedContents: { input: rootInput.merge(linkedContentsInput), output: linkedContentsSchema },
   linkedSummary: { input: rootInput.extend({ url: z.string() }), output: prSummarySchema },
   linkedDetail: { input: rootInput.extend({ url: z.string() }), output: linkedDetailSchema },
   discover: { input: rootInput, output: z.array(repoSchema) },
@@ -50,25 +58,29 @@ export const hostContract = defineRpcContract({
   detail: { input: rootInput.merge(detailInput), output: detailSchema },
   prs: { input: rootInput.merge(repoInput), output: z.array(prSchema) },
   prFiles: {
-    input: rootInput
-      .merge(repoInput)
-      .extend({ number: z.number().int().positive() }),
+    input: rootInput.merge(repoInput).extend({ number: z.number().int().positive() }),
     output: z.array(prFileSchema),
   },
   reviewTarget: {
-    input: rootInput
-      .merge(repoInput)
-      .extend({ number: z.number().int().positive() }),
+    input: rootInput.merge(repoInput).extend({ number: z.number().int().positive() }),
     output: z.object({ path: z.string(), remote: z.string(), pr: prSchema }),
   },
 });
-export const reviewCommentInput = z.object({ threadId:z.string().min(1), url:z.string(), label:z.string().min(1).max(500), context:z.string().min(1).max(200000) });
+export const reviewCommentInput = z.object({
+  threadId: z.string().min(1),
+  url: z.string(),
+  label: z.string().min(1).max(500),
+  context: z.string().min(1).max(200000),
+});
 export const rpcContract = defineRpcContract({
-  stageReviewComment: {input:reviewCommentInput, output:z.object({id:z.string()})},
-  linkedContents: {input:threadInput.merge(linkedContentsInput), output:linkedContentsSchema},
+  stageReviewComment: { input: reviewCommentInput, output: z.object({ id: z.string() }) },
+  linkedContents: { input: threadInput.merge(linkedContentsInput), output: linkedContentsSchema },
   linkedList: { input: threadInput, output: z.array(linkedPrSchema) },
   linkedLink: { input: threadInput.merge(linkInput), output: linkedPrSchema },
-  linkedUnlink: { input: threadInput.extend({ url: z.string() }), output: z.object({ removed: z.boolean() }) },
+  linkedUnlink: {
+    input: threadInput.extend({ url: z.string() }),
+    output: z.object({ removed: z.boolean() }),
+  },
   linkedDetail: { input: threadInput.extend({ url: z.string() }), output: linkedDetailSchema },
   workspace: {
     input: z.null(),

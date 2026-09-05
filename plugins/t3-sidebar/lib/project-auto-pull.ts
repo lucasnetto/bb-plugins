@@ -1,10 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
-export async function pullCleanDefaultBranch(
-  path: string,
-  signal?: AbortSignal,
-) {
+export async function pullCleanDefaultBranch(path: string, signal?: AbortSignal) {
   const git = async (...args: string[]) =>
     (
       await exec("git", args, {
@@ -31,27 +28,21 @@ export async function pullCleanDefaultBranch(
     `branch.${branch.replace(/^refs\/heads\//, "")}.remote`,
   );
   if (!remote || remote === ".") return { pulled: false };
-  const remoteHead = await git(
-    "symbolic-ref",
-    "--quiet",
-    `refs/remotes/${remote}/HEAD`,
-  ).catch(() => "");
+  const remoteHead = await git("symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`).catch(
+    () => "",
+  );
   if (!remoteHead) return { pulled: false };
   if (
     `refs/remotes/${upstream}` !== remoteHead ||
-    branch.replace("refs/heads/", "") !==
-      remoteHead.replace(`refs/remotes/${remote}/`, "")
+    branch.replace("refs/heads/", "") !== remoteHead.replace(`refs/remotes/${remote}/`, "")
   )
     return { pulled: false };
   if (await git("status", "--porcelain")) return { pulled: false };
-  if ((await git("rev-list", "--count", "@{upstream}..HEAD")) !== "0")
-    return { pulled: false };
+  if ((await git("rev-list", "--count", "@{upstream}..HEAD")) !== "0") return { pulled: false };
   await git("fetch", "--no-tags", "--", remote);
   if (await git("status", "--porcelain")) return { pulled: false };
-  if ((await git("symbolic-ref", "--quiet", "HEAD")) !== branch)
-    return { pulled: false };
-  if ((await git("rev-list", "--count", "@{upstream}..HEAD")) !== "0")
-    return { pulled: false };
+  if ((await git("symbolic-ref", "--quiet", "HEAD")) !== branch) return { pulled: false };
+  if ((await git("rev-list", "--count", "@{upstream}..HEAD")) !== "0") return { pulled: false };
   await git("merge", "--ff-only", "--", upstream);
   return { pulled: true };
 }

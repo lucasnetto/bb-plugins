@@ -1,13 +1,6 @@
 import * as React from "react";
 
-const MENU_NAV_KEYS = new Set([
-  "ArrowDown",
-  "ArrowUp",
-  "Home",
-  "End",
-  "PageDown",
-  "PageUp",
-]);
+const MENU_NAV_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"]);
 
 export const MENU_ITEM_LAST_HOVERED_CLASS =
   "data-[last-hovered]:bg-state-hover data-[last-hovered]:text-foreground";
@@ -34,11 +27,7 @@ export function MenuHoverProvider({ children }: { children: React.ReactNode }) {
     }),
     [lastHoveredId],
   );
-  return (
-    <MenuHoverContext.Provider value={value}>
-      {children}
-    </MenuHoverContext.Provider>
-  );
+  return <MenuHoverContext.Provider value={value}>{children}</MenuHoverContext.Provider>;
 }
 
 export interface MenuItemHoverProps {
@@ -57,8 +46,7 @@ export function useMenuItemHover(handlers?: MenuItemHoverHandlers): {
   hoverProps: MenuItemHoverProps;
 } {
   const id = React.useId();
-  const { lastHoveredId, setLastHovered, clearLastHovered } =
-    React.useContext(MenuHoverContext);
+  const { lastHoveredId, setLastHovered, clearLastHovered } = React.useContext(MenuHoverContext);
   const isLastHovered = lastHoveredId === id;
 
   const handlersRef = React.useRef(handlers);

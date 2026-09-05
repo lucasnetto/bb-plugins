@@ -12,64 +12,42 @@ import {
 import { LIST_HOVER_TRANSITION } from "./motion.js";
 import { Icon } from "../../components/ui/icon.js";
 
-type ContextMenuSubTriggerElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.SubTrigger
->;
+type ContextMenuSubTriggerElement = React.ComponentRef<typeof ContextMenuPrimitive.SubTrigger>;
 type ContextMenuSubTriggerProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.SubTrigger
 > & {
   inset?: boolean;
 };
 
-type ContextMenuSubContentElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.SubContent
->;
+type ContextMenuSubContentElement = React.ComponentRef<typeof ContextMenuPrimitive.SubContent>;
 type ContextMenuSubContentProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.SubContent
 >;
 
-type ContextMenuContentElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.Content
->;
-type ContextMenuContentProps = React.ComponentPropsWithoutRef<
-  typeof ContextMenuPrimitive.Content
->;
+type ContextMenuContentElement = React.ComponentRef<typeof ContextMenuPrimitive.Content>;
+type ContextMenuContentProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>;
 
-type ContextMenuItemElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.Item
->;
-type ContextMenuItemProps = React.ComponentPropsWithoutRef<
-  typeof ContextMenuPrimitive.Item
-> & {
+type ContextMenuItemElement = React.ComponentRef<typeof ContextMenuPrimitive.Item>;
+type ContextMenuItemProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & {
   inset?: boolean;
 };
 
-type ContextMenuCheckboxItemElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.CheckboxItem
->;
+type ContextMenuCheckboxItemElement = React.ComponentRef<typeof ContextMenuPrimitive.CheckboxItem>;
 type ContextMenuCheckboxItemProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.CheckboxItem
 >;
 
-type ContextMenuRadioItemElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.RadioItem
->;
+type ContextMenuRadioItemElement = React.ComponentRef<typeof ContextMenuPrimitive.RadioItem>;
 type ContextMenuRadioItemProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.RadioItem
 >;
 
-type ContextMenuLabelElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.Label
->;
-type ContextMenuLabelProps = React.ComponentPropsWithoutRef<
-  typeof ContextMenuPrimitive.Label
-> & {
+type ContextMenuLabelElement = React.ComponentRef<typeof ContextMenuPrimitive.Label>;
+type ContextMenuLabelProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Label> & {
   inset?: boolean;
 };
 
-type ContextMenuSeparatorElement = React.ComponentRef<
-  typeof ContextMenuPrimitive.Separator
->;
+type ContextMenuSeparatorElement = React.ComponentRef<typeof ContextMenuPrimitive.Separator>;
 type ContextMenuSeparatorProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.Separator
 >;
@@ -143,39 +121,29 @@ const ContextMenuSubContent = React.forwardRef<
 ));
 ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 
-const ContextMenuContent = React.forwardRef<
-  ContextMenuContentElement,
-  ContextMenuContentProps
->(({ className, children, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.Content
-      ref={ref}
-      {...usePortalScopeProps()}
-      className={cn(
-        CONTEXT_MENU_LAYER_CLASS,
-        "min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        className,
-      )}
-      {...props}
-    >
-      <MenuHoverProvider>{children}</MenuHoverProvider>
-    </ContextMenuPrimitive.Content>
-  </ContextMenuPrimitive.Portal>
-));
+const ContextMenuContent = React.forwardRef<ContextMenuContentElement, ContextMenuContentProps>(
+  ({ className, children, ...props }, ref) => (
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.Content
+        ref={ref}
+        {...usePortalScopeProps()}
+        className={cn(
+          CONTEXT_MENU_LAYER_CLASS,
+          "min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className,
+        )}
+        {...props}
+      >
+        <MenuHoverProvider>{children}</MenuHoverProvider>
+      </ContextMenuPrimitive.Content>
+    </ContextMenuPrimitive.Portal>
+  ),
+);
 ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName;
 
-const ContextMenuItem = React.forwardRef<
-  ContextMenuItemElement,
-  ContextMenuItemProps
->(
+const ContextMenuItem = React.forwardRef<ContextMenuItemElement, ContextMenuItemProps>(
   (
-    {
-      className,
-      inset,
-      onPointerEnter: callerPointerEnter,
-      onKeyDown: callerKeyDown,
-      ...props
-    },
+    { className, inset, onPointerEnter: callerPointerEnter, onKeyDown: callerKeyDown, ...props },
     ref,
   ) => {
     const { hoverProps } = useMenuItemHover({
@@ -249,21 +217,14 @@ const ContextMenuCheckboxItem = React.forwardRef<
     );
   },
 );
-ContextMenuCheckboxItem.displayName =
-  ContextMenuPrimitive.CheckboxItem.displayName;
+ContextMenuCheckboxItem.displayName = ContextMenuPrimitive.CheckboxItem.displayName;
 
 const ContextMenuRadioItem = React.forwardRef<
   ContextMenuRadioItemElement,
   ContextMenuRadioItemProps
 >(
   (
-    {
-      className,
-      children,
-      onPointerEnter: callerPointerEnter,
-      onKeyDown: callerKeyDown,
-      ...props
-    },
+    { className, children, onPointerEnter: callerPointerEnter, onKeyDown: callerKeyDown, ...props },
     ref,
   ) => {
     const { hoverProps } = useMenuItemHover({
@@ -295,20 +256,19 @@ const ContextMenuRadioItem = React.forwardRef<
 );
 ContextMenuRadioItem.displayName = ContextMenuPrimitive.RadioItem.displayName;
 
-const ContextMenuLabel = React.forwardRef<
-  ContextMenuLabelElement,
-  ContextMenuLabelProps
->(({ className, inset, ...props }, ref) => (
-  <ContextMenuPrimitive.Label
-    ref={ref}
-    className={cn(
-      "px-2 py-[0.3125rem] text-xs font-medium text-muted-foreground",
-      inset && "pl-8",
-      className,
-    )}
-    {...props}
-  />
-));
+const ContextMenuLabel = React.forwardRef<ContextMenuLabelElement, ContextMenuLabelProps>(
+  ({ className, inset, ...props }, ref) => (
+    <ContextMenuPrimitive.Label
+      ref={ref}
+      className={cn(
+        "px-2 py-[0.3125rem] text-xs font-medium text-muted-foreground",
+        inset && "pl-8",
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
 
 const ContextMenuSeparator = React.forwardRef<
@@ -323,15 +283,9 @@ const ContextMenuSeparator = React.forwardRef<
 ));
 ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName;
 
-function ContextMenuShortcut({
-  className,
-  ...props
-}: ContextMenuShortcutProps) {
+function ContextMenuShortcut({ className, ...props }: ContextMenuShortcutProps) {
   return (
-    <span
-      className={cn("ml-auto text-xs tracking-widest opacity-60", className)}
-      {...props}
-    />
+    <span className={cn("ml-auto text-xs tracking-widest opacity-60", className)} {...props} />
   );
 }
 ContextMenuShortcut.displayName = "ContextMenuShortcut";
