@@ -1,0 +1,23 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "bb-plugins",
+  "plugins": [
+    {
+      "name": "cursor-account-labels",
+      "source": "./plugins/cursor-account-labels"
+    },
+    {
+      "name": "hide-models",
+      "source": "./plugins/hide-models"
+    },
+    {
+      "name": "multirepo",
+      "source": "./plugins/multirepo"
+    },
+    {
+      "name": "t3-sidebar",
+      "source": "./plugins/t3-sidebar"
+    }
+  ]
+}
