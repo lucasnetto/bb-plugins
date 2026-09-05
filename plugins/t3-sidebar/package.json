@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "bb": ">=0.41",
-    "bbPluginSdk": ">=0.4.34"
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.47"
   },
   "bb": {
     "name": "T3 Sidebar",
@@ -13,6 +13,7 @@
       "icon": "Layers"
     },
     "server": "./server.ts",
+    "host": "./host.ts",
     "app": "./app.tsx",
     "skills": []
   },
@@ -23,7 +24,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.4.34",
+    "@get-bb/plugin-sdk": "0.4.47",
     "@pierre/diffs": "^1.2.9",
     "@radix-ui/react-alert-dialog": "^1.1.19",
     "@radix-ui/react-context-menu": "^2.3.3",

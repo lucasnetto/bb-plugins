@@ -7,8 +7,16 @@
 // / Plan Ready), never in list position. See components/sidebar/.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { T3ThreadList } from "@/components/sidebar/T3ThreadList";
+import { ProjectsPanel } from "@/components/projects/ProjectSettingsPanel";
 
 export default definePluginApp((app) => {
+  app.slots.navPanel({
+    id: "projects",
+    path: "projects",
+    title: "Projects",
+    icon: "Folder",
+    component: ProjectsPanel,
+  });
   app.slots.experimental_threadList({
     id: "t3-thread-list",
     title: "T3 Sidebar",

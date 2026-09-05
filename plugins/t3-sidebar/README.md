@@ -27,6 +27,24 @@ t3code's inbox model:
 
 Pick it under **Settings → Appearance → Sidebar** if another list is pinned.
 
+Project controls follow T3 Code: search in the project picker, use the **New
+project** folder button beside it to add a folder, or open a project's gear for
+its settings page. The page has name, default model/reasoning, workspace, automatic
+pull, and a separate Danger section for removal. Removal explicitly confirms
+deletion of the project and all its threads. The personal project cannot be removed.
+
+Names update BB directly. Model and workspace preferences apply when starting a
+thread from the scoped sidebar's **+** button or the settings page's **New thread**
+button. These use BB's native composer; subsequent user selections remain authoritative.
+BB's global New thread button and CLI retain their existing defaults. **Reset**
+on the model restores BB's remembered execution choice; **Default** workspace uses
+the native composer's preference.
+
+Automatic pull runs every five minutes on connected machines while this plugin is
+enabled. It only fast-forwards a clean checkout of the remote's default branch,
+skipping local commits, untracked changes, other branches, and non-Git folders.
+It never switches branches or resets the checkout.
+
 ## Layout
 
 - `server.ts` — the settled map (`threadId → settledAt`) in `bb.storage.kv`,
@@ -43,6 +61,14 @@ Pick it under **Settings → Appearance → Sidebar** if another list is pinned.
 npm install
 bb plugin install .
 bb plugin dev        # rebuild + reload on save
+```
+
+Run checks from the repository root:
+
+```
+bb plugin build plugins/t3-sidebar
+plugins/t3-sidebar/node_modules/.bin/tsc --noEmit -p plugins/t3-sidebar/tsconfig.json
+node --test plugins/t3-sidebar/tests/*.test.mjs
 ```
 
 ## Multiple linked PRs

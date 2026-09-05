@@ -1,11 +1,17 @@
+import { ProjectDialog } from "./ProjectDialog";
+import { Button } from "@/components/ui/button";
 import { LinkedPrProvider } from "./LinkedPrs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type {
+  PluginSidebarThread,
+  PluginThreadListProps,
+} from "@get-bb/plugin-sdk/app";
 import {
   experimental_useProviders,
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreads,
+  useBbNavigate,
   useRealtime,
   useRpc,
   useSettings,
@@ -31,7 +37,11 @@ import {
   settledTimestamp,
   visibleSettledThreads,
 } from "@/lib/sidebar-logic";
-import { ThreadRow, type ThreadRowActions, type ThreadRowProvider } from "./ThreadRow";
+import {
+  ThreadRow,
+  type ThreadRowActions,
+  type ThreadRowProvider,
+} from "./ThreadRow";
 
 const SCOPE_KEY = "t3-sidebar:project-scope";
 const SETTLED_EXPANDED_KEY = "t3-sidebar:settled-expanded";
@@ -45,7 +55,10 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function useLocalStorageState<T>(key: string, fallback: T): [T, Dispatch<SetStateAction<T>>] {
+function useLocalStorageState<T>(
+  key: string,
+  fallback: T,
+): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => readStorage(key, fallback));
   useEffect(() => {
     try {
@@ -74,7 +87,8 @@ function useSettledMap() {
   const refetch = useCallback(() => {
     rpc.call("settled_list").then(
       (result) => setSettled(result.settled),
-      (cause: unknown) => console.warn("[t3-sidebar] settled_list failed", cause),
+      (cause: unknown) =>
+        console.warn("[t3-sidebar] settled_list failed", cause),
     );
   }, [rpc]);
   useEffect(refetch, [refetch]);
@@ -86,19 +100,26 @@ function useSettledMap() {
       setSettled((current) => {
         const now = Date.now();
         return value
-          ? { ...current, ...Object.fromEntries(threadIds.map((id) => [id, now])) }
+          ? {
+              ...current,
+              ...Object.fromEntries(threadIds.map((id) => [id, now])),
+            }
           : Object.fromEntries(
               Object.entries(current).filter(([id]) => !threadIds.includes(id)),
             );
       });
-      rpc.call("settled_set", { threadIds: [...threadIds], settled: value }).then(
-        (result) => setSettled(result.settled),
-        (cause: unknown) => {
-          toast.error(value ? "Could not settle thread" : "Could not un-settle thread");
-          console.warn("[t3-sidebar] settled_set failed", cause);
-          refetch();
-        },
-      );
+      rpc
+        .call("settled_set", { threadIds: [...threadIds], settled: value })
+        .then(
+          (result) => setSettled(result.settled),
+          (cause: unknown) => {
+            toast.error(
+              value ? "Could not settle thread" : "Could not un-settle thread",
+            );
+            console.warn("[t3-sidebar] settled_set failed", cause);
+            refetch();
+          },
+        );
     },
     [refetch, rpc],
   );
@@ -140,23 +161,67 @@ function ProjectScopePicker(props: {
   scopeProjectId: string | null;
   onChange: (projectId: string | null) => void;
   onNewThread: () => void;
+  onAddProject: () => void;
+  onProjectSettings: (project: { id: string; name: string }) => void;
 }) {
-  const scoped = props.projects.find((project) => project.id === props.scopeProjectId) ?? null;
+  const scoped =
+    props.projects.find((project) => project.id === props.scopeProjectId) ??
+    null;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const openingSettings = useRef(false);
+  const matchingProjects = props.projects.filter((project) =>
+    project.name.toLowerCase().includes(query.toLowerCase()),
+  );
   return (
     <div className="flex items-center gap-1 px-1.5 pb-1 pt-1.5">
-      <DropdownMenu>
+      <DropdownMenu
+        open={open}
+        onOpenChange={(value) => {
+          setOpen(value);
+          if (value) {
+            setQuery("");
+            openingSettings.current = false;
+          }
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label="Filter threads by project"
             className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground/90 outline-none hover:bg-state-hover focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-state-active"
           >
-            <Icon name="Folder" className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{scoped?.name ?? "All projects"}</span>
-            <Icon name="ChevronDown" className="-mr-px size-4 shrink-0 text-muted-foreground" />
+            <Icon
+              name="Folder"
+              className="size-4 shrink-0 text-muted-foreground"
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {scoped?.name ?? "All projects"}
+            </span>
+            <Icon
+              name="ChevronDown"
+              className="-mr-px size-4 shrink-0 text-muted-foreground"
+            />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-56">
+        <DropdownMenuContent
+          align="start"
+          className="min-w-56"
+          onCloseAutoFocus={(event) => {
+            if (openingSettings.current) event.preventDefault();
+          }}
+        >
+          <input
+            aria-label="Search projects"
+            placeholder="Search projects…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" && event.key !== "Tab")
+                event.stopPropagation();
+            }}
+            className="mb-1 h-8 w-full border-b bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+          />
           <DropdownMenuItem
             onSelect={() => props.onChange(null)}
             className={cn(props.scopeProjectId === null && "font-medium")}
@@ -165,20 +230,58 @@ function ProjectScopePicker(props: {
             All projects
           </DropdownMenuItem>
           {props.projects.length > 0 ? <DropdownMenuSeparator /> : null}
-          {props.projects.map((project) => (
+          {matchingProjects.map((project) => (
             <DropdownMenuItem
               key={project.id}
-              onSelect={() => props.onChange(project.id)}
-              className={cn(project.id === props.scopeProjectId && "font-medium")}
+              onSelect={(event) => {
+                if (openingSettings.current) event.preventDefault();
+                else props.onChange(project.id);
+              }}
+              className={cn(
+                project.id === props.scopeProjectId && "font-medium",
+              )}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-muted text-[9px] font-semibold text-muted-foreground">
                 {project.name.trim().charAt(0).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              {!project.isPersonal ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  aria-label={`Project settings for ${project.name}`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openingSettings.current = true;
+                    setOpen(false);
+                    props.onProjectSettings(project);
+                  }}
+                >
+                  <Icon name="Settings" className="size-3.5" />
+                </Button>
+              ) : null}
             </DropdownMenuItem>
           ))}
+          {!matchingProjects.length ? (
+            <p className="px-2 py-3 text-xs text-muted-foreground">
+              No matching projects.
+            </p>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 text-muted-foreground"
+        aria-label="New project"
+        onClick={props.onAddProject}
+      >
+        <Icon name="FolderPlus" className="size-4" />
+      </Button>
       {scoped ? (
         <button
           type="button"
@@ -195,9 +298,15 @@ function ProjectScopePicker(props: {
 }
 
 export function T3ThreadList(props: PluginThreadListProps) {
-  return <LinkedPrProvider><T3ThreadListContent {...props} /></LinkedPrProvider>;
+  return (
+    <LinkedPrProvider>
+      <T3ThreadListContent {...props} />
+    </LinkedPrProvider>
+  );
 }
 function T3ThreadListContent(props: PluginThreadListProps) {
+  const [projectDialog, setProjectDialog] = useState(false);
+  const navigate = useBbNavigate();
   const { activeThreadId, onNavigate } = props;
   const { status, threads, projects } = experimental_useSidebarThreads();
   const hostActions = experimental_useSidebarThreadActions();
@@ -206,13 +315,21 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const { settled: settledAt, set: setSettled } = useSettledMap();
   const nowMs = useNowMinute();
 
-  const [scopeProjectId, setScopeProjectId] = useLocalStorageState<string | null>(SCOPE_KEY, null);
-  const [settledExpanded, setSettledExpanded] = useLocalStorageState(SETTLED_EXPANDED_KEY, false);
-  const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
+  const [scopeProjectId, setScopeProjectId] = useLocalStorageState<
+    string | null
+  >(SCOPE_KEY, null);
+  const [settledExpanded, setSettledExpanded] = useLocalStorageState(
+    SETTLED_EXPANDED_KEY,
+    false,
+  );
+  const [settledVisibleCount, setSettledVisibleCount] = useState(
+    SETTLED_TAIL_INITIAL_COUNT,
+  );
 
   // A scope pointing at a project that no longer exists falls back to all.
   const effectiveScope =
-    scopeProjectId !== null && projects.some((project) => project.id === scopeProjectId)
+    scopeProjectId !== null &&
+    projects.some((project) => project.id === scopeProjectId)
       ? scopeProjectId
       : null;
   useEffect(() => {
@@ -237,7 +354,9 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   // re-settle the moment it goes quiet. Cleared once per id per wake.
   const clearedStaleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const fresh = partition.staleSettledIds.filter((id) => !clearedStaleRef.current.has(id));
+    const fresh = partition.staleSettledIds.filter(
+      (id) => !clearedStaleRef.current.has(id),
+    );
     if (fresh.length === 0) return;
     for (const id of fresh) clearedStaleRef.current.add(id);
     setSettled(fresh, false);
@@ -280,7 +399,8 @@ function T3ThreadListContent(props: PluginThreadListProps) {
         hostActions.open(threadId, options);
         onNavigate();
       },
-      setPinned: (threadId, pinned) => void hostActions.setPinned(threadId, pinned),
+      setPinned: (threadId, pinned) =>
+        void hostActions.setPinned(threadId, pinned),
       setRead: (threadId, read) => void hostActions.setRead(threadId, read),
       rename: (threadId, title) => void hostActions.rename(threadId, title),
       archive: (threadId) => hostActions.archive(threadId),
@@ -290,7 +410,10 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [hostActions, onNavigate, setSettled],
   );
 
-  const renderRow = (thread: PluginSidebarThread, section: "pinned" | "active" | "settled") => (
+  const renderRow = (
+    thread: PluginSidebarThread,
+    section: "pinned" | "active" | "settled",
+  ) => (
     <ThreadRow
       key={`${thread.id}:${section === "settled" ? "slim" : "card"}`}
       thread={thread}
@@ -299,35 +422,55 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       projectName={projectNameById.get(thread.projectId) ?? null}
       provider={providerById.get(thread.providerId) ?? null}
       timeAnchorMs={
-        section === "settled" ? settledTimestamp(thread, settledAt) : thread.updatedAt
+        section === "settled"
+          ? settledTimestamp(thread, settledAt)
+          : thread.updatedAt
       }
       nowMs={nowMs}
       actions={rowActions}
     />
   );
 
-  const total = partition.pinned.length + partition.active.length + partition.settled.length;
-  const scopedProject = projects.find((project) => project.id === effectiveScope) ?? null;
+  const total =
+    partition.pinned.length +
+    partition.active.length +
+    partition.settled.length;
+  const scopedProject =
+    projects.find((project) => project.id === effectiveScope) ?? null;
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex flex-col pb-1">
+        {projectDialog ? (
+          <ProjectDialog
+            onClose={() => setProjectDialog(false)}
+            onCreated={setScopeProjectId}
+          />
+        ) : null}
         <ProjectScopePicker
           projects={projects}
           scopeProjectId={effectiveScope}
           onChange={setScopeProjectId}
+          onAddProject={() => setProjectDialog(true)}
+          onProjectSettings={(project) => {
+            navigate.toPluginPanel("projects", { subPath: project.id });
+            onNavigate();
+          }}
           onNewThread={() => {
-            hostActions.openNewThread({
-              projectId: effectiveScope ?? undefined,
-              focusPrompt: true,
-            });
+            if (effectiveScope)
+              navigate.toPluginPanel("projects", {
+                subPath: `${effectiveScope}/new`,
+              });
             onNavigate();
           }}
         />
         <ul role="list" className="flex flex-col gap-px px-1.5">
           {partition.pinned.map((thread) => renderRow(thread, "pinned"))}
           {partition.pinned.length > 0 ? (
-            <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
+            <li
+              aria-hidden
+              className="mx-2.5 my-1.5 h-px list-none bg-border/60"
+            />
           ) : null}
           {partition.active.map((thread) => renderRow(thread, "active"))}
           {partition.settled.length > 0 ? (
@@ -343,11 +486,19 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             <li className="list-none">
               <button
                 type="button"
-                onClick={() => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT)}
+                onClick={() =>
+                  setSettledVisibleCount(
+                    (count) => count + SETTLED_TAIL_PAGE_COUNT,
+                  )
+                }
                 className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-muted-foreground/55 hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="Plus" className="size-4 shrink-0" />
-                Show {Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
+                Show {Math.min(
+                  hiddenSettledCount,
+                  SETTLED_TAIL_PAGE_COUNT,
+                )}{" "}
+                more
               </button>
             </li>
           ) : null}
