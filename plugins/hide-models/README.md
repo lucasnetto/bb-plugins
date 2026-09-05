@@ -41,7 +41,7 @@ bb hide-models clear
 ## Develop
 
 ```sh
-npm install
+pnpm install
 bb plugin install .   # path install
 bb plugin dev         # rebuild + reload on save
 ```

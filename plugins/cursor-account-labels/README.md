@@ -24,15 +24,16 @@ via the pinned ref in `components.json`):
 npx shadcn add @bb/select @bb/table
 ```
 
-Run `npm install` once before `bb plugin build` — the vendored components'
+Run `pnpm install` once before `bb plugin build` — the vendored components'
 npm deps bundle into your dist. React, and BB-shimmed packages like the
 radix portal primitives and `sonner` (`import { toast } from "sonner"`
 reaches BB's own toaster), are provided by the BB app at runtime and never
 bundled. Every shimmed package is declared in `devDependencies` at the
 host's version so those imports typecheck; keep them there (never in
-`dependencies`, which would bundle a second copy), and `bb plugin types`
-repins them alongside the SDK. Ship `dist/` (npm tarball or committed for
-git installs) so people installing your plugin never need npm.
+`dependencies`, which would bundle a second copy), and keep their versions in the workspace catalog. If `bb plugin types`
+repins them, update the catalog and restore `catalog:` references. Build
+`dist/` before packing or publishing with pnpm; see the root README for
+distribution requirements.
 
 ## Manifest
 
@@ -50,7 +51,7 @@ git installs) so people installing your plugin never need npm.
   `.webp` files.
 - `engines.bb` — supported bb app version range.
 - `engines.bbPluginSdk` — the lowest plugin SDK you need (scaffold:
-  `>=0.4.34`). BB reads this as a floor, not a ceiling: a later
+  `>=0.4.47`). BB reads this as a floor, not a ceiling: a later
   SDK in the same major still loads your plugin.
 - `dependencies` — every package your source imports that BB does not provide.
   `bb plugin build` inlines them into `dist/`, and git installs resolve this
@@ -59,7 +60,7 @@ git installs) so people installing your plugin never need npm.
   is for types and tooling only (BB shims React, the portal primitives, and
   `@get-bb/plugin-sdk` at runtime — never bundle them).
 
-Run `bb plugin build` before publishing git/npm installs. It writes
+Run `bb plugin build` before publishing npm releases. It writes
 `dist/server.js` + `server.meta.json` and `app.js` / `app.css` /
 `app.meta.json`. Each `*.meta.json` stamps SDK major/version,
 `artifactFormatVersion`, `pluginId`, `pluginVersion`, and
@@ -71,7 +72,7 @@ From this directory (`bb plugin new` already ran the install; a fresh clone
 needs it):
 
 ```
-npm install
+pnpm install
 bb plugin install .
 ```
 
@@ -94,8 +95,8 @@ bb plugin reload cursor-account-labels
 ## Types & API reference
 
 The plugin API ships as the npm package `@get-bb/plugin-sdk`, pinned to an
-exact version in `devDependencies` (`0.4.34` — the SDK of the BB
-that scaffolded this plugin). After `npm install`, the full surface is on disk
+exact version (`0.4.47`) in the workspace catalog, referenced from
+`devDependencies` with `catalog:`. After `pnpm install`, the full surface is on disk
 at:
 
 ```

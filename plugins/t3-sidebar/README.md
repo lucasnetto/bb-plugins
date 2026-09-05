@@ -58,7 +58,7 @@ It never switches branches or resets the checkout.
 ## Develop
 
 ```
-npm install
+pnpm install
 bb plugin install .
 bb plugin dev        # rebuild + reload on save
 ```
@@ -67,8 +67,8 @@ Run checks from the repository root:
 
 ```
 bb plugin build plugins/t3-sidebar
-plugins/t3-sidebar/node_modules/.bin/tsc --noEmit -p plugins/t3-sidebar/tsconfig.json
-node --test plugins/t3-sidebar/tests/*.test.mjs
+pnpm --filter bb-plugin-t3-sidebar typecheck
+pnpm --filter bb-plugin-t3-sidebar test
 ```
 
 ## Multiple linked PRs
