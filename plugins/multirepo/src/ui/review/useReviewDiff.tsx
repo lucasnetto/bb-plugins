@@ -138,6 +138,19 @@ export function useReviewDiff({
   const selectionPath = selection
     ? (items.find((item) => item.id === selection.id)?.fileDiff.name ?? null)
     : null;
+  const allFilesCollapsed = parsed.length > 0 && collapsed.size === parsed.length;
+  const clearSelection = useCallback(() => setSelection(null), []);
+  function selectLines(next: ReviewSelection | null | undefined) {
+    setSelection(next ?? null);
+    if (next) setSelectedPath(items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
+    setNotice("");
+  }
+  function expandAllFiles() {
+    setCollapsed(new Set());
+  }
+  function hasReadablePatch(path: string) {
+    return parsed.some((item) => item.id === path);
+  }
   function toggleAllFiles() {
     setCollapsed(
       collapsed.size === parsed.length ? new Set() : new Set(parsed.map((item) => item.id)),
@@ -170,26 +183,18 @@ export function useReviewDiff({
   }
 
   return {
-    mode,
-    style,
-    setStyle,
-    wrap,
-    setWrap,
-    collapsed,
-    setCollapsed,
-    selection,
-    setSelection,
-    viewer,
-    parsed,
-    items,
-    entries,
-    fullDiffs,
-    options,
-    header,
-    selectionPath,
-    toggleAllFiles,
-    collapseContext,
-    expandContext,
-    reveal,
+    display: {
+      style,
+      setStyle,
+      wrap,
+      setWrap,
+      allFilesCollapsed,
+      toggleAllFiles,
+      collapseContext,
+      expandContext,
+    },
+    selection: { lines: selection, path: selectionPath, selectLines, clear: clearSelection },
+    viewer: { ref: viewer, mode, items, options, header },
+    files: { entries, fullDiffs, hasReadablePatch, reveal, expandAll: expandAllFiles },
   };
 }

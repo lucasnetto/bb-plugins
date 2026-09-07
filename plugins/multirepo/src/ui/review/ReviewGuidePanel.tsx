@@ -21,7 +21,7 @@ export function ReviewGuidePanel({
   guideRequestOpen: boolean;
   setGuideRequestOpen: (open: boolean) => void;
   guide: ReturnType<typeof useGuide>;
-  diff: Pick<ReturnType<typeof useReviewDiff>, "items" | "options" | "selection" | "header">;
+  diff: Pick<ReturnType<typeof useReviewDiff>, "viewer" | "selection">;
   staleGuide: boolean;
   loading: boolean;
   hasChangedFiles: boolean;
@@ -61,17 +61,17 @@ export function ReviewGuidePanel({
       {guide.data ? (
         <GuidedReview
           saved={guide.data}
-          items={diff.items}
+          items={diff.viewer.items}
           stale={staleGuide || loading}
           pending={guide.mutationPending || guide.generation.generating || guide.loading || loading}
           onRequest={() => setGuideRequestOpen(true)}
           onMark={(index, reviewed) => void guide.mark(index, reviewed)}
           selectedPath={selectedPath}
           onSelectPath={setSelectedPath}
-          options={diff.options}
-          selection={diff.selection}
+          options={diff.viewer.options}
+          selection={diff.selection.lines}
           onSelection={onSelection}
-          header={diff.header}
+          header={diff.viewer.header}
         />
       ) : (
         <div className="flex flex-1 flex-col items-start justify-center gap-3 p-6">

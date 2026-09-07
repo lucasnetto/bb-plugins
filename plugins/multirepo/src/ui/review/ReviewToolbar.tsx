@@ -9,7 +9,7 @@ export function ReviewToolbar({
   onToggleTree,
   loading,
   refresh,
-  diff,
+  display,
 }: {
   fileCount: number;
   guideOpen: boolean;
@@ -18,18 +18,7 @@ export function ReviewToolbar({
   onToggleTree: () => void;
   loading: boolean;
   refresh: () => void;
-  diff: Pick<
-    ReturnType<typeof useReviewDiff>,
-    | "style"
-    | "setStyle"
-    | "wrap"
-    | "setWrap"
-    | "expandContext"
-    | "collapseContext"
-    | "toggleAllFiles"
-    | "collapsed"
-    | "parsed"
-  >;
+  display: ReturnType<typeof useReviewDiff>["display"];
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1">
@@ -46,25 +35,25 @@ export function ReviewToolbar({
       </Button>
       <Button
         size="sm"
-        variant={diff.style === "unified" ? "secondary" : "ghost"}
-        aria-pressed={diff.style === "unified"}
-        onClick={() => diff.setStyle("unified")}
+        variant={display.style === "unified" ? "secondary" : "ghost"}
+        aria-pressed={display.style === "unified"}
+        onClick={() => display.setStyle("unified")}
       >
         Unified
       </Button>
       <Button
         size="sm"
-        variant={diff.style === "split" ? "secondary" : "ghost"}
-        aria-pressed={diff.style === "split"}
-        onClick={() => diff.setStyle("split")}
+        variant={display.style === "split" ? "secondary" : "ghost"}
+        aria-pressed={display.style === "split"}
+        onClick={() => display.setStyle("split")}
       >
         Split
       </Button>
       <Button
         size="sm"
-        variant={diff.wrap ? "secondary" : "ghost"}
-        aria-pressed={diff.wrap}
-        onClick={() => diff.setWrap(!diff.wrap)}
+        variant={display.wrap ? "secondary" : "ghost"}
+        aria-pressed={display.wrap}
+        onClick={() => display.setWrap(!display.wrap)}
       >
         Wrap
       </Button>
@@ -79,16 +68,14 @@ export function ReviewToolbar({
       <Button size="sm" variant="ghost" disabled={loading} onClick={refresh}>
         Refresh
       </Button>
-      <Button size="sm" variant="ghost" disabled={loading} onClick={diff.expandContext}>
+      <Button size="sm" variant="ghost" disabled={loading} onClick={display.expandContext}>
         Expand context
       </Button>
-      <Button size="sm" variant="ghost" onClick={diff.collapseContext}>
+      <Button size="sm" variant="ghost" onClick={display.collapseContext}>
         Collapse context
       </Button>
-      <Button size="sm" variant="ghost" onClick={diff.toggleAllFiles}>
-        {diff.parsed.length && diff.collapsed.size === diff.parsed.length
-          ? "Expand all"
-          : "Collapse all"}
+      <Button size="sm" variant="ghost" onClick={display.toggleAllFiles}>
+        {display.allFilesCollapsed ? "Expand all" : "Collapse all"}
       </Button>
     </div>
   );

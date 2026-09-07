@@ -12,10 +12,12 @@ const MARK_ATTR = "data-bb-hide-models";
 
 // The picker strips the provider brand prefix from labels ("GPT-5.6-Sol" →
 // "5.6-Sol"), so accept an exact match or a suffix match.
-const matches = (title: string, entries: readonly CachedEntry[]) => {
+const matchesHiddenModel = (title: string, hiddenModels: readonly CachedEntry[]) => {
   const label = normalize(title);
   if (label.length < 3) return false;
-  return entries.some(({ name }) => name === label || (label.length >= 4 && name.endsWith(label)));
+  return hiddenModels.some(
+    ({ name }) => name === label || (label.length >= 4 && name.endsWith(label)),
+  );
 };
 
 // Provider tabs: `<button title="Codex"><span data-provider-logo="/api/v1/system/providers/<id>/logo…">`;
@@ -38,36 +40,38 @@ const pickerRowOf = (el: Element): { button: HTMLButtonElement; picker: Element 
 };
 
 export function mountHideModels({ signal }: { signal: AbortSignal }) {
-  let entries = readCache();
-  let frame = 0;
-  let lastFetch = 0;
+  let hiddenModels = readCache();
+  let scheduledFrameId = 0;
+  let lastServerRefreshAt = 0;
 
-  const unmark = () => {
+  const restoreHiddenRows = () => {
     document.querySelectorAll<HTMLElement>(`[${MARK_ATTR}]`).forEach((el) => {
       el.removeAttribute(MARK_ATTR);
       el.style.removeProperty("display");
     });
   };
 
-  const apply = () => {
-    frame = 0;
-    if (entries.length === 0) return;
-    const scoped = new Map<Element, CachedEntry[]>();
-    const entriesFor = (picker: Element) => {
-      const cached = scoped.get(picker);
+  const applyHiddenModelVisibility = () => {
+    scheduledFrameId = 0;
+    if (hiddenModels.length === 0) return;
+    const hiddenModelsByPicker = new Map<Element, CachedEntry[]>();
+    const hiddenModelsForPicker = (picker: Element) => {
+      const cached = hiddenModelsByPicker.get(picker);
       if (cached !== undefined) return cached;
       const providerId = activeProviderIdIn(picker);
       // Unknown active provider (markup drift): fall back to every entry.
       const next =
-        providerId === null ? entries : entries.filter((e) => e.providerId === providerId);
-      scoped.set(picker, next);
+        providerId === null
+          ? hiddenModels
+          : hiddenModels.filter((e) => e.providerId === providerId);
+      hiddenModelsByPicker.set(picker, next);
       return next;
     };
     document.querySelectorAll<HTMLElement>("button > span[title]").forEach((span) => {
       const row = pickerRowOf(span);
       if (row === null) return;
       const el = row.button;
-      const shouldHide = matches(span.title, entriesFor(row.picker));
+      const shouldHide = matchesHiddenModel(span.title, hiddenModelsForPicker(row.picker));
       const isHidden = el.hasAttribute(MARK_ATTR);
       if (shouldHide && !isHidden) {
         el.setAttribute(MARK_ATTR, "");
@@ -79,23 +83,23 @@ export function mountHideModels({ signal }: { signal: AbortSignal }) {
     });
   };
 
-  const schedule = () => {
-    if (frame !== 0) return;
-    frame = requestAnimationFrame(apply);
+  const scheduleVisibilityUpdate = () => {
+    if (scheduledFrameId !== 0) return;
+    scheduledFrameId = requestAnimationFrame(applyHiddenModelVisibility);
   };
 
-  const reload = () => {
-    entries = readCache();
-    unmark();
-    schedule();
+  const reloadHiddenModels = () => {
+    hiddenModels = readCache();
+    restoreHiddenRows();
+    scheduleVisibilityUpdate();
   };
 
   // Best-effort server refresh so other clients/windows pick up changes made
   // elsewhere; the localStorage cache is the source the DOM filter reads.
   const refreshFromServer = () => {
     const now = Date.now();
-    if (now - lastFetch < 2_000) return;
-    lastFetch = now;
+    if (now - lastServerRefreshAt < 2_000) return;
+    lastServerRefreshAt = now;
     fetch(`/api/v1/plugins/${PLUGIN_ID}/http/hidden`, {
       credentials: "include",
       signal,
@@ -106,13 +110,13 @@ export function mountHideModels({ signal }: { signal: AbortSignal }) {
         const next = serializeCache(body.hidden);
         if (next === localStorage.getItem(STORAGE_KEY)) return;
         localStorage.setItem(STORAGE_KEY, next);
-        reload();
+        reloadHiddenModels();
       })
       .catch(() => undefined);
   };
 
   const observer = new MutationObserver((records) => {
-    schedule();
+    scheduleVisibilityUpdate();
     const pickerOpened = records.some((record) =>
       Array.from(record.addedNodes).some(
         (node) =>
@@ -131,17 +135,17 @@ export function mountHideModels({ signal }: { signal: AbortSignal }) {
   });
 
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY) reload();
+    if (event.key === STORAGE_KEY) reloadHiddenModels();
   };
   window.addEventListener("storage", onStorage, { signal });
-  window.addEventListener(CHANGED_EVENT, reload, { signal });
+  window.addEventListener(CHANGED_EVENT, reloadHiddenModels, { signal });
 
   refreshFromServer();
-  schedule();
+  scheduleVisibilityUpdate();
 
   return () => {
     observer.disconnect();
-    if (frame !== 0) cancelAnimationFrame(frame);
-    unmark();
+    if (scheduledFrameId !== 0) cancelAnimationFrame(scheduledFrameId);
+    restoreHiddenRows();
   };
 }

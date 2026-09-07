@@ -9,7 +9,7 @@ import { ReviewGuidePanel } from "./ReviewGuidePanel";
 import { ReviewCommentForm } from "./ReviewCommentForm";
 import { useGuide } from "./useGuide";
 import { useReviewData } from "./useReviewData";
-import { useReviewDiff, type ReviewSelection } from "./useReviewDiff";
+import { useReviewDiff } from "./useReviewDiff";
 import { useReviewComposer } from "./useReviewComposer";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
@@ -41,28 +41,22 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
     url,
     detail,
     selectedPath,
-    selection: diff.selection,
-    selectionPath: diff.selectionPath,
-    fullDiffs: diff.fullDiffs,
+    selection: diff.selection.lines,
+    selectionPath: diff.selection.path,
+    fullDiffs: diff.files.fullDiffs,
     setNotice,
     setError,
   });
-  const { setSelection } = diff;
+  const { clear: clearSelection, selectLines } = diff.selection;
   useEffect(() => {
-    setSelection(null);
+    clearSelection();
     setSelectedPath(null);
-  }, [guideOpen, guide.data?.id, setSelection, setSelectedPath]);
+  }, [guideOpen, guide.data?.id, clearSelection, setSelectedPath]);
   function toggleGuide() {
     setGuideOpen(!guideOpen);
-    diff.setCollapsed(new Set());
+    diff.files.expandAll();
   }
-  function selectLines(next: ReviewSelection | null | undefined) {
-    diff.setSelection(next ?? null);
-    if (next)
-      setSelectedPath(diff.items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
-    setNotice("");
-  }
-  const unavailable = selectedPath && !diff.parsed.some((item) => item.id === selectedPath);
+  const unavailable = selectedPath && !diff.files.hasReadablePatch(selectedPath);
   return (
     <section
       aria-label="Pull request code review"
@@ -71,7 +65,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
         {
           "--code-background": "var(--background)",
           "--code-foreground": "var(--foreground)",
-          colorScheme: diff.mode,
+          colorScheme: diff.viewer.mode,
         } as CSSProperties
       }
     >
@@ -105,7 +99,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
         onToggleTree={() => setTreeOpen(!treeOpen)}
         loading={loading}
         refresh={refresh}
-        diff={diff}
+        display={diff.display}
       />
       {error ? (
         <p role="alert" className="px-4 py-2 text-sm text-destructive">
@@ -145,13 +139,13 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
               </div>
             ) : (
               <StyledDiffCodeView
-                viewerRef={diff.viewer}
+                viewerRef={diff.viewer.ref}
                 className="h-full overflow-auto [scrollbar-gutter:stable]"
-                items={diff.items}
-                options={diff.options}
-                selectedLines={diff.selection}
+                items={diff.viewer.items}
+                options={diff.viewer.options}
+                selectedLines={diff.selection.lines}
                 onSelectedLinesChange={selectLines}
-                renderHeaderPrefix={diff.header}
+                renderHeaderPrefix={diff.viewer.header}
               />
             )}
             {!loading && detail?.files.length === 0 ? (
@@ -161,8 +155,8 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           {treeOpen ? (
             <aside className="flex min-h-0 w-[35%] min-w-36 max-w-72 shrink-0 border-l border-border">
               <DiffFileTree
-                entries={diff.entries}
-                onSelectFile={diff.reveal}
+                entries={diff.files.entries}
+                onSelectFile={diff.files.reveal}
                 selectedPath={selectedPath}
                 ariaLabel="Changed files"
               />
@@ -170,12 +164,12 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           ) : null}
         </div>
       ) : null}
-      {diff.selection || draft.comment ? (
+      {diff.selection.lines || draft.comment ? (
         <ReviewCommentForm
           threadId={threadId}
           pullRequestNumber={detail?.pr.number}
           hasDetail={!!detail}
-          hasSelection={!!diff.selection}
+          hasSelection={!!diff.selection.lines}
           loading={loading}
           draft={draft}
         />
@@ -185,8 +179,8 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           className="mr-auto min-w-0 truncate text-xs text-muted-foreground"
           title={selectedPath ?? undefined}
         >
-          {diff.selection
-            ? `${diff.selectionPath} · ${diff.selection.range.start}–${diff.selection.range.end}`
+          {diff.selection.lines
+            ? `${diff.selection.path} · ${diff.selection.lines.range.start}–${diff.selection.lines.range.end}`
             : (selectedPath ?? "Select a file or lines")}
         </span>
         {(["Ask", "Explain", "Fix"] as const).map((action) => (
@@ -200,8 +194,8 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
             {action}
           </Button>
         ))}
-        {diff.selection ? (
-          <Button size="sm" variant="ghost" onClick={() => diff.setSelection(null)}>
+        {diff.selection.lines ? (
+          <Button size="sm" variant="ghost" onClick={diff.selection.clear}>
             Clear selection
           </Button>
         ) : null}
