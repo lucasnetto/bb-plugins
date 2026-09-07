@@ -1,11 +1,11 @@
 import { standardSchema } from "./standard-schema";
 import { Schema } from "effect";
+import { settledContract } from "./settled-contract";
 import { snoozeContract } from "./snooze-contract";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 
 import { projectSettingsContract } from "./project-settings-contract";
 import { projectThreadContract } from "./project-thread-contract";
-export type SettledMap = Record<string, number>;
 
 export const rpcContract = defineRpcContract({
   ...snoozeContract,
@@ -47,19 +47,5 @@ export const rpcContract = defineRpcContract({
     input: standardSchema(Schema.Struct({ projectId: Schema.String.check(Schema.isMinLength(1)) })),
     output: standardSchema(Schema.Null),
   },
-  settled_list: {
-    input: standardSchema(Schema.Null),
-    output: standardSchema(Schema.Struct({ settled: Schema.Record(Schema.String, Schema.Finite) })),
-  },
-  settled_set: {
-    input: standardSchema(
-      Schema.Struct({
-        threadIds: Schema.mutable(Schema.Array(Schema.String.check(Schema.isMinLength(1))))
-          .check(Schema.isMinLength(1))
-          .check(Schema.isMaxLength(500)),
-        settled: Schema.Boolean,
-      }),
-    ),
-    output: standardSchema(Schema.Struct({ settled: Schema.Record(Schema.String, Schema.Finite) })),
-  },
+  ...settledContract,
 });

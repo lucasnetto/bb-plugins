@@ -1,8 +1,8 @@
+import { mergeSettledHistory } from "@/ui/lib/settled-history";
 import { ProjectScopePicker } from "./ProjectScopePicker";
 import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
 import { useSidebarClock } from "@/ui/hooks/useSidebarClock";
-import { useSettledMap } from "@/ui/hooks/useSettledMap";
-import { useSettledReconciliation } from "@/ui/hooks/useSettledReconciliation";
+import { useSettledThreads } from "@/ui/hooks/useSettledThreads";
 import { useSnoozedMap } from "@/ui/lib/use-snoozed-map";
 import type { SidebarSection } from "@/ui/lib/sidebar-logic";
 import { ProjectDialog } from "./ProjectDialog";
@@ -14,7 +14,6 @@ import {
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreads,
   useBbNavigate,
-  useSettings,
 } from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@/ui/components/ui/tooltip";
 import { Icon } from "@/ui/components/ui/icon";
@@ -22,7 +21,6 @@ import { cn } from "@/ui/lib/utils";
 import {
   SETTLED_TAIL_INITIAL_COUNT,
   SETTLED_TAIL_PAGE_COUNT,
-  parseAutoSettleMs,
   partitionThreads,
   settledTimestamp,
   visibleSettledThreads,
@@ -73,11 +71,20 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const [projectDialog, setProjectDialog] = useState(false);
   const navigate = useBbNavigate();
   const { activeThreadId, onNavigate } = props;
-  const { status, threads, projects } = experimental_useSidebarThreads();
+  const { status, threads: liveThreads, projects } = experimental_useSidebarThreads();
   const hostActions = experimental_useSidebarThreadActions();
   const { providers } = experimental_useProviders();
-  const settings = useSettings();
-  const { settled: settledAt, set: setSettled } = useSettledMap();
+  const { archivedThreads, set: setSettled, refetch } = useSettledThreads();
+  // Native unarchive/rename actions also invalidate the host sidebar query.
+  useEffect(refetch, [liveThreads, refetch]);
+  const threads = useMemo(
+    () => mergeSettledHistory(liveThreads, archivedThreads),
+    [liveThreads, archivedThreads],
+  );
+  const archivedIds = useMemo(
+    () => new Set(archivedThreads.map((thread) => thread.id)),
+    [archivedThreads],
+  );
   const { snoozed, set: setSnoozed } = useSnoozedMap();
   const nowMs = useSidebarClock(snoozed);
   const [snoozedExpanded, setSnoozedExpanded] = useLocalStorageState(
@@ -98,22 +105,16 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     setSettledVisibleCount(SETTLED_TAIL_INITIAL_COUNT);
   }, [effectiveScope]);
 
-  const autoSettleMs = parseAutoSettleMs(settings.values?.autoSettleAfter);
-
   const partition = useMemo(
     () =>
       partitionThreads({
         threads,
-        settledAt,
         snoozed,
         scopeProjectId: effectiveScope,
-        autoSettleMs,
         nowMs,
       }),
-    [autoSettleMs, effectiveScope, nowMs, settledAt, snoozed, threads],
+    [effectiveScope, nowMs, snoozed, threads],
   );
-
-  useSettledReconciliation(partition.staleSettledIds, settledAt, setSettled);
 
   const { rows: settledRows, hiddenCount: hiddenSettledCount } = useMemo(
     () =>
@@ -144,18 +145,20 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const rowActions = useMemo<ThreadRowActions>(
     () => ({
       open: (threadId, options) => {
-        hostActions.open(threadId, options);
+        if (archivedIds.has(threadId)) navigate.toThread(threadId);
+        else hostActions.open(threadId, options);
         onNavigate();
       },
       setPinned: (threadId, pinned) => void hostActions.setPinned(threadId, pinned),
       setRead: (threadId, read) => void hostActions.setRead(threadId, read),
-      rename: (threadId, title) => void hostActions.rename(threadId, title),
-      archive: (threadId) => hostActions.archive(threadId),
+      rename: (threadId, title) => {
+        void hostActions.rename(threadId, title).then(refetch);
+      },
       requestDelete: (threadId) => hostActions.requestDelete(threadId),
       setSnoozed,
-      setSettled: (threadId, value) => setSettled([threadId], value),
+      setSettled,
     }),
-    [hostActions, onNavigate, setSettled, setSnoozed],
+    [hostActions, onNavigate, setSettled, setSnoozed, archivedIds, navigate, refetch],
   );
 
   const renderRow = (thread: PluginSidebarThread, section: SidebarSection) => (
@@ -166,7 +169,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       isActive={thread.id === activeThreadId}
       projectName={projectNameById.get(thread.projectId) ?? null}
       provider={providerById.get(thread.providerId) ?? null}
-      timeAnchorMs={section === "settled" ? settledTimestamp(thread, settledAt) : thread.updatedAt}
+      timeAnchorMs={section === "settled" ? settledTimestamp(thread) : thread.updatedAt}
       snoozedUntil={section === "snoozed" ? snoozed[thread.id]?.until : undefined}
       nowMs={nowMs}
       actions={rowActions}

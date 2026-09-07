@@ -29,7 +29,6 @@ export interface ThreadRowActions {
   setPinned: (threadId: string, pinned: boolean) => void;
   setRead: (threadId: string, read: boolean) => void;
   rename: (threadId: string, title: string) => void;
-  archive: (threadId: string) => void;
   requestDelete: (threadId: string) => void;
   setSnoozed: (threadId: string, until: number | null) => void;
   setSettled: (threadId: string, settled: boolean) => void;
@@ -147,7 +146,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     onClick: handleClick,
     onDoubleClick: handleDoubleClick,
     onKeyDown: handleKeyDown,
-    ...splitProps,
+    ...(thread.isArchived ? {} : splitProps),
   };
 
   const layout = isCard ? (

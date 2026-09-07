@@ -32,7 +32,8 @@ export function ThreadContextMenu({
 }) {
   const renameAfterClose = useRef(false);
   const isSnoozed = section === "snoozed";
-  const canSnooze = !thread.hasPendingInteraction && thread.indicator !== "waiting-for-input";
+  const canSnooze =
+    !thread.isArchived && !thread.hasPendingInteraction && thread.indicator !== "waiting-for-input";
   const snoozeMenu = useThreadSnoozeMenu((until) => actions.setSnoozed(thread.id, until));
   return (
     <ContextMenu onOpenChange={snoozeMenu.onOpenChange}>
@@ -48,16 +49,22 @@ export function ThreadContextMenu({
         }}
       >
         <ContextMenuItem onSelect={() => actions.open(thread.id)}>Open</ContextMenuItem>
-        {splitAvailable ? (
+        {splitAvailable && !thread.isArchived ? (
           <ContextMenuItem onSelect={() => actions.open(thread.id, { split: true })}>
             Open in split
           </ContextMenuItem>
         ) : null}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => actions.setPinned(thread.id, !thread.isPinned)}>
+        <ContextMenuItem
+          disabled={thread.isArchived}
+          onSelect={() => actions.setPinned(thread.id, !thread.isPinned)}
+        >
           {thread.isPinned ? "Unpin" : "Pin"}
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => actions.setRead(thread.id, thread.isUnread)}>
+        <ContextMenuItem
+          disabled={thread.isArchived}
+          onSelect={() => actions.setRead(thread.id, thread.isUnread)}
+        >
           {thread.isUnread ? "Mark read" : "Mark unread"}
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => actions.setSettled(thread.id, section !== "settled")}>
@@ -90,8 +97,8 @@ export function ThreadContextMenu({
           Rename
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => actions.archive(thread.id)}>Archive</ContextMenuItem>
         <ContextMenuItem
+          disabled={thread.isArchived}
           className="text-destructive focus:text-destructive"
           onSelect={() => actions.requestDelete(thread.id)}
         >

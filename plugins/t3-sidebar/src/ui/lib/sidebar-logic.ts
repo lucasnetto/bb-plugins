@@ -143,32 +143,13 @@ export function formatCompactTime(timestampMs: number, nowMs: number): string {
   });
 }
 
-// ── Auto-settle setting ──────────────────────────────────────────────
-const AUTO_SETTLE_MS: Record<string, number> = {
-  Never: 0,
-  "1 hour": HOUR,
-  "6 hours": 6 * HOUR,
-  "1 day": DAY,
-  "3 days": 3 * DAY,
-  "1 week": 7 * DAY,
-};
-
-/** 0 means disabled. Unknown values fall back to the default (1 day). */
-export function parseAutoSettleMs(value: unknown): number {
-  return typeof value === "string" && value in AUTO_SETTLE_MS ? AUTO_SETTLE_MS[value]! : DAY;
-}
-
 // ── Partition ────────────────────────────────────────────────────────
 export type SidebarSection = "pinned" | "active" | "settled" | "snoozed";
 
 export interface PartitionInput<T extends PluginSidebarThread> {
   threads: readonly T[];
-  /** threadId → settledAt (epoch ms). */
-  settledAt: Readonly<Record<string, number>>;
-  /** Restrict to one project; null shows every project. */
   snoozed?: Readonly<SnoozedMap>;
   scopeProjectId: string | null;
-  autoSettleMs: number;
   nowMs: number;
 }
 
@@ -177,115 +158,41 @@ export interface Partition<T extends PluginSidebarThread> {
   active: T[];
   settled: T[];
   snoozed: T[];
-  /**
-   * Explicitly settled threads that woke back up (new attention, unread, or
-   * live work). They render as active; the caller should clear their entry
-   * so they don't silently re-settle once they go quiet again.
-   */
-  staleSettledIds: string[];
 }
 
-/** A settled thread un-settles the moment it needs the user again. */
-export function isSettledEntryStale(
-  thread: Pick<
-    PluginSidebarThread,
-    "isUnread" | "latestAttentionAt" | "indicator" | "hasPendingInteraction" | "activity"
-  >,
-  settledAtMs: number,
-): boolean {
-  return (
-    thread.isUnread ||
-    thread.latestAttentionAt > settledAtMs ||
-    resolveThreadStatus(thread) !== "ready"
-  );
-}
-
-function qualifiesForAutoSettle(
-  thread: PluginSidebarThread,
-  autoSettleMs: number,
-  nowMs: number,
-): boolean {
-  if (autoSettleMs <= 0 || thread.isUnread || thread.isPinned) return false;
-  if (resolveThreadStatus(thread) !== "ready") return false;
-  const lastTouch = Math.max(thread.latestAttentionAt, thread.updatedAt);
-  return nowMs - lastTouch >= autoSettleMs;
-}
-
-/** Classify one visible thread. Snooze and settlement timestamps decide which user action wins. */
 export function classifyThread(
   thread: PluginSidebarThread,
-  input: Pick<
-    PartitionInput<PluginSidebarThread>,
-    "snoozed" | "settledAt" | "autoSettleMs" | "nowMs"
-  >,
-): { section: SidebarSection; clearSettlement: boolean } {
+  input: Pick<PartitionInput<PluginSidebarThread>, "snoozed" | "nowMs">,
+): SidebarSection {
+  if (thread.isArchived) return "settled";
   const snooze = input.snoozed?.[thread.id];
-  const storedSettledAt = input.settledAt[thread.id];
-  const snoozeTakesPrecedence =
-    snooze !== undefined && (storedSettledAt === undefined || snooze.at > storedSettledAt);
-
   if (
-    snoozeTakesPrecedence &&
+    snooze &&
     snooze.until > input.nowMs &&
     !thread.hasPendingInteraction &&
     thread.indicator !== "waiting-for-input"
-  ) {
-    return { section: "snoozed", clearSettlement: false };
-  }
-
-  const activeSection = thread.isPinned ? "pinned" : "active";
-  // A newer snooze supersedes the old settlement even after its deadline.
-  if (!snoozeTakesPrecedence && storedSettledAt !== undefined) {
-    return isSettledEntryStale(thread, storedSettledAt)
-      ? { section: activeSection, clearSettlement: true }
-      : { section: "settled", clearSettlement: false };
-  }
-
-  // An expired reminder must be read before inactivity can settle it again.
-  const awaitingReminderRead = snoozeTakesPrecedence && (thread.lastReadAt ?? 0) < snooze.until;
-  const inactivityThread = snoozeTakesPrecedence
-    ? { ...thread, updatedAt: Math.max(thread.updatedAt, snooze.until) }
-    : thread;
-  if (
-    !awaitingReminderRead &&
-    qualifiesForAutoSettle(inactivityThread, input.autoSettleMs, input.nowMs)
-  ) {
-    return { section: "settled", clearSettlement: false };
-  }
-  return { section: activeSection, clearSettlement: false };
+  )
+    return "snoozed";
+  return thread.isPinned ? "pinned" : "active";
 }
 
 export function partitionThreads<T extends PluginSidebarThread>(
   input: PartitionInput<T>,
 ): Partition<T> {
-  const visible = input.threads.filter(
-    (thread) =>
-      !thread.isArchived &&
-      (input.scopeProjectId === null || thread.projectId === input.scopeProjectId),
-  );
-  const pinned: T[] = [];
-  const active: T[] = [];
-  const settled: T[] = [];
-  const snoozed: T[] = [];
-  const staleSettledIds: string[] = [];
-
-  const sections = { pinned, active, settled, snoozed };
-  for (const thread of visible) {
-    const classification = classifyThread(thread, input);
-    if (classification.clearSettlement) staleSettledIds.push(thread.id);
-    sections[classification.section].push(thread);
+  const sections: Partition<T> = { pinned: [], active: [], settled: [], snoozed: [] };
+  for (const thread of input.threads) {
+    if (input.scopeProjectId !== null && thread.projectId !== input.scopeProjectId) continue;
+    sections[classifyThread(thread, input)].push(thread);
   }
-
   return {
-    pinned: sortByCreated(pinned),
-    active: sortByCreated(active),
-    settled: sortSettled(settled, input.settledAt),
-    snoozed: [...snoozed].sort(
+    pinned: sortByCreated(sections.pinned),
+    active: sortByCreated(sections.active),
+    settled: sortSettled(sections.settled),
+    snoozed: sections.snoozed.sort(
       (a, b) =>
         (input.snoozed?.[a.id]?.until ?? 0) - (input.snoozed?.[b.id]?.until ?? 0) ||
         a.id.localeCompare(b.id),
     ),
-    staleSettledIds,
   };
 }
 
@@ -302,19 +209,19 @@ export function sortByCreated<T extends Pick<PluginSidebarThread, "id" | "create
 
 /** Settled rows are history: order by when the work ended, not when it began. */
 export function settledTimestamp(
-  thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "updatedAt">,
-  settledAt: Readonly<Record<string, number>>,
+  thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "updatedAt"> & {
+    archivedAt?: number;
+  },
 ): number {
-  return settledAt[thread.id] ?? Math.max(thread.latestAttentionAt, thread.updatedAt);
+  return thread.archivedAt ?? Math.max(thread.latestAttentionAt, thread.updatedAt);
 }
 
 export function sortSettled<
   T extends Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "updatedAt">,
->(threads: readonly T[], settledAt: Readonly<Record<string, number>>): T[] {
+>(threads: readonly T[]): T[] {
   return [...threads].sort(
     (left, right) =>
-      settledTimestamp(right, settledAt) - settledTimestamp(left, settledAt) ||
-      left.id.localeCompare(right.id),
+      settledTimestamp(right) - settledTimestamp(left) || left.id.localeCompare(right.id),
   );
 }
 

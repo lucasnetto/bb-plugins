@@ -14,10 +14,18 @@ t3code's inbox model:
 - **Status vocabulary** (t3code hues): `Working` (sky), `Monitoring` (sky),
   `Input` (indigo), `Plan Ready` (violet), `Failed` (red), `Done` (emerald,
   unread only). Read, idle threads recede.
-- **Settled shelf.** Finished work you park (hover a card → _Settle_, or the
-  context menu) collapses into slim rows under a collapsible `Settled (n)`
-  header, sorted by when it wrapped up, paged 10 / +25. Hover a slim row to
-  un-settle. A settled thread wakes on its own when it needs you again.
+- **Settled shelf.** Settled means archived in BB. _Settle_ archives the thread,
+  ends its active work through BB's lifecycle, and requests managed-worktree
+  cleanup when no live threads use the environment. All visible archived
+  threads appear in the shelf, including threads archived outside this plugin.
+  Rows sort by BB's archive timestamp, paged 10 / +25. _Un-settle_ unarchives
+  the thread. It does not recreate a removed worktree; conversations whose
+  environments are gone remain read-only. There is no separate Archive action,
+  settlement map, automatic wake-up, or inactivity-based settlement. Use Snooze
+  for a temporary pause. Native archive/delete controls remain available from
+  the open conversation.
+  Legacy plugin-only settlement entries are ignored: unarchived threads return
+  to the active list on upgrade, without a bulk archive or cleanup operation.
 - **Snooze.** Hover a card or right-click → _Snooze_: 1 hour, 3 hours,
   this evening (18:00), tomorrow (09:00), or next Monday (09:00), in your
   local timezone. The evening option disappears when it is less than an hour away.
@@ -28,12 +36,9 @@ t3code's inbox model:
   or queued work cannot be snoozed. Settling a snoozed thread parks it instead.
   Wake times persist across reloads and restarts, sync across clients, and
   are checked when the sidebar opens or regains focus. Expired reminders
-  stay in the inbox until read before auto-settle can apply again.
-- **Auto-settle** — _Settings → Plugins → T3 Sidebar_: read, idle threads
-  with no new attention for 1h / 6h / 1 day / 3 days / 1 week (or Never)
-  settle without a click. Pinned threads never auto-settle.
+  return to the active list.
 - Right-click menu: open, open in split, pin, read/unread, settle, rename
-  (also double-click / F2), archive, delete. Cmd/Ctrl-click opens in a split;
+  (also double-click / F2), delete. Cmd/Ctrl-click opens in a split;
   rows can be dragged out to split. Host keyboard shortcuts keep working.
 
 Pick it under **Settings → Appearance → Sidebar** if another list is pinned.
@@ -58,8 +63,8 @@ It never switches branches or resets the checkout.
 
 ## Layout
 
-- `src/server/server.ts` — the settled map (`threadId → settledAt`) in `bb.storage.kv`,
-  its RPCs, realtime signal, and auto-settle setting.
+- `src/server/lib/settled.ts` — BB archive/unarchive RPCs, archived-history listing,
+  and lifecycle refresh signals.
 - `src/server/lib/snooze.ts` — persisted snooze state, validated RPCs, and early-wake events.
 - `src/ui/lib/sidebar-logic.ts` — pure logic ported from t3code's
   `Sidebar.logic.ts`: status resolution, partition, sorting, shelf paging.
@@ -93,7 +98,7 @@ Tooltips show the last fetched status. Threads without manual links keep BB's br
 The sidebar batches link reads through Multirepo's public local-auth HTTP
 endpoint, reconciles on focus/reconnect, and listens to its documented
 `bb:multirepo:links-changed` invalidation event. No BB DOM selectors or internal
-state are used. Existing inactivity settlement is unchanged.
+state are used.
 
 PR navigation uses the one-use sessionStorage request and browser event
 `bb:multirepo:open-review` documented in Multirepo’s README.
@@ -102,7 +107,7 @@ PR navigation uses the one-use sessionStorage request and browser event
 
 Project settings, settled-thread updates and auto-pull use Effect v4. Settings
 updates serialize per project using scoped, reference-counted semaphores;
-settled updates serialize their read/write operation. Managed runtimes are
+settlement delegates directly to BB’s native archive/unarchive lifecycle. Managed runtimes are
 owned by plugin disposal. BB retains ownership of the five-minute auto-pull
 schedule; overlapping passes are skipped and cancellation reaches host Git
 commands. The clean/default-branch checks before and after fetch remain in

@@ -26,9 +26,8 @@ test("context menu snoozes a thread; shelf can wake it without navigating", asyn
     },
     {
       sidebarThreads: { status: "ready", threads: [thread], projects: [] },
-      settings: { autoSettleAfter: "Never" },
       rpc: {
-        settled_list: () => ({ settled: {} }),
+        settled_list: () => ({ archivedThreads: [] }),
         snoozed_list: () => ({ snoozed }),
         snoozed_set: async (input) => {
           const result = await snoozeContract.snoozed_set.input["~standard"].validate(input);

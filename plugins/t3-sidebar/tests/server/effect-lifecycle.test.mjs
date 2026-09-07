@@ -7,22 +7,6 @@ import hostEntry from "../../src/server/host";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { PullGit, PullError, pullCleanDefaultBranch } from "../../src/server/lib/project-auto-pull";
 
-test("settled updates preserve concurrent changes", async () => {
-  const { bb, harness } = createFakePluginHost({ pluginId: "t3-sidebar" });
-  try {
-    await plugin(bb);
-    await Promise.all(
-      ["one", "two", "three"].map((id) =>
-        harness.behavior.callRpc("settled_set", { threadIds: [id], settled: true }),
-      ),
-    );
-    const result = await harness.behavior.callRpc("settled_list", null);
-    assert.deepEqual(Object.keys(result.settled).sort(), ["one", "three", "two"]);
-  } finally {
-    await harness.lifecycle.dispose();
-  }
-});
-
 test("auto-pull skips disabled/offline sources, isolates failures, and cancels on disposal", async () => {
   const ready = Promise.withResolvers();
   let calls = 0;

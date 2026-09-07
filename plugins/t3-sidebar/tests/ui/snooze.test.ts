@@ -3,32 +3,23 @@ import { thread } from "./thread-fixture";
 import { partitionThreads } from "../../src/ui/lib/sidebar-logic";
 import { snoozePresets } from "../../src/ui/lib/snooze";
 
-test("snooze overrides pins and old settlement; expiry stays visible until read", () => {
+test("snooze overrides pins and expiry restores the active section", () => {
   const input = {
     threads: [{ ...thread, isPinned: true }],
-    settledAt: { one: 10 },
     snoozed: { one: { at: 20, until: 100 } },
     scopeProjectId: null,
-    autoSettleMs: 10,
     nowMs: 50,
   };
   expect(partitionThreads(input).snoozed).toHaveLength(1);
   expect(partitionThreads({ ...input, nowMs: 100 }).pinned).toHaveLength(1);
-  const expired = { ...input, threads: [thread], nowMs: 200 };
-  expect(partitionThreads(expired).active).toHaveLength(1);
-  expect(
-    partitionThreads({ ...expired, threads: [{ ...thread, lastReadAt: 150 }] }).settled,
-  ).toHaveLength(1);
-  expect(partitionThreads({ ...input, settledAt: { one: 30 } }).settled).toHaveLength(1);
+  expect(partitionThreads({ ...input, threads: [thread], nowMs: 200 }).active).toHaveLength(1);
 });
 
 test("running completion stays snoozed, pending input is visible, scopes and archives hold", () => {
   const input = {
     threads: [thread],
-    settledAt: {},
     snoozed: { one: { at: 20, until: 100 } },
     scopeProjectId: null,
-    autoSettleMs: 0,
     nowMs: 50,
   };
   expect(
@@ -64,15 +55,12 @@ test("presets use local calendar days and next Monday, and omit near/past evenin
   ).toBe(true);
 });
 
-test("new attention clears an explicit settlement without immediately auto-settling again", () => {
+test("idle time never settles a live thread", () => {
   const result = partitionThreads({
-    threads: [{ ...thread, latestAttentionAt: 20, isPinned: true }],
-    settledAt: { one: 10 },
+    threads: [thread],
     scopeProjectId: null,
-    autoSettleMs: 1,
-    nowMs: 100,
+    nowMs: Number.MAX_SAFE_INTEGER,
   });
-  expect(result.pinned.map(({ id }) => id)).toEqual(["one"]);
+  expect(result.active).toEqual([thread]);
   expect(result.settled).toEqual([]);
-  expect(result.staleSettledIds).toEqual(["one"]);
 });

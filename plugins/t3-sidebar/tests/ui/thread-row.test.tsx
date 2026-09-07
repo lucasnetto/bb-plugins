@@ -14,7 +14,6 @@ async function renderRow() {
     setPinned: vi.fn(),
     setRead: vi.fn(),
     rename: vi.fn(),
-    archive: vi.fn(),
     requestDelete: vi.fn(),
     setSnoozed: vi.fn(),
     setSettled: vi.fn(),
