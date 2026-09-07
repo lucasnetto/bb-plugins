@@ -9,7 +9,7 @@ The plugin uses that project's default local source and its owning machine.
 
 - **Repos** in the sidebar: search repositories, select one, then browse Changes, Files, or Pull requests.
 - **Repos** in a thread's panel Actions: the same configured umbrella workspace beside the conversation.
-- **PR inbox** in the sidebar: open PRs across discovered GitHub repositories, with repository/title/number filtering.
+- **Pull requests** in the sidebar is provided by the PR Review plugin, with Created by me and Review requested views across GitHub.
 - Select a changed file to read its staged or working-tree diff. Untracked files open as source. **Open file** uses bb's native file preview and editor actions.
 - Select a PR to inspect its files and click **Start review** to create a review thread in the umbrella checkout. The prompt identifies the exact nested repo and PR, and tells the agent to preserve the shared checkout and report findings without posting to GitHub.
 - **Refresh** reloads repository state and the current view. This version uses explicit refresh, not background filesystem watching.
@@ -94,8 +94,7 @@ checkout match is treated as unavailable. This version supports github.com URLs.
 
 PR status is fetched when linking or refreshing a review. The list and
 sidebar show the last fetched state. There is no background GitHub polling,
-PR-based settlement, automatic linking, or posting to GitHub. The original
-workspace PR inbox still has its separate Start review action; linked PR reviews stay in their owning thread.
+PR-based settlement, automatic linking, or posting to GitHub. The repository Pull requests tab has a separate Start review action; linked PR reviews stay in their owning thread.
 
 T3 Sidebar reads the public, locally authenticated
 `POST /api/v1/plugins/multirepo/http/linked-prs` endpoint with `{ threadIds }`.

@@ -50,15 +50,16 @@ test("repository navigation loads the selected change and preserves its explicit
     slot.lifecycle.unmount();
   }
 });
-test("PR inbox loads file patches and navigates to the launched review thread", async () => {
+test("repository PR tab loads file patches and navigates to the launched review thread", async () => {
   const app = await loadPluginApp(() => import("../../src/ui/app"));
   const slot = renderSlot(
-    app.navPanels.find((p) => p.id === "pr-inbox")!,
+    app.navPanels.find((p) => p.id === "repos")!,
     { subPath: "" },
     {
       rpc: {
         workspace: () => workspace,
         discover: () => repos,
+        changes: () => [],
         prs: () => [pr],
         prFiles: () => [
           {
@@ -72,6 +73,12 @@ test("PR inbox loads file patches and navigates to the launched review thread", 
     },
   );
   try {
+    expect(app.navPanels.map((panel) => panel.id)).toEqual(["repos"]);
+    fireEvent.click(await slot.findByRole("button", { name: /api main/ }));
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Pull requests" }), {
+      button: 0,
+      ctrlKey: false,
+    });
     fireEvent.click(await slot.findByRole("button", { name: /Fix validation/ }));
     await slot.findByRole("button", { name: "file.ts" });
     fireEvent.click(await slot.findByRole("button", { name: "Start review" }));

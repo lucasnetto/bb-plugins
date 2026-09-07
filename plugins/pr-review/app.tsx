@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useList } from "./use-list";
+import { useId, useRef, useState } from "react";
 import { definePluginApp, useRpc, useBbNavigate, UrlLink } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { rpcContract, View, ListResult } from "./contract";
+import type { rpcContract, View } from "./contract";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Badge } from "./components/ui/badge";
@@ -10,47 +11,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 function PullRequestList({ view }: { view: View }) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
-  const [result, setResult] = useState<ListResult | null>(null);
-  const [page, setPage] = useState(1);
-  const [revision, setRevision] = useState(0);
+  const { result, fetchedAt, error, loading, showLoading, refresh } = useList(view);
   const [query, setQuery] = useState("");
   const [repository, setRepository] = useState("");
   const groupId = useId();
   const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(() => new Set());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const reviewing = useRef(false);
-  useEffect(() => {
-    let disposed = false;
-    setLoading(true);
-    setError("");
-    rpc.call("list", { view, page }).then(
-      (data) => {
-        if (disposed) return;
-        setResult((previous) => ({
-          ...data,
-          rows:
-            page === 1
-              ? data.rows
-              : [
-                  ...new Map(
-                    [...(previous?.rows ?? []), ...data.rows].map((pr) => [pr.url, pr]),
-                  ).values(),
-                ],
-        }));
-        setLoading(false);
-      },
-      (reason: unknown) => {
-        if (disposed) return;
-        setError(String(reason));
-        setLoading(false);
-      },
-    );
-    return () => {
-      disposed = true;
-    };
-  }, [rpc, view, page, revision]);
 
   async function review(url: string) {
     if (reviewing.current) return;
@@ -118,16 +85,7 @@ function PullRequestList({ view }: { view: View }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={() => {
-              setPage(1);
-              setResult(null);
-              setRevision((v) => v + 1);
-            }}
-          >
+          <Button variant="outline" size="sm" disabled={loading} onClick={() => void refresh(true)}>
             Refresh
           </Button>
           <span className="text-xs text-muted-foreground" role="status">
@@ -142,8 +100,9 @@ function PullRequestList({ view }: { view: View }) {
           </p>
           {error ? (
             <div role="alert" className="mb-4 text-sm text-destructive">
-              {error}{" "}
-              <Button variant="outline" size="sm" onClick={() => setRevision((v) => v + 1)}>
+              {error}
+              {fetchedAt ? ` · Last updated ${new Date(fetchedAt).toLocaleString()}` : ""}{" "}
+              <Button variant="outline" size="sm" onClick={() => void refresh(true)}>
                 Retry
               </Button>
               <p className="mt-2 text-muted-foreground">
@@ -244,18 +203,19 @@ function PullRequestList({ view }: { view: View }) {
               </p>
             </div>
           ) : null}
-          {loading ? (
+          {loading && showLoading ? (
             <p role="status" className="py-8 text-center text-sm text-muted-foreground">
               Loading pull requests…
             </p>
           ) : null}
+          {loading && result ? (
+            <p role="status" className="py-2 text-sm text-muted-foreground">
+              Updating pull requests…
+            </p>
+          ) : null}
           {result?.nextPage && !error ? (
             <div className="py-4 text-center">
-              <Button
-                variant="outline"
-                disabled={loading}
-                onClick={() => setPage(result.nextPage ?? 1)}
-              >
+              <Button variant="outline" disabled={loading} onClick={() => void refresh(true, true)}>
                 Load more
               </Button>
             </div>

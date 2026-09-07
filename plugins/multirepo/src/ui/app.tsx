@@ -6,9 +6,6 @@ import { Workspace } from "./workspace/Workspace";
 function ReposPage() {
   return <Workspace />;
 }
-function InboxPage() {
-  return <Workspace initialView="prs" />;
-}
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "guide-model",
@@ -42,13 +39,6 @@ export default definePluginApp((app) => {
     icon: "FolderGit2",
     path: "repos",
     component: ReposPage,
-  });
-  app.slots.navPanel({
-    id: "pr-inbox",
-    title: "PR inbox",
-    icon: "GitPullRequest",
-    path: "prs",
-    component: InboxPage,
   });
   app.slots.threadPanelAction({
     id: "repos",

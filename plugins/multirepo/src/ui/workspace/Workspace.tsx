@@ -56,7 +56,7 @@ function RepositoryView({
     </Tabs>
   );
 }
-export function Workspace({ initialView = "repos" }: { initialView?: "repos" | "prs" }) {
+export function Workspace() {
   const rpc = useRpc<typeof rpcContract>();
   const [revision, setRevision] = useState(0);
   const [query, setQuery] = useState("");
@@ -96,65 +96,61 @@ export function Workspace({ initialView = "repos" }: { initialView?: "repos" | "
           <ErrorMessage message={state.error} />
         </div>
       ) : state.data ? (
-        initialView === "prs" ? (
-          <PullRequests repos={state.data.repos} revision={revision} />
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <aside
-              aria-label="Repositories"
-              className="max-h-64 shrink-0 overflow-auto border-b border-border p-3 md:max-h-none md:w-60 md:border-b-0 md:border-r"
-            >
-              <Input
-                aria-label="Filter repositories"
-                placeholder="Find a repository…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <div className="mt-3 flex flex-col gap-1">
-                {state.data.repos
-                  .filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
-                  .map((r) => (
-                    <button
-                      key={r.name}
-                      onClick={() => setSelected(r.name)}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded p-2 text-left hover:bg-accent",
-                        selected === r.name && "bg-accent",
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{r.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {r.error ? "Unavailable" : r.branch}
-                        </p>
-                      </div>
-                      {r.changes ? <Badge variant="secondary">{r.changes}</Badge> : null}
-                    </button>
-                  ))}
-              </div>
-            </aside>
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {repo ? (
-                repo.error ? (
-                  <ErrorMessage message={repo.error} />
-                ) : (
-                  <RepositoryView
-                    key={repo.name}
-                    repo={repo}
-                    root={state.data.workspace.root}
-                    hostId={state.data.workspace.hostId}
-                    revision={revision}
-                  />
-                )
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <aside
+            aria-label="Repositories"
+            className="max-h-64 shrink-0 overflow-auto border-b border-border p-3 md:max-h-none md:w-60 md:border-b-0 md:border-r"
+          >
+            <Input
+              aria-label="Filter repositories"
+              placeholder="Find a repository…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="mt-3 flex flex-col gap-1">
+              {state.data.repos
+                .filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
+                .map((r) => (
+                  <button
+                    key={r.name}
+                    onClick={() => setSelected(r.name)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 rounded p-2 text-left hover:bg-accent",
+                      selected === r.name && "bg-accent",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{r.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {r.error ? "Unavailable" : r.branch}
+                      </p>
+                    </div>
+                    {r.changes ? <Badge variant="secondary">{r.changes}</Badge> : null}
+                  </button>
+                ))}
+            </div>
+          </aside>
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {repo ? (
+              repo.error ? (
+                <ErrorMessage message={repo.error} />
               ) : (
-                <Blank
-                  title={state.data.repos.length ? "Choose a repository" : "No repositories found"}
-                  description="Browse files, inspect changes, or review a pull request."
+                <RepositoryView
+                  key={repo.name}
+                  repo={repo}
+                  root={state.data.workspace.root}
+                  hostId={state.data.workspace.hostId}
+                  revision={revision}
                 />
-              )}
-            </main>
-          </div>
-        )
+              )
+            ) : (
+              <Blank
+                title={state.data.repos.length ? "Choose a repository" : "No repositories found"}
+                description="Browse files, inspect changes, or review a pull request."
+              />
+            )}
+          </main>
+        </div>
       ) : null}
     </div>
   );

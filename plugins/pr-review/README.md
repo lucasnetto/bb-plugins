@@ -5,6 +5,7 @@ A GitHub PR page inspired by [t3code's pull requests page](https://github.com/pi
 - **Created by me** is the default: all open PRs authored by the current GitHub user, including drafts.
 - **Review requested** includes open requests to the user and their teams. GitHub's `review-requested:USERNAME` qualifier resolves team membership; no separate organization-membership scan is needed. Completed review requests disappear according to GitHub's search semantics.
 - Results span accessible GitHub repositories, ordered by update time. Load more fetches 50 at a time. The text filter searches loaded results. GitHub's partial results and 1,000-result cap are disclosed.
+- Lists are persisted in SQLite per workspace, machine, and view. Opening the page reads the saved snapshot; GitHub refreshes in the background when it is over 60 seconds old. Manual Refresh bypasses that window. Realtime notifications update open pages, and failed refreshes keep the last successful list visible. Loaded pages are refreshed together so closed PRs disappear without retaining stale pagination.
 - **Review in thread** invokes Multirepo's `reviewUrl` RPC, creates a review thread in its umbrella workspace, links the PR with `requested-review`, and opens its existing review panel. Repositories do not need to be cloned to appear or to review their GitHub diff. Review prompts preserve the shared checkout and do not authorize posting to GitHub.
 
 ## Setup
@@ -19,7 +20,7 @@ bb plugin install path:. --plugin multirepo
 bb plugin install path:. --plugin pr-review
 ```
 
-Open **Pull requests** in bb's navigation. The older Multirepo PR inbox remains available for browsing PRs by local repository.
+Open **Pull requests** in bb's navigation. Multirepo also supports browsing a single repository’s PRs from its Repos view.
 
 ## Integration contract
 

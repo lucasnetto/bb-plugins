@@ -27,8 +27,23 @@ export const workspaceSchema = z.object({
   name: z.string(),
 });
 export const reviewOutput = z.object({ threadId: z.string(), warning: z.string().nullable() });
+export const LIST_CHANGED = "pr-list-changed";
+export const snapshotSchema = z.object({
+  scope: z.string(),
+  view: viewSchema,
+  result: listOutput.nullable(),
+  fetchedAt: z.number().nullable(),
+  pageCount: z.number().int().min(0).max(20),
+  error: z.string().nullable(),
+});
+export type ListSnapshot = z.infer<typeof snapshotSchema>;
 export const rpcContract = defineRpcContract({
   list: { input: listInput, output: listOutput },
+  savedList: { input: z.object({ view: viewSchema }), output: snapshotSchema },
+  refreshList: {
+    input: z.object({ view: viewSchema, force: z.boolean(), loadMore: z.boolean() }),
+    output: z.null(),
+  },
   review: { input: z.object({ url: prUrl }), output: reviewOutput },
 });
 export const hostContract = defineRpcContract({

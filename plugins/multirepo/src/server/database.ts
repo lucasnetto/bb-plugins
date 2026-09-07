@@ -21,6 +21,8 @@ export function initializeReviewDatabase(bb: BbPluginApi) {
         CASE WHEN json_extract(data, '$.base') = '' THEN json('null')
         ELSE json_object('base', json_extract(data, '$.base'), 'head', json_extract(data, '$.head')) END)
       ELSE data END`,
+    // Retained for installations that already applied this migration.
+    "CREATE TABLE pr_snapshots (scope TEXT PRIMARY KEY, data TEXT NOT NULL)",
   ]);
   return db;
 }
