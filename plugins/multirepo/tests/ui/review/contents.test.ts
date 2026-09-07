@@ -17,3 +17,16 @@ test("expanded unchanged lines can be quoted before and after the patch", () => 
     " line 38\n line 39",
   );
 });
+
+test("expanded selections preserve added and deleted files with empty opposite sides", () => {
+  const added = parseDiffFromFile(null, { name: "new.ts", contents: "first\nsecond\n" });
+  assert.equal(
+    selectedFilePatch(added, { start: 1, end: 2, side: "additions" }),
+    "+first\n+second",
+  );
+  const deleted = parseDiffFromFile({ name: "old.ts", contents: "first\nsecond\n" }, null);
+  assert.equal(
+    selectedFilePatch(deleted, { start: 2, end: 1, side: "deletions" }),
+    "-first\n-second",
+  );
+});

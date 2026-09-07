@@ -1,18 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import { useState, type ReactNode } from "react";
 import {
   experimental_ProviderModelPicker as ProviderModelPicker,
-  experimental_useSidebarThreads,
   useBbNavigate,
-  useRpc,
-  type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
-import type { rpcContract } from "../../../shared/rpc-contract";
 import type { ProjectSettings } from "@/shared/project-settings-contract";
 import { Button } from "@/ui/components/ui/button";
 import { Icon } from "@/ui/components/ui/icon";
-import { usePortalScopeProps } from "@/ui/lib/portal-scope";
-import { ProjectNewThread } from "./ProjectNewThread";
+import { RemoveProjectDialog } from "./RemoveProjectDialog";
+import { useProjectSettings } from "./useProjectSettings";
 
 function SettingsRow({
   title,
@@ -34,114 +29,22 @@ function SettingsRow({
   );
 }
 
-export function ProjectsPanel({ subPath }: PluginNavPanelProps) {
-  const { projects, status } = experimental_useSidebarThreads();
+export function ProjectSettingsPage({ projectId }: { projectId: string }) {
   const navigate = useBbNavigate();
-  const parts = subPath.split("/").filter(Boolean);
-  const projectId = parts[0];
-  if (projectId && parts[1] === "new")
-    return <ProjectNewThread key={projectId} projectId={projectId} />;
-  if (projectId) return <ProjectSettingsPage key={projectId} projectId={projectId} />;
-  return (
-    <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-10">
-      <h1 className="mb-6 text-lg font-medium">Projects</h1>
-      <div className="overflow-hidden rounded-2xl border">
-        {projects
-          .filter((project) => !project.isPersonal)
-          .map((project) => (
-            <button
-              type="button"
-              key={project.id}
-              className="flex w-full items-center justify-between border-b px-5 py-4 text-left text-sm last:border-b-0 hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => navigate.toPluginPanel("projects", { subPath: project.id })}
-            >
-              {project.name}
-              <Icon name="ChevronRight" className="size-4 text-muted-foreground" />
-            </button>
-          ))}
-        {status !== "ready" ? (
-          <p role="status" className="p-5 text-sm text-muted-foreground">
-            {status === "error" ? "Could not load projects." : "Loading projects…"}
-          </p>
-        ) : null}
-        {status === "ready" && !projects.some((project) => !project.isPersonal) ? (
-          <p className="p-5 text-sm text-muted-foreground">
-            Add a project using the folder button in the sidebar.
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ProjectSettingsPage({ projectId }: { projectId: string }) {
-  const rpc = useRpc<typeof rpcContract>();
-  const navigate = useBbNavigate();
-  const portalProps = usePortalScopeProps();
-  const [settings, setSettings] = useState<ProjectSettings | null>(null);
-  const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const busy = useRef(false);
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    setError(null);
-    rpc.call("project_settings_get", { projectId }).then(
-      (result) => {
-        if (cancelled) return;
-        setSettings(result);
-        setName(result.name);
-      },
-      (cause) => {
-        if (!cancelled) setError(String(cause));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, revision, rpc]);
-
-  async function save(
-    patch: Partial<Pick<ProjectSettings, "name" | "model" | "workspace" | "autoPull">>,
-  ) {
-    if (busy.current) return;
-    busy.current = true;
-    setPending(true);
-    setSaved(false);
-    setError(null);
-    try {
-      const result = await rpc.call("project_settings_update", {
-        projectId,
-        ...patch,
-      });
-      setSettings(result);
-      if (patch.name !== undefined) setName(result.name);
-      setSaved(true);
-    } catch (cause) {
-      setError(String(cause));
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-  async function remove() {
-    if (busy.current) return;
-    busy.current = true;
-    setPending(true);
-    setError(null);
-    try {
-      await rpc.call("project_remove", { projectId });
-      navigate.toPluginPanel("projects");
-    } catch (cause) {
-      setError(String(cause));
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
+  const {
+    settings,
+    name,
+    setName,
+    error,
+    setError,
+    pending,
+    saved,
+    setSaved,
+    retry,
+    save,
+    remove,
+  } = useProjectSettings(projectId);
   const model = settings?.model ?? settings?.resolvedModel;
   return (
     <div className="h-full overflow-y-auto">
@@ -164,7 +67,7 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
           >
             {error}
             {!settings ? (
-              <Button variant="ghost" onClick={() => setRevision((value) => value + 1)}>
+              <Button variant="ghost" onClick={retry}>
                 Retry
               </Button>
             ) : null}
@@ -321,38 +224,14 @@ function ProjectSettingsPage({ projectId }: { projectId: string }) {
           </>
         )}
       </main>
-      <Dialog.Root
+      <RemoveProjectDialog
         open={confirmRemove}
-        onOpenChange={(open) => {
-          if (!pending) setConfirmRemove(open);
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay {...portalProps} className="fixed inset-0 z-50 bg-black/50" />
-          <Dialog.Content
-            {...portalProps}
-            className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background p-6 shadow-xl"
-          >
-            <Dialog.Title className="text-base font-semibold">Remove project?</Dialog.Title>
-            <Dialog.Description className="mt-3 text-sm text-muted-foreground">
-              Remove “{settings?.name}” and all of its threads? This cannot be undone.
-            </Dialog.Description>
-            {error ? (
-              <p role="alert" className="mt-3 text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="ghost" disabled={pending} onClick={() => setConfirmRemove(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" disabled={pending} onClick={() => void remove()}>
-                {pending ? "Removing…" : "Confirm removal"}
-              </Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+        onOpenChange={setConfirmRemove}
+        projectName={settings?.name}
+        pending={pending}
+        error={error}
+        onRemove={remove}
+      />
     </div>
   );
 }

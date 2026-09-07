@@ -11,7 +11,16 @@ import {
   linkedPrSchema,
   LINKS_CHANGED,
   parsePrUrl,
+  type LinkedPr,
 } from "../shared/links-contract";
+
+/** Normalize the URL and require membership in the caller's current linked-PR snapshot. */
+function requireLinkedPr(rows: readonly LinkedPr[], url: string) {
+  const ref = parsePrUrl(url);
+  if (!rows.some((pr) => pr.url === ref.url))
+    throw new Error("This PR is not linked to this thread.");
+  return ref;
+}
 
 export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof createRuntime>) {
   let afterUnlink: (input: {
@@ -70,9 +79,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     ) {
       const rows = yield* listRows(input.threadId);
       return yield* sync("review comment.insert", () => {
-        const ref = parsePrUrl(input.url);
-        if (!rows.some((pr) => pr.url === ref.url))
-          throw new Error("This PR is not linked to this thread.");
+        requireLinkedPr(rows, input.url);
         const id = randomUUID();
         db.prepare("INSERT INTO review_comments (id, thread_id, context) VALUES (?, ?, ?)").run(
           id,
@@ -88,12 +95,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     }: Schema.Schema.Type<typeof linkedContentsInput> & { threadId: string }) =>
       Effect.gen(function* () {
         const rows = yield* listRows(threadId);
-        const ref = yield* sync("linked contents input", () => {
-          const ref = parsePrUrl(input.url);
-          if (!rows.some((pr) => pr.url === ref.url))
-            throw new Error("This PR is not linked to this thread.");
-          return ref;
-        });
+        const ref = yield* sync("linked contents input", () => requireLinkedPr(rows, input.url));
         const env = yield* environment(threadId);
         return yield* call("host.linkedContents", (signal) =>
           host.call(
@@ -163,12 +165,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     linkedDetail: ({ threadId, url }: { threadId: string; url: string }) =>
       Effect.gen(function* () {
         const rows = yield* listRows(threadId);
-        const ref = yield* sync("linked detail input", () => {
-          const ref = parsePrUrl(url);
-          if (!rows.some((pr) => pr.url === ref.url))
-            throw new Error("This PR is not linked to this thread.");
-          return ref;
-        });
+        const ref = yield* sync("linked detail input", () => requireLinkedPr(rows, url));
         const env = yield* environment(threadId);
         const detail = yield* call("host.linkedDetail", (signal) =>
           host.call(

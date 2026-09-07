@@ -10,25 +10,41 @@ function stripTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value.slice(0, -1) : value;
 }
 
+// File line numbers are 1-based; addition/deletion array indexes are 0-based.
+// rowIndex is a 0-based position in the flattened diff: context, deletions, then
+// additions. rowRange includes both endpoints and counts rows we skip emitting.
+// Example: context old 10/new 10, deletion old 11, addition new 11 occupy rows
+// 0, 1, 2. Selecting old 11 through new 11 includes rows 1–2 (both changes).
+
+/** Empty hunks anchor after start; nonempty hunks begin at start itself. */
+function firstHunkLine(start: number, count: number): number {
+  return start + (count === 0 ? 1 : 0);
+}
+
+/** First context line after a hunk, including the empty-hunk anchor adjustment. */
+function firstLineAfterHunk(start: number, count: number): number {
+  return start + count + (count === 0 ? 1 : 0);
+}
+
 function buildDiffReviewLines(
   fileDiff: FileDiffMetadata,
   includeExpandedContext: boolean,
-  slice?: { readonly startIndex: number; readonly endIndex: number },
+  rowRange?: { readonly startIndex: number; readonly endIndex: number },
 ): ReadonlyArray<DiffReviewLine> {
   const rows: DiffReviewLine[] = [];
   let rowIndex = 0;
   let oldContextStart = 1;
   let newContextStart = 1;
   const pushRow = (row: DiffReviewLine) => {
-    if (!slice || (rowIndex >= slice.startIndex && rowIndex <= slice.endIndex)) {
+    if (!rowRange || (rowIndex >= rowRange.startIndex && rowIndex <= rowRange.endIndex)) {
       rows.push(row);
     }
     rowIndex += 1;
   };
   const pushContextGap = (oldStart: number, newStart: number, lineCount: number) => {
     const count = Math.max(0, lineCount);
-    const firstOffset = slice ? Math.max(0, slice.startIndex - rowIndex) : 0;
-    const lastOffset = slice ? Math.min(count - 1, slice.endIndex - rowIndex) : count - 1;
+    const firstOffset = rowRange ? Math.max(0, rowRange.startIndex - rowIndex) : 0;
+    const lastOffset = rowRange ? Math.min(count - 1, rowRange.endIndex - rowIndex) : count - 1;
     for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
       rows.push({
         change: "context",
@@ -42,8 +58,8 @@ function buildDiffReviewLines(
 
   for (const hunk of fileDiff.hunks) {
     if (includeExpandedContext) {
-      const oldHunkStart = hunk.deletionStart + (hunk.deletionCount === 0 ? 1 : 0);
-      const newHunkStart = hunk.additionStart + (hunk.additionCount === 0 ? 1 : 0);
+      const oldHunkStart = firstHunkLine(hunk.deletionStart, hunk.deletionCount);
+      const newHunkStart = firstHunkLine(hunk.additionStart, hunk.additionCount);
       const contextLines = Math.min(oldHunkStart - oldContextStart, newHunkStart - newContextStart);
       pushContextGap(oldContextStart, newContextStart, contextLines);
     }
@@ -97,10 +113,8 @@ function buildDiffReviewLines(
       }
     }
 
-    oldContextStart = hunk.deletionStart + hunk.deletionCount;
-    newContextStart = hunk.additionStart + hunk.additionCount;
-    if (hunk.deletionCount === 0) oldContextStart += 1;
-    if (hunk.additionCount === 0) newContextStart += 1;
+    oldContextStart = firstLineAfterHunk(hunk.deletionStart, hunk.deletionCount);
+    newContextStart = firstLineAfterHunk(hunk.additionStart, hunk.additionCount);
   }
 
   if (includeExpandedContext) {
@@ -133,8 +147,8 @@ function findDiffReviewLineIndex(
 
     for (const hunk of fileDiff.hunks) {
       if (includeExpandedContext) {
-        const oldContextEnd = hunk.deletionStart + (hunk.deletionCount === 0 ? 1 : 0);
-        const newContextEnd = hunk.additionStart + (hunk.additionCount === 0 ? 1 : 0);
+        const oldContextEnd = firstHunkLine(hunk.deletionStart, hunk.deletionCount);
+        const newContextEnd = firstHunkLine(hunk.additionStart, hunk.additionCount);
         const contextLines = Math.min(
           oldContextEnd - oldContextStart,
           newContextEnd - newContextStart,
@@ -177,10 +191,8 @@ function findDiffReviewLineIndex(
         newLineNumber += segment.additions;
       }
 
-      oldContextStart = hunk.deletionStart + hunk.deletionCount;
-      newContextStart = hunk.additionStart + hunk.additionCount;
-      if (hunk.deletionCount === 0) oldContextStart += 1;
-      if (hunk.additionCount === 0) newContextStart += 1;
+      oldContextStart = firstLineAfterHunk(hunk.deletionStart, hunk.deletionCount);
+      newContextStart = firstLineAfterHunk(hunk.additionStart, hunk.additionCount);
     }
 
     if (!includeExpandedContext) return -1;

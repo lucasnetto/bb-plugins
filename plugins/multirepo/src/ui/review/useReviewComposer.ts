@@ -5,6 +5,7 @@ import type { rpcContract } from "../../shared/contract";
 import type { LinkedDetail } from "../../shared/links-contract";
 import type { ReviewSelection } from "./useReviewDiff";
 import { reviewContext } from "./selection";
+import { buildReviewDraftText, type ReviewAction } from "./reviewDraftText";
 
 export function useReviewComposer({
   threadId,
@@ -31,32 +32,31 @@ export function useReviewComposer({
   const composer = useComposer();
   const [comment, setComment] = useState("");
   const [addingComment, setAddingComment] = useState(false);
-  async function add(action: "Ask" | "Explain" | "Fix" | "Comment") {
+  async function add(action: ReviewAction) {
     if (!detail || addingComment) return;
     setAddingComment(true);
     try {
+      const targetPath = selectionPath ?? selectedPath;
       const prompt = reviewContext(
         detail,
-        selectionPath ?? selectedPath,
+        targetPath,
         selection?.range,
-        fullDiffs.get(selectionPath ?? selectedPath ?? ""),
+        fullDiffs.get(targetPath ?? ""),
       );
-      const path = selectionPath ?? selectedPath;
-      const label = path
-        ? `${path.split("/").pop()}${selection ? ` · ${selection.range.start}–${selection.range.end}` : ""}`
+      const lineLabel = selection ? ` · ${selection.range.start}–${selection.range.end}` : "";
+      const targetLabel = targetPath
+        ? `${targetPath.split("/").pop()}${lineLabel}`
         : `${detail.pr.repository} #${detail.pr.number}`;
       const { id } = await rpc.call("stageReviewComment", {
         threadId,
         url,
-        label,
+        label: targetLabel,
         context: prompt,
       });
-      const text =
-        action === "Comment"
-          ? comment.trim()
-          : `${action === "Ask" ? "Review" : action} ${selection ? "this code" : path ? "this file" : "this PR"}.${comment.trim() ? `\n${comment.trim()}` : ""}`;
+      const target = selection ? "this code" : targetPath ? "this file" : "this PR";
+      const text = buildReviewDraftText(action, target, comment);
       composer.updateText((current) => (current ? `${current}\n\n${text} ` : `${text} `));
-      composer.insertMention({ provider: "review-comment", id, label });
+      composer.insertMention({ provider: "review-comment", id, label: targetLabel });
       composer.focus();
       setComment("");
       setNotice("Added to your draft.");

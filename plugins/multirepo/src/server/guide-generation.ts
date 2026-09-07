@@ -10,6 +10,7 @@ import {
   cancelledGuideJob,
   failedGuideJob,
   type RunningGuideJob,
+  type GuideJob,
   type GuideModel,
 } from "../shared/guide-generation";
 import {
@@ -100,6 +101,43 @@ export function registerGuideGeneration(
     if (job) yield* archiveAndStopWorker(guideWorkerId(job));
     return null;
   });
+  const spawnAndRecordGuideWorker = Effect.fnUntraced(function* (
+    job: Extract<GuideJob, { status: "preparing" }>,
+    input: {
+      projectId: string;
+      environmentId: string;
+      model: GuideModel;
+      prompt: string;
+      base: string;
+      head: string;
+    },
+  ) {
+    // Once spawning begins, interruption must not strand an unrecorded worker.
+    // Cancellation during spawn still archives/stops it before this block returns.
+    const worker = yield* call("spawn guide", () =>
+      bb.sdk.threads.spawn({
+        projectId: input.projectId,
+        environment: { type: "reuse", environmentId: input.environmentId },
+        ...input.model,
+        visibility: "hidden",
+        title: "Generate PR guide",
+        prompt: input.prompt,
+      }),
+    );
+    if (!isCurrentActiveJob(job)) {
+      yield* archiveAndStopWorker(worker.id);
+      return cancelledGuideJob(job);
+    }
+    return yield* sync("guide worker save", () =>
+      write({
+        ...job,
+        base: input.base,
+        head: input.head,
+        workerId: worker.id,
+        status: "running",
+      }),
+    );
+  }, Effect.uninterruptible);
   const startGuideJob = Effect.fn("Guide.start")(function* (input: Target & { model: GuideModel }) {
     const job = yield* sync("start guide", () => {
       if (isActiveGuideJob(read(input)))
@@ -117,31 +155,14 @@ export function registerGuideGeneration(
       const parsed = yield* decodeGuideContext(context);
       if (!isCurrentActiveJob(job)) return cancelledGuideJob(job);
       const prompt = buildGuideWorkerPrompt(parsed);
-      return yield* Effect.gen(function* () {
-        const worker = yield* call("spawn guide", () =>
-          bb.sdk.threads.spawn({
-            projectId: options.projectId,
-            environment: { type: "reuse", environmentId: options.environmentId },
-            ...input.model,
-            visibility: "hidden",
-            title: "Generate PR guide",
-            prompt,
-          }),
-        );
-        if (!isCurrentActiveJob(job)) {
-          yield* archiveAndStopWorker(worker.id);
-          return cancelledGuideJob(job);
-        }
-        return yield* sync("guide worker save", () =>
-          write({
-            ...job,
-            base: parsed.base,
-            head: parsed.head,
-            workerId: worker.id,
-            status: "running",
-          }),
-        );
-      }).pipe(Effect.uninterruptible);
+      return yield* spawnAndRecordGuideWorker(job, {
+        projectId: options.projectId,
+        environmentId: options.environmentId,
+        model: input.model,
+        prompt,
+        base: parsed.base,
+        head: parsed.head,
+      });
     }).pipe(
       Effect.catchTag("BackendError", (error) =>
         sync("guide start failed", () => {
