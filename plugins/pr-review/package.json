@@ -1,0 +1,61 @@
+{
+  "name": "bb-plugin-pr-review",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vp test",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/pr-review"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "catalog:",
+    "@radix-ui/react-tabs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@pierre/diffs": "catalog:",
+    "@radix-ui/react-alert-dialog": "catalog:",
+    "@radix-ui/react-context-menu": "catalog:",
+    "@radix-ui/react-dialog": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@radix-ui/react-hover-card": "catalog:",
+    "@radix-ui/react-menubar": "catalog:",
+    "@radix-ui/react-navigation-menu": "catalog:",
+    "@radix-ui/react-popover": "catalog:",
+    "@radix-ui/react-select": "catalog:",
+    "@radix-ui/react-tooltip": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "sonner": "catalog:",
+    "tailwind-merge": "catalog:",
+    "vaul": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "PR Review",
+    "description": "Your pull requests and review requests, with Multirepo review threads.",
+    "branding": {
+      "icon": "GitPullRequest"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "host": "./host.ts",
+    "skills": []
+  }
+}

@@ -18,6 +18,10 @@
     {
       "name": "t3-sidebar",
       "source": "./plugins/t3-sidebar"
+    },
+    {
+      "name": "pr-review",
+      "source": "./plugins/pr-review"
     }
   ]
 }

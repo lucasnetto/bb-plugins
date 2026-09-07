@@ -11,6 +11,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 | cursor-account-labels | Distinguish work and personal Cursor providers.               |
 | hide-models           | Hide selected models from the model picker.                   |
 | multirepo             | Browse files, changes, and pull requests across repositories. |
+| pr-review             | List your PRs and team review requests; open review threads.  |
 | t3-sidebar            | Display a T3-style thread sidebar.                            |
 
 ## Development

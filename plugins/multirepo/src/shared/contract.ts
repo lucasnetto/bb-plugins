@@ -136,6 +136,12 @@ export const reviewCommentInput = Schema.Struct({
   context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
 export const rpcContract = defineRpcContract({
+  reviewUrl: {
+    input: standardSchema(Schema.Struct({ url: Schema.String })),
+    output: standardSchema(
+      Schema.Struct({ threadId: Schema.String, warning: Schema.NullOr(Schema.String) }),
+    ),
+  },
   guideStart: { input: standardSchema(guideStartInput), output: standardSchema(guideJobSchema) },
   guideJob: {
     input: standardSchema(guideTarget),
