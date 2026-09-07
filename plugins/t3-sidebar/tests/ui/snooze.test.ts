@@ -63,3 +63,16 @@ test("presets use local calendar days and next Monday, and omit near/past evenin
     ),
   ).toBe(true);
 });
+
+test("new attention clears an explicit settlement without immediately auto-settling again", () => {
+  const result = partitionThreads({
+    threads: [{ ...thread, latestAttentionAt: 20, isPinned: true }],
+    settledAt: { one: 10 },
+    scopeProjectId: null,
+    autoSettleMs: 1,
+    nowMs: 100,
+  });
+  expect(result.pinned.map(({ id }) => id)).toEqual(["one"]);
+  expect(result.settled).toEqual([]);
+  expect(result.staleSettledIds).toEqual(["one"]);
+});

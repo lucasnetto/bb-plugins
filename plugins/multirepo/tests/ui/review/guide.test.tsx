@@ -205,3 +205,55 @@ test("guide diffs follow the chapter reading order rather than GitHub file order
     slot.lifecycle.unmount();
   }
 });
+
+test("cancelling generation keeps chapter progress blocked until cancellation completes", async () => {
+  let running = true;
+  let finishCancel!: () => void;
+  const cancellation = new Promise<void>((resolve) => {
+    finishCancel = resolve;
+  });
+  const slot = renderSlot(
+    { component: await component() },
+    { threadId: "t1", url },
+    {
+      rpc: {
+        linkedDetail: () => detail,
+        guideGet: () => saved,
+        guideJob: () =>
+          running
+            ? {
+                id: "job",
+                threadId: "t1",
+                url,
+                workerId: "worker",
+                status: "running",
+                base: saved.base,
+                head: saved.head,
+              }
+            : null,
+        guideCancel: async () => {
+          await cancellation;
+          running = false;
+          return null;
+        },
+      },
+    },
+  );
+  try {
+    await slot.findByTestId("diff-files");
+    fireEvent.click(slot.getByRole("button", { name: "Guide" }));
+    const cancel = await slot.findByRole("button", { name: "Cancel generation" });
+    fireEvent.click(cancel);
+    await waitFor(() => expect(cancel.hasAttribute("disabled")).toBe(true));
+    const reviewed = slot.getByRole("checkbox", { name: "Reviewed: Reject invalid input" });
+    expect(reviewed.hasAttribute("disabled")).toBe(true);
+    finishCancel();
+    await waitFor(() =>
+      expect(slot.queryByRole("button", { name: "Cancel generation" })).toBeNull(),
+    );
+    await waitFor(() => expect(reviewed.hasAttribute("disabled")).toBe(false));
+  } finally {
+    finishCancel();
+    slot.lifecycle.unmount();
+  }
+});

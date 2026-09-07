@@ -1,30 +1,21 @@
+import { ProjectScopePicker } from "./ProjectScopePicker";
+import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
+import { useSidebarClock } from "@/ui/hooks/useSidebarClock";
+import { useSettledMap } from "@/ui/hooks/useSettledMap";
+import { useSettledReconciliation } from "@/ui/hooks/useSettledReconciliation";
 import { useSnoozedMap } from "@/ui/lib/use-snoozed-map";
 import type { SidebarSection } from "@/ui/lib/sidebar-logic";
 import { ProjectDialog } from "./ProjectDialog";
-import { Button } from "@/ui/components/ui/button";
 import { LinkedPrProvider } from "./LinkedPrs";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import {
   experimental_useProviders,
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreads,
   useBbNavigate,
-  useRealtime,
-  useRpc,
   useSettings,
 } from "@get-bb/plugin-sdk/app";
-import { toast } from "sonner";
-import type { rpcContract, SettledMap } from "../../../shared/rpc-contract";
-import { SETTLED_CHANGED } from "@/shared/contract";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/ui/components/ui/dropdown-menu";
 import { TooltipProvider } from "@/ui/components/ui/tooltip";
 import { Icon } from "@/ui/components/ui/icon";
 import { cn } from "@/ui/lib/utils";
@@ -40,90 +31,6 @@ import { ThreadRow, type ThreadRowActions, type ThreadRowProvider } from "./Thre
 
 const SCOPE_KEY = "t3-sidebar:project-scope";
 const SETTLED_EXPANDED_KEY = "t3-sidebar:settled-expanded";
-
-function readStorage<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? fallback : (JSON.parse(raw) as T);
-  } catch {
-    return fallback;
-  }
-}
-
-function useLocalStorageState<T>(key: string, fallback: T): [T, Dispatch<SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => readStorage(key, fallback));
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Storage may be unavailable (private mode); the in-memory value still works.
-    }
-  }, [key, value]);
-  return [value, setValue];
-}
-
-/** One clock for labels and exact snooze deadlines; refresh after backgrounding. */
-function useNowMinute(snoozed: import("../../../shared/snooze-contract").SnoozedMap): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    let timer: number;
-    const tick = () => {
-      const current = Date.now();
-      setNow(current);
-      const nextWake = Math.min(
-        ...Object.values(snoozed).map(({ until }) => (until > current ? until : Infinity)),
-      );
-      window.clearTimeout(timer);
-      timer = window.setTimeout(tick, Math.min(60_000, nextWake - current));
-    };
-    tick();
-    window.addEventListener("focus", tick);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", tick);
-    };
-  }, [snoozed]);
-  return now;
-}
-
-/** The plugin-owned settled map, kept current by the server's realtime signal. */
-function useSettledMap() {
-  const rpc = useRpc<typeof rpcContract>();
-  const [settled, setSettled] = useState<SettledMap>({});
-  const refetch = useCallback(() => {
-    rpc.call("settled_list").then(
-      (result) => setSettled(result.settled),
-      (cause: unknown) => console.warn("[t3-sidebar] settled_list failed", cause),
-    );
-  }, [rpc]);
-  useEffect(refetch, [refetch]);
-  useRealtime(SETTLED_CHANGED, refetch);
-  const set = useCallback(
-    (threadIds: readonly string[], value: boolean) => {
-      if (threadIds.length === 0) return;
-      // Optimistic: the row moves immediately; the realtime echo confirms it.
-      setSettled((current) => {
-        const now = Date.now();
-        return value
-          ? {
-              ...current,
-              ...Object.fromEntries(threadIds.map((id) => [id, now])),
-            }
-          : Object.fromEntries(Object.entries(current).filter(([id]) => !threadIds.includes(id)));
-      });
-      rpc.call("settled_set", { threadIds: [...threadIds], settled: value }).then(
-        (result) => setSettled(result.settled),
-        (cause: unknown) => {
-          toast.error(value ? "Could not settle thread" : "Could not un-settle thread");
-          console.warn("[t3-sidebar] settled_set failed", cause);
-          refetch();
-        },
-      );
-    },
-    [refetch, rpc],
-  );
-  return { settled, set };
-}
 
 function ShelfHeader(props: {
   label: string;
@@ -155,132 +62,6 @@ function ShelfHeader(props: {
   );
 }
 
-function ProjectScopePicker(props: {
-  projects: readonly { id: string; name: string; isPersonal: boolean }[];
-  scopeProjectId: string | null;
-  onChange: (projectId: string | null) => void;
-  onNewThread: () => void;
-  onAddProject: () => void;
-  onProjectSettings: (project: { id: string; name: string }) => void;
-}) {
-  const scoped = props.projects.find((project) => project.id === props.scopeProjectId) ?? null;
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const openingSettings = useRef(false);
-  const matchingProjects = props.projects.filter((project) =>
-    project.name.toLowerCase().includes(query.toLowerCase()),
-  );
-  return (
-    <div className="flex items-center gap-1 px-1.5 pb-1 pt-1.5">
-      <DropdownMenu
-        open={open}
-        onOpenChange={(value) => {
-          setOpen(value);
-          if (value) {
-            setQuery("");
-            openingSettings.current = false;
-          }
-        }}
-      >
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label="Filter threads by project"
-            className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground/90 outline-none hover:bg-state-hover focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-state-active"
-          >
-            <Icon name="Folder" className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{scoped?.name ?? "All projects"}</span>
-            <Icon name="ChevronDown" className="-mr-px size-4 shrink-0 text-muted-foreground" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="min-w-56"
-          onCloseAutoFocus={(event) => {
-            if (openingSettings.current) event.preventDefault();
-          }}
-        >
-          <input
-            aria-label="Search projects"
-            placeholder="Search projects…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" && event.key !== "Tab") event.stopPropagation();
-            }}
-            className="mb-1 h-8 w-full border-b bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
-          />
-          <DropdownMenuItem
-            onSelect={() => props.onChange(null)}
-            className={cn(props.scopeProjectId === null && "font-medium")}
-          >
-            <Icon name="Folder" className="size-4" />
-            All projects
-          </DropdownMenuItem>
-          {props.projects.length > 0 ? <DropdownMenuSeparator /> : null}
-          {matchingProjects.map((project) => (
-            <DropdownMenuItem
-              key={project.id}
-              onSelect={(event) => {
-                if (openingSettings.current) event.preventDefault();
-                else props.onChange(project.id);
-              }}
-              className={cn(project.id === props.scopeProjectId && "font-medium")}
-            >
-              <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-muted text-[9px] font-semibold text-muted-foreground">
-                {project.name.trim().charAt(0).toUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{project.name}</span>
-              {!project.isPersonal ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Project settings for ${project.name}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onPointerUp={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openingSettings.current = true;
-                    setOpen(false);
-                    props.onProjectSettings(project);
-                  }}
-                >
-                  <Icon name="Settings" className="size-3.5" />
-                </Button>
-              ) : null}
-            </DropdownMenuItem>
-          ))}
-          {!matchingProjects.length ? (
-            <p className="px-2 py-3 text-xs text-muted-foreground">No matching projects.</p>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 text-muted-foreground"
-        aria-label="New project"
-        onClick={props.onAddProject}
-      >
-        <Icon name="FolderPlus" className="size-4" />
-      </Button>
-      {scoped ? (
-        <button
-          type="button"
-          aria-label={`New thread in ${scoped.name}`}
-          title={`New thread in ${scoped.name}`}
-          onClick={props.onNewThread}
-          className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <Icon name="Plus" className="size-4" />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 export function T3ThreadList(props: PluginThreadListProps) {
   return (
     <LinkedPrProvider>
@@ -298,7 +79,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const settings = useSettings();
   const { settled: settledAt, set: setSettled } = useSettledMap();
   const { snoozed, set: setSnoozed } = useSnoozedMap();
-  const nowMs = useNowMinute(snoozed);
+  const nowMs = useSidebarClock(snoozed);
   const [snoozedExpanded, setSnoozedExpanded] = useLocalStorageState(
     "t3-sidebar:snoozed-expanded",
     false,
@@ -332,20 +113,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [autoSettleMs, effectiveScope, nowMs, settledAt, snoozed, threads],
   );
 
-  // A settled thread that woke up must lose its entry, or it would silently
-  // re-settle the moment it goes quiet. Cleared once per id per wake.
-  const clearedStaleRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const fresh = partition.staleSettledIds.filter((id) => !clearedStaleRef.current.has(id));
-    if (fresh.length === 0) return;
-    for (const id of fresh) clearedStaleRef.current.add(id);
-    setSettled(fresh, false);
-  }, [partition.staleSettledIds, setSettled]);
-  useEffect(() => {
-    for (const id of clearedStaleRef.current) {
-      if (!(id in settledAt)) clearedStaleRef.current.delete(id);
-    }
-  }, [settledAt]);
+  useSettledReconciliation(partition.staleSettledIds, settledAt, setSettled);
 
   const { rows: settledRows, hiddenCount: hiddenSettledCount } = useMemo(
     () =>

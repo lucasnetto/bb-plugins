@@ -1,5 +1,6 @@
-import { PLUGIN_CLI_OUTPUT_MAX_BYTES, type BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import { initializeReviewDatabase } from "./database";
+import { registerLinkTools } from "./links-tools";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { Effect, Schema } from "effect";
 import { call, sync, createRuntime, decodeSchema, fail, type BackendError } from "./server-effects";
 import { randomUUID } from "node:crypto";
@@ -7,46 +8,17 @@ import { hostContract, reviewCommentInput } from "../shared/contract";
 import {
   linkedContentsInput,
   linkInput,
-  reasonSchema,
   linkedPrSchema,
   LINKS_CHANGED,
   parsePrUrl,
 } from "../shared/links-contract";
 
-function toolResult(value: unknown) {
-  const text = JSON.stringify(value);
-  // Match BB's documented agent-facing CLI transport ceiling.
-  if (Buffer.byteLength(text) > PLUGIN_CLI_OUTPUT_MAX_BYTES)
-    throw new Error(
-      "Too many linked PRs to return through the agent transport. Open the Linked PRs panel.",
-    );
-  return text;
-}
 export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof createRuntime>) {
   let afterUnlink: (input: {
     threadId: string;
     url: string;
   }) => Effect.Effect<unknown, BackendError> = () => Effect.void;
-  const db = bb.storage.database();
-  bb.storage.migrate(db, [
-    "CREATE TABLE linked_prs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
-    "CREATE TABLE review_comments (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, context TEXT NOT NULL)",
-    "CREATE TABLE review_guides (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
-    "CREATE TABLE review_guide_jobs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
-    // Remove the legacy placeholders before the status-specific decoder reads jobs.
-    `UPDATE review_guide_jobs SET data = CASE json_extract(data, '$.status')
-      WHEN 'preparing' THEN json_remove(data, '$.workerId', '$.base', '$.head', '$.error')
-      WHEN 'running' THEN json_remove(data, '$.error')
-      WHEN 'complete' THEN json_remove(data, '$.error')
-      WHEN 'cancelled' THEN json_set(json_remove(data, '$.base', '$.head', '$.error'), '$.revision',
-        CASE WHEN json_extract(data, '$.base') = '' THEN json('null')
-        ELSE json_object('base', json_extract(data, '$.base'), 'head', json_extract(data, '$.head')) END)
-      WHEN 'error' THEN json_set(json_remove(data, '$.base', '$.head'), '$.error',
-        coalesce(nullif(json_extract(data, '$.error'), ''), 'Guide generation failed.'), '$.revision',
-        CASE WHEN json_extract(data, '$.base') = '' THEN json('null')
-        ELSE json_object('base', json_extract(data, '$.base'), 'head', json_extract(data, '$.head')) END)
-      ELSE data END`,
-  ]);
+  const db = initializeReviewDatabase(bb);
   const host = bb.hosts.experimental_client({ contract: hostContract });
   const listRows = Effect.fn("LinkedPr.rows")(function* (threadId: string) {
     const rows = yield* sync("linked PR.list", () =>
@@ -219,48 +191,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         return detail;
       }),
   };
-  // The SDK requires Zod for validated agent-tool parameters. RPC uses Standard Schema.
-  bb.agents.registerTool({
-    name: "link_pull_request",
-    description:
-      "Link a GitHub pull request to the current BB thread. Supports several repositories and PRs. Does not post to GitHub.",
-    instructions:
-      "Call link_pull_request after successfully creating a PR, when the user asks you to review or work on a PR, or explicitly asks to link one. Use created-here, requested-review, requested-work, or manual as the reason. Do not link PRs mentioned only as examples or background. Preserve existing links. Use unlink_pull_request when asked to remove a link; list_linked_pull_requests shows current links. If these tools are unavailable in an existing session, use bb multirepo link <url> <reason>, unlink <url>, or links in the current thread.",
-    parameters: z.object({ url: z.string(), reason: z.enum(reasonSchema.literals) }),
-    execute: (input, ctx) =>
-      runtime.runPromise(
-        handlers
-          .linkedLink({ ...input, threadId: ctx.threadId })
-          .pipe(Effect.flatMap((value) => sync("tool result", () => toolResult(value)))),
-        { signal: ctx.signal },
-      ),
-  });
-  bb.agents.registerTool({
-    name: "unlink_pull_request",
-    description:
-      "Remove one PR link from the current BB thread. Does not close or change the PR on GitHub.",
-    parameters: z.object({ url: z.string() }),
-    execute: (input, ctx) =>
-      runtime.runPromise(
-        handlers
-          .linkedUnlink({ ...input, threadId: ctx.threadId })
-          .pipe(Effect.flatMap((value) => sync("tool result", () => toolResult(value)))),
-        { signal: ctx.signal },
-      ),
-  });
-  bb.agents.registerTool({
-    name: "list_linked_pull_requests",
-    description:
-      "List PRs linked to the current BB thread, including their reasons and last fetched statuses.",
-    parameters: z.object({}),
-    execute: (_, ctx) =>
-      runtime.runPromise(
-        handlers
-          .linkedList({ threadId: ctx.threadId })
-          .pipe(Effect.flatMap((value) => sync("tool result", () => toolResult(value)))),
-        { signal: ctx.signal },
-      ),
-  });
+  registerLinkTools(bb, runtime, handlers);
   bb.events.on("thread.deleted", ({ thread }) =>
     runtime.runPromise(
       sync("thread PR cleanup", () => {

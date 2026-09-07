@@ -211,6 +211,50 @@ function qualifiesForAutoSettle(
   return nowMs - lastTouch >= autoSettleMs;
 }
 
+/** Classify one visible thread. Snooze and settlement timestamps decide which user action wins. */
+export function classifyThread(
+  thread: PluginSidebarThread,
+  input: Pick<
+    PartitionInput<PluginSidebarThread>,
+    "snoozed" | "settledAt" | "autoSettleMs" | "nowMs"
+  >,
+): { section: SidebarSection; clearSettlement: boolean } {
+  const snooze = input.snoozed?.[thread.id];
+  const storedSettledAt = input.settledAt[thread.id];
+  const snoozeTakesPrecedence =
+    snooze !== undefined && (storedSettledAt === undefined || snooze.at > storedSettledAt);
+
+  if (
+    snoozeTakesPrecedence &&
+    snooze.until > input.nowMs &&
+    !thread.hasPendingInteraction &&
+    thread.indicator !== "waiting-for-input"
+  ) {
+    return { section: "snoozed", clearSettlement: false };
+  }
+
+  const activeSection = thread.isPinned ? "pinned" : "active";
+  // A newer snooze supersedes the old settlement even after its deadline.
+  if (!snoozeTakesPrecedence && storedSettledAt !== undefined) {
+    return isSettledEntryStale(thread, storedSettledAt)
+      ? { section: activeSection, clearSettlement: true }
+      : { section: "settled", clearSettlement: false };
+  }
+
+  // An expired reminder must be read before inactivity can settle it again.
+  const awaitingReminderRead = snoozeTakesPrecedence && (thread.lastReadAt ?? 0) < snooze.until;
+  const inactivityThread = snoozeTakesPrecedence
+    ? { ...thread, updatedAt: Math.max(thread.updatedAt, snooze.until) }
+    : thread;
+  if (
+    !awaitingReminderRead &&
+    qualifiesForAutoSettle(inactivityThread, input.autoSettleMs, input.nowMs)
+  ) {
+    return { section: "settled", clearSettlement: false };
+  }
+  return { section: activeSection, clearSettlement: false };
+}
+
 export function partitionThreads<T extends PluginSidebarThread>(
   input: PartitionInput<T>,
 ): Partition<T> {
@@ -225,42 +269,11 @@ export function partitionThreads<T extends PluginSidebarThread>(
   const snoozed: T[] = [];
   const staleSettledIds: string[] = [];
 
+  const sections = { pinned, active, settled, snoozed };
   for (const thread of visible) {
-    const snooze = input.snoozed?.[thread.id];
-    const storedSettledAt = input.settledAt[thread.id];
-    const hasSnooze =
-      snooze !== undefined && (storedSettledAt === undefined || snooze.at > storedSettledAt);
-    if (
-      hasSnooze &&
-      snooze.until > input.nowMs &&
-      !thread.hasPendingInteraction &&
-      thread.indicator !== "waiting-for-input"
-    ) {
-      snoozed.push(thread);
-      continue;
-    }
-    // A reminder must be seen before inactivity can put it back on the shelf.
-    const awaitingRead = hasSnooze && (thread.lastReadAt ?? 0) < snooze.until;
-    const settledAt = hasSnooze ? undefined : storedSettledAt;
-    if (settledAt !== undefined) {
-      if (isSettledEntryStale(thread, settledAt)) {
-        staleSettledIds.push(thread.id);
-      } else {
-        settled.push(thread);
-        continue;
-      }
-    } else if (
-      !awaitingRead &&
-      qualifiesForAutoSettle(
-        hasSnooze ? { ...thread, updatedAt: Math.max(thread.updatedAt, snooze.until) } : thread,
-        input.autoSettleMs,
-        input.nowMs,
-      )
-    ) {
-      settled.push(thread);
-      continue;
-    }
-    (thread.isPinned ? pinned : active).push(thread);
+    const classification = classifyThread(thread, input);
+    if (classification.clearSettlement) staleSettledIds.push(thread.id);
+    sections[classification.section].push(thread);
   }
 
   return {

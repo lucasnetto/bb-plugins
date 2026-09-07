@@ -20,6 +20,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
   const [notice, setNotice] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   const guide = useGuide(threadId, url, revision);
+  const [guideRequestOpen, setGuideRequestOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const staleGuide =
     !!guide.data &&
@@ -171,24 +172,26 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
         <>
           <GuideGenerator
             threadId={threadId}
-            open={guide.requestOpen}
-            onOpenChange={guide.setRequestOpen}
-            pending={guide.pending}
-            onStart={guide.start}
+            open={guideRequestOpen}
+            onOpenChange={setGuideRequestOpen}
+            pending={guide.mutationPending}
+            onStart={async (model) => {
+              if (await guide.generation.start(model)) setGuideRequestOpen(false);
+            }}
           />
-          {guide.error ? (
+          {guide.error || guide.generation.error ? (
             <p role="alert" className="px-4 py-2 text-sm text-destructive">
-              {guide.error}
+              {guide.error || guide.generation.error}
             </p>
           ) : null}
-          {guide.generating ? (
+          {guide.generation.generating ? (
             <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
               Generating review guide…{" "}
               <Button
                 size="sm"
                 variant="outline"
-                disabled={guide.pending}
-                onClick={() => void guide.cancel()}
+                disabled={guide.mutationPending}
+                onClick={() => void guide.generation.cancel()}
               >
                 Cancel generation
               </Button>
@@ -199,8 +202,10 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
               saved={guide.data}
               items={diff.items}
               stale={staleGuide || loading}
-              pending={guide.pending || guide.generating || guide.loading || loading}
-              onRequest={guide.request}
+              pending={
+                guide.mutationPending || guide.generation.generating || guide.loading || loading
+              }
+              onRequest={() => setGuideRequestOpen(true)}
               onMark={(index, reviewed) => void guide.mark(index, reviewed)}
               selectedPath={selectedPath}
               onSelectPath={setSelectedPath}
@@ -230,13 +235,17 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
                 disabled={
                   loading ||
                   guide.loading ||
-                  guide.pending ||
-                  guide.generating ||
+                  guide.mutationPending ||
+                  guide.generation.generating ||
                   !detail?.files.length
                 }
-                onClick={guide.request}
+                onClick={() => setGuideRequestOpen(true)}
               >
-                {guide.pending ? "Starting…" : staleGuide ? "Regenerate guide" : "Generate guide"}
+                {guide.generation.starting
+                  ? "Starting…"
+                  : staleGuide
+                    ? "Regenerate guide"
+                    : "Generate guide"}
               </Button>
               <p className="text-xs text-muted-foreground">Choose a model before generating.</p>
             </div>

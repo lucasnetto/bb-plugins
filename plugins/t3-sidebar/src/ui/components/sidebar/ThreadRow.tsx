@@ -1,13 +1,10 @@
+import { EditableThreadTitle, useThreadRename } from "./EditableThreadTitle";
+import { ThreadContextMenu } from "./ThreadContextMenu";
+import { ThreadSnoozeMenu } from "./ThreadSnoozeMenu";
 import { requestLinkedReview } from "@/ui/lib/multirepo-navigation";
-import { snoozePresets, snoozeWakeLabel } from "@/ui/lib/snooze";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/ui/components/ui/dropdown-menu";
+import { snoozeWakeLabel } from "@/ui/lib/snooze";
 import { useLinkedPrs } from "./LinkedPrs";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
@@ -15,16 +12,6 @@ import {
   experimental_useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit,
 } from "@get-bb/plugin-sdk/app";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
-  ContextMenuTrigger,
-} from "@/ui/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/components/ui/tooltip";
 import { Icon } from "@/ui/components/ui/icon";
 import { cn } from "@/ui/lib/utils";
@@ -189,107 +176,54 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const { thread, section, isActive, actions } = props;
   const isCard = section === "active" || section === "pinned";
   const isSnoozed = section === "snoozed";
-  const [menuNow, setMenuNow] = useState(() => Date.now());
-  const presets = snoozePresets(new Date(menuNow));
-  const canSnooze = !thread.hasPendingInteraction && thread.indicator !== "waiting-for-input";
-  const snooze = (id: string) => {
-    const preset = snoozePresets(new Date()).find((item) => item.id === id);
-    if (preset) actions.setSnoozed(thread.id, preset.until);
-  };
   const status = resolveThreadStatus(thread);
   const topStatus = resolveTopStatus({ status, isUnread: thread.isUnread, isActive });
   const recede = shouldRecede({ status, isUnread: thread.isUnread, isActive });
   const title = threadTitle(thread);
   const { splitProps, isAvailable: splitAvailable } = experimental_useSidebarThreadSplit(thread.id);
 
-  // Inline rename: double-click a row, Enter commits, Escape cancels.
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (renaming !== null) inputRef.current?.select();
-  }, [renaming]);
-  const commitRename = useCallback(() => {
-    if (renaming === null) return;
-    const next = renaming.trim();
-    if (next !== "" && next !== title) actions.rename(thread.id, next);
-    setRenaming(null);
-  }, [actions, renaming, thread.id, title]);
+  const rename = useThreadRename(title, (next) => actions.rename(thread.id, next));
 
   const handleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
-      if (renaming !== null || isTrailingDoubleClick(event.detail)) return;
+      if (rename.draft !== null || isTrailingDoubleClick(event.detail)) return;
       const wantsSplit = (event.metaKey || event.ctrlKey) && splitAvailable;
       actions.open(thread.id, wantsSplit ? { split: true } : undefined);
     },
-    [actions, renaming, splitAvailable, thread.id],
+    [actions, rename, splitAvailable, thread.id],
   );
   const handleDoubleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
-      setRenaming(title);
+      rename.start();
     },
-    [title],
+    [rename],
   );
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLAnchorElement>) => {
-      if (renaming !== null) return;
+      if (rename.draft !== null) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         actions.open(thread.id);
       } else if (event.key === "F2") {
         event.preventDefault();
-        setRenaming(title);
+        rename.start();
       }
     },
-    [actions, renaming, thread.id, title],
+    [actions, rename, thread.id, title],
   );
 
-  const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
-
-  const titleNode =
-    renaming !== null ? (
-      <input
-        ref={inputRef}
-        autoFocus
-        value={renaming}
-        aria-label="Thread title"
-        onChange={(event) => setRenaming(event.target.value)}
-        onBlur={commitRename}
-        onClick={stop}
-        onDoubleClick={stop}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (event.key === "Enter") commitRename();
-          if (event.key === "Escape") setRenaming(null);
-        }}
-        className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
-      />
-    ) : (
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-sm",
-          recede ? "font-normal" : "font-medium",
-          isCard
-            ? thread.isUnread
-              ? "text-foreground"
-              : recede
-                ? "text-muted-foreground"
-                : "text-foreground/90"
-            : cn(
-                "group-hover/row:text-foreground",
-                isActive
-                  ? "text-foreground"
-                  : thread.isUnread
-                    ? "text-muted-foreground"
-                    : "text-muted-foreground/70",
-              ),
-        )}
-      >
-        {title}
-      </span>
-    );
+  const titleNode = (
+    <EditableThreadTitle
+      rename={rename}
+      title={title}
+      recede={recede}
+      isCard={isCard}
+      isActive={isActive}
+      isUnread={thread.isUnread}
+    />
+  );
 
   const pinIndicator = thread.isPinned ? (
     <Tooltip>
@@ -328,55 +262,6 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       ? snoozeWakeLabel(props.snoozedUntil, props.nowMs)
       : formatCompactTime(props.timeAnchorMs, props.nowMs);
 
-  const menu = (
-    <ContextMenuContent className="w-52">
-      <ContextMenuItem onSelect={() => actions.open(thread.id)}>Open</ContextMenuItem>
-      {splitAvailable ? (
-        <ContextMenuItem onSelect={() => actions.open(thread.id, { split: true })}>
-          Open in split
-        </ContextMenuItem>
-      ) : null}
-      <ContextMenuSeparator />
-      <ContextMenuItem onSelect={() => actions.setPinned(thread.id, !thread.isPinned)}>
-        {thread.isPinned ? "Unpin" : "Pin"}
-      </ContextMenuItem>
-      <ContextMenuItem onSelect={() => actions.setRead(thread.id, thread.isUnread)}>
-        {thread.isUnread ? "Mark read" : "Mark unread"}
-      </ContextMenuItem>
-      <ContextMenuItem onSelect={() => actions.setSettled(thread.id, section !== "settled")}>
-        {section === "settled" ? "Un-settle" : "Settle"}
-      </ContextMenuItem>
-      {isSnoozed ? (
-        <ContextMenuItem onSelect={() => actions.setSnoozed(thread.id, null)}>
-          Wake now
-        </ContextMenuItem>
-      ) : (
-        <ContextMenuSub>
-          <ContextMenuSubTrigger disabled={!canSnooze}>Snooze</ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            {presets.map((preset) => (
-              <ContextMenuItem key={preset.id} onSelect={() => snooze(preset.id)}>
-                {preset.label}
-                <span className="ml-auto pl-3 text-xs text-muted-foreground">
-                  {snoozeWakeLabel(preset.until, menuNow)}
-                </span>
-              </ContextMenuItem>
-            ))}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-      )}
-      <ContextMenuItem onSelect={() => setRenaming(title)}>Rename</ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem onSelect={() => actions.archive(thread.id)}>Archive</ContextMenuItem>
-      <ContextMenuItem
-        className="text-destructive focus:text-destructive"
-        onSelect={() => actions.requestDelete(thread.id)}
-      >
-        Delete
-      </ContextMenuItem>
-    </ContextMenuContent>
-  );
-
   const anchorProps = {
     href: `#thread-${thread.id}`,
     "data-sidebar-thread-shortcut-target": "",
@@ -392,48 +277,44 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   if (!isCard) {
     return (
       <li data-thread-item className="list-none">
-        <ContextMenu
-          onOpenChange={(open) => {
-            if (open) setMenuNow(Date.now());
-          }}
+        <ThreadContextMenu
+          thread={thread}
+          section={section}
+          actions={actions}
+          splitAvailable={splitAvailable}
+          onRename={rename.start}
         >
-          <ContextMenuTrigger asChild>
-            <a
-              {...anchorProps}
-              className={cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")}
-            >
-              {/* Settled history recedes: dimmed mark at rest, restored on hover. */}
-              <ProjectMark
-                name={props.projectName}
-                className={cn(
-                  "transition-opacity",
-                  !isActive && "opacity-40 group-hover/row:opacity-100",
-                )}
-              />
-              {titleNode}
-              {pinIndicator}
-              <PullRequestBadge threadId={thread.id} />
-              <span className="relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end">
-                <span className="inline-flex justify-end text-xs tabular-nums text-muted-foreground/70 transition-opacity group-hover/row:opacity-0">
-                  {timeLabel}
-                </span>
-                <span className="pointer-events-none absolute inset-y-0 right-0 -mr-1 flex items-center opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
-                  <HoverAction
-                    label={isSnoozed ? "Wake now" : "Un-settle thread"}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isSnoozed) actions.setSnoozed(thread.id, null);
-                      else actions.setSettled(thread.id, false);
-                    }}
-                  >
-                    <Icon name="ArrowTurnBackward" className="mb-px size-3.5" />
-                  </HoverAction>
-                </span>
+          <a {...anchorProps} className={cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")}>
+            {/* Settled history recedes: dimmed mark at rest, restored on hover. */}
+            <ProjectMark
+              name={props.projectName}
+              className={cn(
+                "transition-opacity",
+                !isActive && "opacity-40 group-hover/row:opacity-100",
+              )}
+            />
+            {titleNode}
+            {pinIndicator}
+            <PullRequestBadge threadId={thread.id} />
+            <span className="relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end">
+              <span className="inline-flex justify-end text-xs tabular-nums text-muted-foreground/70 transition-opacity group-hover/row:opacity-0">
+                {timeLabel}
               </span>
-            </a>
-          </ContextMenuTrigger>
-          {menu}
-        </ContextMenu>
+              <span className="pointer-events-none absolute inset-y-0 right-0 -mr-1 flex items-center opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+                <HoverAction
+                  label={isSnoozed ? "Wake now" : "Un-settle thread"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (isSnoozed) actions.setSnoozed(thread.id, null);
+                    else actions.setSettled(thread.id, false);
+                  }}
+                >
+                  <Icon name="ArrowTurnBackward" className="mb-px size-3.5" />
+                </HoverAction>
+              </span>
+            </span>
+          </a>
+        </ThreadContextMenu>
       </li>
     );
   }
@@ -443,159 +324,124 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
 
   return (
     <li data-thread-item className="list-none py-0.5">
-      <ContextMenu
-        onOpenChange={(open) => {
-          if (open) setMenuNow(Date.now());
-        }}
+      <ThreadContextMenu
+        thread={thread}
+        section={section}
+        actions={actions}
+        splitAvailable={splitAvailable}
+        onRename={rename.start}
       >
-        <ContextMenuTrigger asChild>
-          <a {...anchorProps} className={surfaceClass}>
-            <div className="relative z-10 px-2.5 py-2">
-              {/* Line 1: project · pin · status / time (hover → settle) */}
-              <div className="flex h-5 min-w-0 items-center gap-1.5">
-                <ProjectMark name={props.projectName} />
-                {props.projectName ? (
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-xs text-muted-foreground",
-                      recede ? "font-normal" : "font-medium",
-                    )}
-                  >
-                    {props.projectName}
-                  </span>
-                ) : (
-                  <span className="flex-1" />
-                )}
-                {pinIndicator}
-                <span className="group/status relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
-                  <span
-                    className={cn(
-                      "pointer-events-none flex items-center self-center tabular-nums text-muted-foreground transition-opacity",
-                      "group-hover/row:absolute group-hover/row:right-0 group-hover/row:opacity-0",
-                      "group-has-[:focus-visible]/status:absolute group-has-[:focus-visible]/status:right-0 group-has-[:focus-visible]/status:opacity-0",
-                    )}
-                  >
-                    {topStatus ? (
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 font-medium",
-                          topStatus.className,
-                        )}
-                      >
-                        {topStatus.icon === "working" ? (
-                          <Icon
-                            name="Spinner"
-                            className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
-                          />
-                        ) : topStatus.icon === "done" ? (
-                          <Icon name="CircleCheck" className="size-4 shrink-0" />
-                        ) : topStatus.icon === "monitoring" ? (
-                          <Icon name="Target" className="size-4 shrink-0" />
-                        ) : null}
-                        <span role="status">{topStatus.label}</span>
-                      </span>
-                    ) : (
-                      timeLabel
-                    )}
-                  </span>
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:static group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100">
-                    {thread.isUnread ? (
-                      <HoverAction
-                        label="Mark read"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          actions.setRead(thread.id, true);
-                        }}
-                      >
-                        <Icon name="Check" className="size-3.5" />
-                      </HoverAction>
-                    ) : null}
-                    {canSnooze ? (
-                      <DropdownMenu
-                        onOpenChange={(open) => {
-                          if (open) setMenuNow(Date.now());
-                        }}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            aria-label="Snooze thread"
-                            onKeyDown={(event) => event.stopPropagation()}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                            }}
-                            className="inline-flex items-center rounded-md px-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          >
-                            Snooze
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                        >
-                          {presets.map((preset) => (
-                            <DropdownMenuItem key={preset.id} onSelect={() => snooze(preset.id)}>
-                              {preset.label}
-                              <span className="ml-auto pl-3 text-xs text-muted-foreground">
-                                {snoozeWakeLabel(preset.until, menuNow)}
-                              </span>
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
+        <a {...anchorProps} className={surfaceClass}>
+          <div className="relative z-10 px-2.5 py-2">
+            {/* Line 1: project · pin · status / time (hover → settle) */}
+            <div className="flex h-5 min-w-0 items-center gap-1.5">
+              <ProjectMark name={props.projectName} />
+              {props.projectName ? (
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-xs text-muted-foreground",
+                    recede ? "font-normal" : "font-medium",
+                  )}
+                >
+                  {props.projectName}
+                </span>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {pinIndicator}
+              <span className="group/status relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
+                <span
+                  className={cn(
+                    "pointer-events-none flex items-center self-center tabular-nums text-muted-foreground transition-opacity",
+                    "group-hover/row:absolute group-hover/row:right-0 group-hover/row:opacity-0",
+                    "group-has-[:focus-visible]/status:absolute group-has-[:focus-visible]/status:right-0 group-has-[:focus-visible]/status:opacity-0",
+                  )}
+                >
+                  {topStatus ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 font-medium",
+                        topStatus.className,
+                      )}
+                    >
+                      {topStatus.icon === "working" ? (
+                        <Icon
+                          name="Spinner"
+                          className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
+                        />
+                      ) : topStatus.icon === "done" ? (
+                        <Icon name="CircleCheck" className="size-4 shrink-0" />
+                      ) : topStatus.icon === "monitoring" ? (
+                        <Icon name="Target" className="size-4 shrink-0" />
+                      ) : null}
+                      <span role="status">{topStatus.label}</span>
+                    </span>
+                  ) : (
+                    timeLabel
+                  )}
+                </span>
+                <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:static group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100">
+                  {thread.isUnread ? (
                     <HoverAction
-                      label="Settle thread"
-                      className="-mr-1"
+                      label="Mark read"
                       onClick={(event) => {
                         event.stopPropagation();
-                        actions.setSettled(thread.id, true);
+                        actions.setRead(thread.id, true);
                       }}
                     >
-                      <Icon name="Archive" className="size-3.5" />
-                      Settle
+                      <Icon name="Check" className="size-3.5" />
                     </HoverAction>
-                  </span>
+                  ) : null}
+                  {!thread.hasPendingInteraction && thread.indicator !== "waiting-for-input" ? (
+                    <ThreadSnoozeMenu onSnooze={(until) => actions.setSnoozed(thread.id, until)} />
+                  ) : null}
+                  <HoverAction
+                    label="Settle thread"
+                    className="-mr-1"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      actions.setSettled(thread.id, true);
+                    }}
+                  >
+                    <Icon name="Archive" className="size-3.5" />
+                    Settle
+                  </HoverAction>
                 </span>
-              </div>
-              {/* Line 2: title */}
-              <div className="mt-1 flex min-w-0">{titleNode}</div>
-              {/* Line 3: branch/machine · PR · provider */}
-              <div className="mt-0.5 flex h-4 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                {branch ? (
-                  <>
-                    <Icon
-                      name={
-                        thread.environment?.workspaceDisplayKind === "other"
-                          ? "GitBranch"
-                          : "FolderGit"
-                      }
-                      className="size-3 shrink-0 text-muted-foreground/50"
-                    />
-                    <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
-                      {branch}
-                    </span>
-                  </>
-                ) : machine ? (
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
-                    {machine}
-                  </span>
-                ) : (
-                  <span className="flex-1" />
-                )}
-                <PullRequestBadge threadId={thread.id} />
-                <span className="ml-auto inline-flex shrink-0 items-center gap-1">
-                  <ProviderMark provider={props.provider} />
-                </span>
-              </div>
+              </span>
             </div>
-          </a>
-        </ContextMenuTrigger>
-        {menu}
-      </ContextMenu>
+            {/* Line 2: title */}
+            <div className="mt-1 flex min-w-0">{titleNode}</div>
+            {/* Line 3: branch/machine · PR · provider */}
+            <div className="mt-0.5 flex h-4 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {branch ? (
+                <>
+                  <Icon
+                    name={
+                      thread.environment?.workspaceDisplayKind === "other"
+                        ? "GitBranch"
+                        : "FolderGit"
+                    }
+                    className="size-3 shrink-0 text-muted-foreground/50"
+                  />
+                  <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
+                    {branch}
+                  </span>
+                </>
+              ) : machine ? (
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
+                  {machine}
+                </span>
+              ) : (
+                <span className="flex-1" />
+              )}
+              <PullRequestBadge threadId={thread.id} />
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+                <ProviderMark provider={props.provider} />
+              </span>
+            </div>
+          </div>
+        </a>
+      </ThreadContextMenu>
     </li>
   );
 });
