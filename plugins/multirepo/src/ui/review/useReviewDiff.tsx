@@ -7,17 +7,13 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import {
-  parseDiffFromFile,
-  type FileDiffMetadata,
-  type FileDiffContentsLoader,
-  type CodeViewDiffItem,
-} from "@pierre/diffs";
+import { type CodeViewDiffItem } from "@pierre/diffs";
 import type { CodeViewHandle, CodeViewProps } from "@pierre/diffs/react";
 import { useRpc, experimental_useCodeTheme } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
 import type { LinkedDetail } from "../../shared/links-contract";
 import type { StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
+import { useReviewContents } from "./useReviewContents";
 import { parseReviewFile, ContextHeader, diffRecordVersion } from "./diff-adapter";
 
 export type ReviewSelection = NonNullable<CodeViewProps<undefined, undefined>["selectedLines"]>;
@@ -51,8 +47,14 @@ export function useReviewDiff({
     setSelection(null);
     setNotice("");
   }, [rpc, threadId, url, revision, setNotice]);
-  const [hydration, setHydration] = useState(0);
-  const fullDiffs = useMemo(() => new Map<string, FileDiffMetadata>(), [detail]);
+  const { fullDiffs, loadedContentsRevision, loadDiffFiles } = useReviewContents({
+    detail,
+    rpc,
+    threadId,
+    url,
+    setNotice,
+    setError,
+  });
   const parsed = useMemo(
     () =>
       detail?.files
@@ -70,7 +72,7 @@ export function useReviewDiff({
         version: diffRecordVersion(revision, fullDiffs.has(item.id), collapsed.has(item.id)),
         collapsed: collapsed.has(item.id),
       })),
-    [parsed, collapsed, fullDiffs, hydration, revision, contextRevision],
+    [parsed, collapsed, fullDiffs, loadedContentsRevision, revision, contextRevision],
   );
   const entries = useMemo(
     () =>
@@ -87,50 +89,6 @@ export function useReviewDiff({
       })) ?? [],
     [detail],
   );
-  const loadDiffFiles = useMemo<FileDiffContentsLoader>(() => {
-    const pending = new Map<string, ReturnType<FileDiffContentsLoader>>();
-    return (fileDiff) => {
-      const cached = pending.get(fileDiff.name);
-      if (cached) return cached;
-      const request = (async () => {
-        if (!detail?.baseRefOid || !detail.headRefOid)
-          throw new Error("Refresh this PR before expanding context.");
-        setNotice("Loading unchanged lines…");
-        setError("");
-        const contents = await rpc.call("linkedContents", {
-          threadId,
-          url,
-          path: fileDiff.name,
-          oldPath: fileDiff.prevName ?? fileDiff.name,
-          base: detail.baseRefOid,
-          head: detail.headRefOid,
-          changeType: fileDiff.type,
-        });
-        const key = `${url}:${detail.baseRefOid}:${detail.headRefOid}`;
-        const oldFile = {
-          name: fileDiff.prevName ?? fileDiff.name,
-          contents: contents.oldContents,
-          cacheKey: `${key}:old:${fileDiff.name}`,
-        };
-        const newFile = {
-          name: fileDiff.name,
-          contents: contents.newContents,
-          cacheKey: `${key}:new:${fileDiff.name}`,
-        };
-        fullDiffs.set(fileDiff.name, parseDiffFromFile(oldFile, newFile));
-        setHydration((value) => value + 1);
-        setNotice("");
-        return { oldFile, newFile };
-      })().catch((error) => {
-        pending.delete(fileDiff.name);
-        setNotice("");
-        setError(`Could not expand context: ${String(error)}. Refresh the PR to retry.`);
-        throw error;
-      });
-      pending.set(fileDiff.name, request);
-      return request;
-    };
-  }, [detail, rpc, threadId, url, fullDiffs, setNotice, setError]);
   const options = useMemo<StyledDiffCodeViewOptions<undefined>>(
     () => ({
       theme: mode === "dark" ? "pierre-dark" : "pierre-light",
@@ -180,6 +138,11 @@ export function useReviewDiff({
   const selectionPath = selection
     ? (items.find((item) => item.id === selection.id)?.fileDiff.name ?? null)
     : null;
+  function toggleAllFiles() {
+    setCollapsed(
+      collapsed.size === parsed.length ? new Set() : new Set(parsed.map((item) => item.id)),
+    );
+  }
   function collapseContext() {
     // Replace the file records through controlled props, preserving the root
     // virtualizer's dimensions, scroll observer, and worker subscriptions.
@@ -224,6 +187,7 @@ export function useReviewDiff({
     options,
     header,
     selectionPath,
+    toggleAllFiles,
     collapseContext,
     expandContext,
     reveal,

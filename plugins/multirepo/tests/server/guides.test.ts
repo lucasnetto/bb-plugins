@@ -244,9 +244,9 @@ test("invalid coverage, blank explanations, stale revisions, and stale progress 
   }
 });
 
-test("generation uses per-run model, preserves project/plugin precedence, and recovers completion after reload", async () => {
+test("guide model defaults prefer project over plugin over thread", async () => {
   const host = setup();
-  let harness = host.harness;
+  const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
@@ -267,6 +267,22 @@ test("generation uses per-run model, preserves project/plugin precedence, and re
       source: "project",
       model: { model: "project-model" },
     });
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("guide generation spawns a hidden worker with the per-run model", async () => {
+  const host = setup();
+  const { harness } = host;
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
+    await harness.behavior.callRpc("guideDefaultsSave", { projectId: null, model });
+    await harness.behavior.callRpc("guideDefaultsSave", {
+      projectId: "project",
+      model: { ...model, model: "project-model" },
+    });
     const runModel = { ...model, model: "run-model", serviceTier: "fast" };
     expect(
       await harness.behavior.callRpc("guideStart", { ...target, model: runModel }),
@@ -278,9 +294,37 @@ test("generation uses per-run model, preserves project/plugin precedence, and re
       environment: { type: "reuse", environmentId: "env" },
     });
     expect(JSON.stringify(host.spawned[0])).toContain("Return ONLY the guide JSON");
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("guide generation rejects a second start while a job is active", async () => {
+  const host = setup();
+  const { harness } = host;
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
+    await harness.behavior.callRpc("guideStart", { ...target, model });
     await expect(harness.behavior.callRpc("guideStart", { ...target, model })).rejects.toThrow(
       /already/,
     );
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("guide generation recovers completion and preserves project defaults after reload", async () => {
+  const host = setup();
+  let harness = host.harness;
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
+    await harness.behavior.callRpc("guideDefaultsSave", {
+      projectId: "project",
+      model: { ...model, model: "project-model" },
+    });
+    await harness.behavior.callRpc("guideStart", { ...target, model });
     ({ harness } = await harness.lifecycle.reload(plugin));
     host.complete();
     expect(await harness.behavior.callRpc("guideJob", target)).toMatchObject({
@@ -298,10 +342,10 @@ test("generation uses per-run model, preserves project/plugin precedence, and re
   }
 });
 
-test("cancelled generation cannot save late output; malformed and stale output remain retryable", async () => {
+test("cancelled generation ignores late output and allows a new start", async () => {
   const host = setup();
   const { harness } = host;
-  const model = { providerId: "codex", model: "model", reasoningLevel: "high" };
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -311,10 +355,38 @@ test("cancelled generation cannot save late output; malformed and stale output r
       status: "cancelled",
     });
     expect(await harness.behavior.callRpc("guideGet", target)).toBeNull();
+    expect(await harness.behavior.callRpc("guideStart", { ...target, model })).toMatchObject({
+      status: "running",
+    });
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("malformed guide output fails without saving and allows a retry", async () => {
+  const host = setup();
+  const { harness } = host;
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
     host.complete("not JSON");
     expect(await harness.behavior.callRpc("guideJob", target)).toMatchObject({ status: "error" });
     expect(await harness.behavior.callRpc("guideGet", target)).toBeNull();
+    expect(await harness.behavior.callRpc("guideStart", { ...target, model })).toMatchObject({
+      status: "running",
+    });
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("guide generation rejects output for a changed PR revision", async () => {
+  const host = setup();
+  const { harness } = host;
+  const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
     host.complete();
     host.moveHead();

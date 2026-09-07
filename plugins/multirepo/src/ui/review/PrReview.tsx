@@ -4,11 +4,12 @@ import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "../components/ui/button";
 import { StyledDiffCodeView } from "./StyledDiffCodeView";
 import { DiffFileTree } from "./DiffFileTree";
-import { GuideGenerator } from "./GuideGenerator";
+import { ReviewToolbar } from "./ReviewToolbar";
+import { ReviewGuidePanel } from "./ReviewGuidePanel";
+import { ReviewCommentForm } from "./ReviewCommentForm";
 import { useGuide } from "./useGuide";
-import { GuidedReview } from "./GuidedReview";
 import { useReviewData } from "./useReviewData";
-import { useReviewDiff } from "./useReviewDiff";
+import { useReviewDiff, type ReviewSelection } from "./useReviewDiff";
 import { useReviewComposer } from "./useReviewComposer";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
@@ -51,6 +52,16 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
     setSelection(null);
     setSelectedPath(null);
   }, [guideOpen, guide.data?.id, setSelection, setSelectedPath]);
+  function toggleGuide() {
+    setGuideOpen(!guideOpen);
+    diff.setCollapsed(new Set());
+  }
+  function selectLines(next: ReviewSelection | null | undefined) {
+    diff.setSelection(next ?? null);
+    if (next)
+      setSelectedPath(diff.items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
+    setNotice("");
+  }
   const unavailable = selectedPath && !diff.parsed.some((item) => item.id === selectedPath);
   return (
     <section
@@ -86,78 +97,16 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           </p>
         ) : null}
       </header>
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1">
-        <span className="mr-auto px-2 text-xs font-medium">
-          Code <span className="text-muted-foreground">{detail?.files.length ?? 0}</span>
-        </span>
-        <Button
-          size="sm"
-          variant={guideOpen ? "secondary" : "ghost"}
-          aria-pressed={guideOpen}
-          onClick={() => {
-            setGuideOpen(!guideOpen);
-            diff.setCollapsed(new Set());
-          }}
-        >
-          Guide
-        </Button>
-        <Button
-          size="sm"
-          variant={diff.style === "unified" ? "secondary" : "ghost"}
-          aria-pressed={diff.style === "unified"}
-          onClick={() => diff.setStyle("unified")}
-        >
-          Unified
-        </Button>
-        <Button
-          size="sm"
-          variant={diff.style === "split" ? "secondary" : "ghost"}
-          aria-pressed={diff.style === "split"}
-          onClick={() => diff.setStyle("split")}
-        >
-          Split
-        </Button>
-        <Button
-          size="sm"
-          variant={diff.wrap ? "secondary" : "ghost"}
-          aria-pressed={diff.wrap}
-          onClick={() => diff.setWrap(!diff.wrap)}
-        >
-          Wrap
-        </Button>
-        <Button
-          size="sm"
-          variant={treeOpen ? "secondary" : "ghost"}
-          aria-pressed={treeOpen}
-          onClick={() => setTreeOpen(!treeOpen)}
-        >
-          Files
-        </Button>
-        <Button size="sm" variant="ghost" disabled={loading} onClick={refresh}>
-          Refresh
-        </Button>
-        <Button size="sm" variant="ghost" disabled={loading} onClick={diff.expandContext}>
-          Expand context
-        </Button>
-        <Button size="sm" variant="ghost" onClick={diff.collapseContext}>
-          Collapse context
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() =>
-            diff.setCollapsed(
-              diff.collapsed.size === diff.parsed.length
-                ? new Set()
-                : new Set(diff.parsed.map((item) => item.id)),
-            )
-          }
-        >
-          {diff.parsed.length && diff.collapsed.size === diff.parsed.length
-            ? "Expand all"
-            : "Collapse all"}
-        </Button>
-      </div>
+      <ReviewToolbar
+        fileCount={detail?.files.length ?? 0}
+        guideOpen={guideOpen}
+        onToggleGuide={toggleGuide}
+        treeOpen={treeOpen}
+        onToggleTree={() => setTreeOpen(!treeOpen)}
+        loading={loading}
+        refresh={refresh}
+        diff={diff}
+      />
       {error ? (
         <p role="alert" className="px-4 py-2 text-sm text-destructive">
           {error}
@@ -169,88 +118,19 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
         </p>
       ) : null}
       {guideOpen ? (
-        <>
-          <GuideGenerator
-            threadId={threadId}
-            open={guideRequestOpen}
-            onOpenChange={setGuideRequestOpen}
-            pending={guide.mutationPending}
-            onStart={async (model) => {
-              if (await guide.generation.start(model)) setGuideRequestOpen(false);
-            }}
-          />
-          {guide.error || guide.generation.error ? (
-            <p role="alert" className="px-4 py-2 text-sm text-destructive">
-              {guide.error || guide.generation.error}
-            </p>
-          ) : null}
-          {guide.generation.generating ? (
-            <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
-              Generating review guide…{" "}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={guide.mutationPending}
-                onClick={() => void guide.generation.cancel()}
-              >
-                Cancel generation
-              </Button>
-            </p>
-          ) : null}
-          {guide.data ? (
-            <GuidedReview
-              saved={guide.data}
-              items={diff.items}
-              stale={staleGuide || loading}
-              pending={
-                guide.mutationPending || guide.generation.generating || guide.loading || loading
-              }
-              onRequest={() => setGuideRequestOpen(true)}
-              onMark={(index, reviewed) => void guide.mark(index, reviewed)}
-              selectedPath={selectedPath}
-              onSelectPath={setSelectedPath}
-              options={diff.options}
-              selection={diff.selection}
-              onSelection={(next) => {
-                diff.setSelection(next ?? null);
-                if (next)
-                  setSelectedPath(
-                    diff.items.find((item) => item.id === next.id)?.fileDiff.name ?? null,
-                  );
-                setNotice("");
-              }}
-              header={diff.header}
-            />
-          ) : (
-            <div className="flex flex-1 flex-col items-start justify-center gap-3 p-6">
-              <h3 className="text-lg font-semibold">
-                {staleGuide ? "The PR has changed" : "Review the story behind this change"}
-              </h3>
-              <p className="max-w-lg text-sm text-muted-foreground">
-                {staleGuide
-                  ? "This guide belongs to an earlier revision. Generate a new guide to review the current diff."
-                  : "Organize the diff into chapters: the core change first, its consequences next, then wiring and housekeeping."}
-              </p>
-              <Button
-                disabled={
-                  loading ||
-                  guide.loading ||
-                  guide.mutationPending ||
-                  guide.generation.generating ||
-                  !detail?.files.length
-                }
-                onClick={() => setGuideRequestOpen(true)}
-              >
-                {guide.generation.starting
-                  ? "Starting…"
-                  : staleGuide
-                    ? "Regenerate guide"
-                    : "Generate guide"}
-              </Button>
-              <p className="text-xs text-muted-foreground">Choose a model before generating.</p>
-            </div>
-          )}
-        </>
+        <ReviewGuidePanel
+          threadId={threadId}
+          guideRequestOpen={guideRequestOpen}
+          setGuideRequestOpen={setGuideRequestOpen}
+          guide={guide}
+          diff={diff}
+          staleGuide={staleGuide}
+          loading={loading}
+          hasChangedFiles={!!detail?.files.length}
+          selectedPath={selectedPath}
+          setSelectedPath={setSelectedPath}
+          onSelection={selectLines}
+        />
       ) : null}
       {!guideOpen ? (
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -270,14 +150,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
                 items={diff.items}
                 options={diff.options}
                 selectedLines={diff.selection}
-                onSelectedLinesChange={(next) => {
-                  diff.setSelection(next);
-                  if (next)
-                    setSelectedPath(
-                      diff.items.find((item) => item.id === next.id)?.fileDiff.name ?? null,
-                    );
-                  setNotice("");
-                }}
+                onSelectedLinesChange={selectLines}
                 renderHeaderPrefix={diff.header}
               />
             )}
@@ -298,56 +171,14 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
         </div>
       ) : null}
       {diff.selection || draft.comment ? (
-        <form
-          className="shrink-0 space-y-2 border-t border-border px-3 py-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (diff.selection && draft.comment.trim() && !loading && !draft.addingComment)
-              void draft.add("Comment");
-          }}
-        >
-          <label
-            className="block text-xs font-medium"
-            htmlFor={`review-comment-${threadId}-${detail?.pr.number}`}
-          >
-            Comment on selected code
-          </label>
-          <textarea
-            id={`review-comment-${threadId}-${detail?.pr.number}`}
-            rows={3}
-            className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="What should the agent check or change?"
-            value={draft.comment}
-            onChange={(event) => draft.setComment(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && event.metaKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                event.stopPropagation();
-                if (!event.repeat) event.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">
-              {diff.selection
-                ? "Adds your comment and selected code to this chat."
-                : "Select lines to attach this comment."}
-            </span>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={
-                loading ||
-                draft.addingComment ||
-                !detail ||
-                !diff.selection ||
-                !draft.comment.trim()
-              }
-            >
-              Add to chat ⌘↵
-            </Button>
-          </div>
-        </form>
+        <ReviewCommentForm
+          threadId={threadId}
+          pullRequestNumber={detail?.pr.number}
+          hasDetail={!!detail}
+          hasSelection={!!diff.selection}
+          loading={loading}
+          draft={draft}
+        />
       ) : null}
       <footer className="flex shrink-0 flex-wrap items-center gap-1 border-t border-border px-3 py-2">
         <span

@@ -153,7 +153,7 @@ export const detail = Effect.fn("Git.detail")(function* (
     notice: buffer.includes(0) ? "Binary file. Open it in your editor." : null,
   };
 });
-const apiPr = Schema.Struct({
+const githubPullRequestSchema = Schema.Struct({
   number: Schema.Finite,
   title: Schema.String,
   html_url: Schema.String,
@@ -162,7 +162,19 @@ const apiPr = Schema.Struct({
   draft: Schema.Boolean,
   user: Schema.NullOr(Schema.Struct({ login: Schema.String })),
 });
-function normalizePr(pr: Schema.Schema.Type<typeof apiPr>) {
+const paginatedPullRequestsSchema = Schema.fromJsonString(
+  Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(githubPullRequestSchema)))),
+);
+const githubPullRequestFileSchema = Schema.Struct({
+  filename: Schema.String,
+  status: Schema.String,
+  patch: Schema.optionalKey(Schema.String),
+});
+const paginatedPullRequestFilesSchema = Schema.fromJsonString(
+  Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(githubPullRequestFileSchema)))),
+);
+
+function normalizePr(pr: Schema.Schema.Type<typeof githubPullRequestSchema>) {
   return prSchema.make({
     number: pr.number,
     title: pr.title,
@@ -173,64 +185,46 @@ function normalizePr(pr: Schema.Schema.Type<typeof apiPr>) {
     author: pr.user?.login ?? "unknown",
   });
 }
-const ghRepo = Effect.fn("Git.githubRepository")(function* (path: string) {
-  const r = yield* remote(path);
-  if (!r) return yield* invalid("No github.com origin remote for this repository");
-  return r;
+const requireGithubRepository = Effect.fn("Git.githubRepository")(function* (path: string) {
+  const githubRepository = yield* remote(path);
+  if (!githubRepository) return yield* invalid("No github.com origin remote for this repository");
+  return githubRepository;
 });
 export const prs = Effect.fn("Git.prs")(function* (path: string) {
-  const r = yield* ghRepo(path);
+  const githubRepository = yield* requireGithubRepository(path);
   const raw = yield* command(path, "gh", [
     "api",
     "--paginate",
     "--slurp",
-    `repos/${r}/pulls?state=open&per_page=100`,
+    `repos/${githubRepository}/pulls?state=open&per_page=100`,
   ]);
-  return yield* decodeSchema(
-    Schema.fromJsonString(Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(apiPr))))),
-    raw,
-  ).pipe(Effect.map((decoded) => decoded.flat().map(normalizePr)));
+  return yield* decodeSchema(paginatedPullRequestsSchema, raw).pipe(
+    Effect.map((decoded) => decoded.flat().map(normalizePr)),
+  );
 });
 export const prFiles = Effect.fn("Git.prFiles")(function* (path: string, number: number) {
-  const r = yield* ghRepo(path);
+  const githubRepository = yield* requireGithubRepository(path);
   const raw = yield* command(path, "gh", [
     "api",
     "--paginate",
     "--slurp",
-    `repos/${r}/pulls/${number}/files?per_page=100`,
+    `repos/${githubRepository}/pulls/${number}/files?per_page=100`,
   ]);
-  return yield* decodeSchema(
-    Schema.fromJsonString(
-      Schema.mutable(
-        Schema.Array(
-          Schema.mutable(
-            Schema.Array(
-              Schema.Struct({
-                filename: Schema.String,
-                status: Schema.String,
-                patch: Schema.optionalKey(Schema.String),
-              }),
-            ),
-          ),
-        ),
-      ),
-    ),
-    raw,
-  ).pipe(
+  return yield* decodeSchema(paginatedPullRequestFilesSchema, raw).pipe(
     Effect.map((decoded) =>
-      decoded.flat().map((f) => ({
-        path: f.filename,
-        status: f.status,
-        patch: f.patch ?? null,
+      decoded.flat().map((file) => ({
+        path: file.filename,
+        status: file.status,
+        patch: file.patch ?? null,
       })),
     ),
   );
 });
 export const reviewTarget = Effect.fn("Git.reviewTarget")(function* (path: string, number: number) {
-  const r = yield* ghRepo(path);
-  const raw = yield* command(path, "gh", ["api", `repos/${r}/pulls/${number}`]);
-  const pr = yield* decodeSchema(Schema.fromJsonString(apiPr), raw).pipe(
+  const githubRepository = yield* requireGithubRepository(path);
+  const raw = yield* command(path, "gh", ["api", `repos/${githubRepository}/pulls/${number}`]);
+  const pr = yield* decodeSchema(Schema.fromJsonString(githubPullRequestSchema), raw).pipe(
     Effect.map((decoded) => normalizePr(decoded)),
   );
-  return { path, remote: r, pr };
+  return { path, remote: githubRepository, pr };
 });
