@@ -9,7 +9,6 @@ import type { rpcContract, Repo } from "../../shared/contract";
 import { Badge } from "../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { FilesView } from "./FilesView";
-import { PullRequests } from "./PullRequests";
 
 function RepositoryView({
   repo,
@@ -23,8 +22,6 @@ function RepositoryView({
   revision: number;
 }) {
   const [tab, setTab] = useState("changes");
-  // Stable identity keeps PR queries from restarting on unrelated UI state changes.
-  const [singleRepo] = useState(() => [repo]);
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
@@ -35,7 +32,6 @@ function RepositoryView({
         <TabsList>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="prs">Pull requests</TabsTrigger>
         </TabsList>
       </div>
       <TabsContent value="changes" className="flex min-h-0 flex-1 flex-col">
@@ -49,9 +45,6 @@ function RepositoryView({
       </TabsContent>
       <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
         <FilesView repo={repo.name} mode="files" root={root} hostId={hostId} revision={revision} />
-      </TabsContent>
-      <TabsContent value="prs" className="flex min-h-0 flex-1 flex-col">
-        <PullRequests repos={singleRepo} revision={revision} />
       </TabsContent>
     </Tabs>
   );
@@ -77,7 +70,7 @@ export function Workspace() {
           <p className="truncate text-xs text-muted-foreground">
             {state.data
               ? `${state.data.repos.length} repositories · ${state.data.workspace.root}`
-              : "Files, changes, and pull requests"}
+              : "Files and changes"}
           </p>
         </div>
         <Button
@@ -146,7 +139,7 @@ export function Workspace() {
             ) : (
               <Blank
                 title={state.data.repos.length ? "Choose a repository" : "No repositories found"}
-                description="Browse files, inspect changes, or review a pull request."
+                description="Browse files and inspect changes."
               />
             )}
           </main>

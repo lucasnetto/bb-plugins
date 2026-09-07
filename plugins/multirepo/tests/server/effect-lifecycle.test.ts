@@ -3,7 +3,7 @@ import { test } from "vite-plus/test";
 import { Deferred, Effect } from "effect";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { runHost, type Command } from "../../src/server/host-effects";
-import { prs } from "../../src/server/git";
+import { linkedSummary } from "../../src/server/links-host";
 import { linkedContents as contentsEffect } from "../../src/server/links-host";
 import plugin from "../../src/server/server";
 
@@ -18,16 +18,20 @@ test("GitHub command and decoding errors remain failures, with no retries", asyn
   for (const reply of ["invalid JSON", "{}", "[[{}]]"]) {
     let calls = 0;
     await assert.rejects(
-      runHost(prs("/repo"), undefined, async (_cwd, program) => {
-        calls++;
-        return program === "git" ? "git@github.com:org/repo.git" : reply;
-      }),
+      runHost(
+        linkedSummary("/repo", "https://github.com/org/api/pull/42"),
+        undefined,
+        async (_cwd, program) => {
+          calls++;
+          return program === "git" ? "git@github.com:org/repo.git" : reply;
+        },
+      ),
     );
-    assert.equal(calls, 2);
+    assert.equal(calls, 1);
   }
   let calls = 0;
   await assert.rejects(
-    runHost(prs("/repo"), undefined, async () => {
+    runHost(linkedSummary("/repo", "https://github.com/org/api/pull/42"), undefined, async () => {
       calls++;
       throw Object.assign(new Error("git unavailable"), { code: "ENOENT" });
     }),

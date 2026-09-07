@@ -35,15 +35,6 @@ export const repoSchema = Schema.Struct({
   changes: Schema.Finite,
   error: Schema.NullOr(Schema.String),
 });
-export const prSchema = Schema.Struct({
-  number: Schema.Finite,
-  title: Schema.String,
-  url: Schema.String,
-  headRefName: Schema.String,
-  baseRefName: Schema.String,
-  isDraft: Schema.Boolean,
-  author: Schema.String,
-});
 export const detailInput = repoInput.pipe(
   Schema.fieldsAssign({
     path: Schema.String.check(Schema.isMinLength(1)),
@@ -55,11 +46,6 @@ export const detailSchema = Schema.Struct({
   content: Schema.NullOr(Schema.String),
   patch: Schema.NullOr(Schema.String),
   notice: Schema.NullOr(Schema.String),
-});
-export const prFileSchema = Schema.Struct({
-  path: Schema.String,
-  status: Schema.String,
-  patch: Schema.NullOr(Schema.String),
 });
 export const hostContract = defineRpcContract({
   linkedContents: {
@@ -89,44 +75,6 @@ export const hostContract = defineRpcContract({
   detail: {
     input: standardSchema(rootInput.pipe(Schema.fieldsAssign(detailInput.fields))),
     output: standardSchema(detailSchema),
-  },
-  prs: {
-    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(repoInput.fields))),
-    output: standardSchema(Schema.mutable(Schema.Array(prSchema))),
-  },
-  prFiles: {
-    input: standardSchema(
-      rootInput.pipe(Schema.fieldsAssign(repoInput.fields)).pipe(
-        Schema.fieldsAssign({
-          number: Schema.Finite.check(
-            Schema.isInt(),
-            Schema.isBetween({
-              minimum: Number.MIN_SAFE_INTEGER,
-              maximum: Number.MAX_SAFE_INTEGER,
-            }),
-          ).check(Schema.isGreaterThan(0)),
-        }),
-      ),
-    ),
-    output: standardSchema(Schema.mutable(Schema.Array(prFileSchema))),
-  },
-  reviewTarget: {
-    input: standardSchema(
-      rootInput.pipe(Schema.fieldsAssign(repoInput.fields)).pipe(
-        Schema.fieldsAssign({
-          number: Schema.Finite.check(
-            Schema.isInt(),
-            Schema.isBetween({
-              minimum: Number.MIN_SAFE_INTEGER,
-              maximum: Number.MAX_SAFE_INTEGER,
-            }),
-          ).check(Schema.isGreaterThan(0)),
-        }),
-      ),
-    ),
-    output: standardSchema(
-      Schema.Struct({ path: Schema.String, remote: Schema.String, pr: prSchema }),
-    ),
   },
 });
 export const reviewCommentInput = Schema.Struct({
@@ -220,45 +168,7 @@ export const rpcContract = defineRpcContract({
     input: standardSchema(detailInput),
     output: standardSchema(detailSchema),
   },
-  prs: {
-    input: standardSchema(repoInput),
-    output: standardSchema(Schema.mutable(Schema.Array(prSchema))),
-  },
-  prFiles: {
-    input: standardSchema(
-      repoInput.pipe(
-        Schema.fieldsAssign({
-          number: Schema.Finite.check(
-            Schema.isInt(),
-            Schema.isBetween({
-              minimum: Number.MIN_SAFE_INTEGER,
-              maximum: Number.MAX_SAFE_INTEGER,
-            }),
-          ).check(Schema.isGreaterThan(0)),
-        }),
-      ),
-    ),
-    output: standardSchema(Schema.mutable(Schema.Array(prFileSchema))),
-  },
-  review: {
-    input: standardSchema(
-      repoInput.pipe(
-        Schema.fieldsAssign({
-          number: Schema.Finite.check(
-            Schema.isInt(),
-            Schema.isBetween({
-              minimum: Number.MIN_SAFE_INTEGER,
-              maximum: Number.MAX_SAFE_INTEGER,
-            }),
-          ).check(Schema.isGreaterThan(0)),
-        }),
-      ),
-    ),
-    output: standardSchema(Schema.Struct({ threadId: Schema.String })),
-  },
 });
 export type Repo = Schema.Schema.Type<typeof repoSchema>;
 export type Change = Schema.Schema.Type<typeof changeSchema>;
-export type PullRequest = Schema.Schema.Type<typeof prSchema>;
 export type Detail = Schema.Schema.Type<typeof detailSchema>;
-export type PrFile = Schema.Schema.Type<typeof prFileSchema>;

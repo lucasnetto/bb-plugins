@@ -1,18 +1,10 @@
 import { lstat, readdir, realpath, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { DiscoveryError, DiscoveryIO, discoverRepositories } from "./discovery";
-import {
-  Commands,
-  command,
-  fileRead,
-  invalid,
-  hasExitCode,
-  MAX_BYTES,
-  decodeSchema,
-} from "./host-effects";
-import { prSchema, type Change } from "../shared/contract";
+import { Commands, command, fileRead, invalid, hasExitCode, MAX_BYTES } from "./host-effects";
+import { type Change } from "../shared/contract";
 const git = (cwd: string, args: string[]) =>
   command(cwd, "git", ["--no-pager", "--literal-pathspecs", ...args]);
 function inside(root: string, path: string) {
@@ -152,79 +144,4 @@ export const detail = Effect.fn("Git.detail")(function* (
     content: buffer.includes(0) ? null : buffer.toString("utf8"),
     notice: buffer.includes(0) ? "Binary file. Open it in your editor." : null,
   };
-});
-const githubPullRequestSchema = Schema.Struct({
-  number: Schema.Finite,
-  title: Schema.String,
-  html_url: Schema.String,
-  head: Schema.Struct({ ref: Schema.String }),
-  base: Schema.Struct({ ref: Schema.String }),
-  draft: Schema.Boolean,
-  user: Schema.NullOr(Schema.Struct({ login: Schema.String })),
-});
-const paginatedPullRequestsSchema = Schema.fromJsonString(
-  Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(githubPullRequestSchema)))),
-);
-const githubPullRequestFileSchema = Schema.Struct({
-  filename: Schema.String,
-  status: Schema.String,
-  patch: Schema.optionalKey(Schema.String),
-});
-const paginatedPullRequestFilesSchema = Schema.fromJsonString(
-  Schema.mutable(Schema.Array(Schema.mutable(Schema.Array(githubPullRequestFileSchema)))),
-);
-
-function normalizePr(pr: Schema.Schema.Type<typeof githubPullRequestSchema>) {
-  return prSchema.make({
-    number: pr.number,
-    title: pr.title,
-    url: pr.html_url,
-    headRefName: pr.head.ref,
-    baseRefName: pr.base.ref,
-    isDraft: pr.draft,
-    author: pr.user?.login ?? "unknown",
-  });
-}
-const requireGithubRepository = Effect.fn("Git.githubRepository")(function* (path: string) {
-  const githubRepository = yield* remote(path);
-  if (!githubRepository) return yield* invalid("No github.com origin remote for this repository");
-  return githubRepository;
-});
-export const prs = Effect.fn("Git.prs")(function* (path: string) {
-  const githubRepository = yield* requireGithubRepository(path);
-  const raw = yield* command(path, "gh", [
-    "api",
-    "--paginate",
-    "--slurp",
-    `repos/${githubRepository}/pulls?state=open&per_page=100`,
-  ]);
-  return yield* decodeSchema(paginatedPullRequestsSchema, raw).pipe(
-    Effect.map((decoded) => decoded.flat().map(normalizePr)),
-  );
-});
-export const prFiles = Effect.fn("Git.prFiles")(function* (path: string, number: number) {
-  const githubRepository = yield* requireGithubRepository(path);
-  const raw = yield* command(path, "gh", [
-    "api",
-    "--paginate",
-    "--slurp",
-    `repos/${githubRepository}/pulls/${number}/files?per_page=100`,
-  ]);
-  return yield* decodeSchema(paginatedPullRequestFilesSchema, raw).pipe(
-    Effect.map((decoded) =>
-      decoded.flat().map((file) => ({
-        path: file.filename,
-        status: file.status,
-        patch: file.patch ?? null,
-      })),
-    ),
-  );
-});
-export const reviewTarget = Effect.fn("Git.reviewTarget")(function* (path: string, number: number) {
-  const githubRepository = yield* requireGithubRepository(path);
-  const raw = yield* command(path, "gh", ["api", `repos/${githubRepository}/pulls/${number}`]);
-  const pr = yield* decodeSchema(Schema.fromJsonString(githubPullRequestSchema), raw).pipe(
-    Effect.map((decoded) => normalizePr(decoded)),
-  );
-  return { path, remote: githubRepository, pr };
 });

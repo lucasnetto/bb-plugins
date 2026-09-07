@@ -2,16 +2,24 @@ import { useList } from "./use-list";
 import { useId, useRef, useState } from "react";
 import { definePluginApp, useRpc, useBbNavigate, UrlLink } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { rpcContract, View } from "./contract";
+import type { rpcContract, View, PrState } from "./contract";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Badge } from "./components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 
-function PullRequestList({ view }: { view: View }) {
+function PullRequestList({
+  view,
+  state,
+  setState,
+}: {
+  view: View;
+  state: PrState;
+  setState: (state: PrState) => void;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
-  const { result, fetchedAt, error, loading, showLoading, refresh } = useList(view);
+  const { result, fetchedAt, error, loading, showLoading, refresh } = useList(view, state);
   const [query, setQuery] = useState("");
   const [repository, setRepository] = useState("");
   const groupId = useId();
@@ -59,6 +67,15 @@ function PullRequestList({ view }: { view: View }) {
           <TabsTrigger value="reviewing">Review requested</TabsTrigger>
         </TabsList>
         <select
+          aria-label="Pull request state"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={state}
+          onChange={(event) => setState(event.target.value === "open" ? "open" : "all")}
+        >
+          <option value="open">Open</option>
+          <option value="all">All</option>
+        </select>
+        <select
           aria-label="Filter by repository"
           className="h-9 max-w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           value={repository}
@@ -95,8 +112,12 @@ function PullRequestList({ view }: { view: View }) {
         <div className="flex-1 overflow-auto px-6 py-4" aria-busy={loading}>
           <p className="mb-4 text-sm text-muted-foreground">
             {view === "authored"
-              ? "Your open pull requests, including drafts."
-              : "Open pull requests awaiting review from you or a team you belong to."}
+              ? state === "open"
+                ? "Your open pull requests, including drafts."
+                : "Your pull requests across all states, including drafts."
+              : state === "open"
+                ? "Open pull requests awaiting review from you or a team you belong to."
+                : "Pull requests with review requests for you or a team you belong to, across all states."}
           </p>
           {error ? (
             <div role="alert" className="mb-4 text-sm text-destructive">
@@ -168,7 +189,13 @@ function PullRequestList({ view }: { view: View }) {
                             </div>
                           </div>
                           <Badge variant={pr.isDraft ? "secondary" : "outline"}>
-                            {pr.isDraft ? "Draft" : "Open"}
+                            {pr.state === "merged"
+                              ? "Merged"
+                              : pr.state === "closed"
+                                ? "Closed"
+                                : pr.isDraft
+                                  ? "Draft"
+                                  : "Open"}
                           </Badge>
                           <Button
                             variant="outline"
@@ -193,7 +220,9 @@ function PullRequestList({ view }: { view: View }) {
                 {query || repository
                   ? "No matching pull requests"
                   : view === "authored"
-                    ? "No open pull requests"
+                    ? state === "open"
+                      ? "No open pull requests"
+                      : "No pull requests"
                     : "No reviews waiting for you"}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -228,6 +257,7 @@ function PullRequestList({ view }: { view: View }) {
 
 export function PullRequestsPage() {
   const [view, setView] = useState<View>("authored");
+  const [state, setState] = useState<PrState>("all");
   return (
     <main className="flex h-full min-h-0 flex-col">
       <header className="px-6 pb-4 pt-6">
@@ -241,7 +271,7 @@ export function PullRequestsPage() {
         }}
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
-        <PullRequestList key={view} view={view} />
+        <PullRequestList key={`${view}:${state}`} view={view} state={state} setState={setState} />
       </Tabs>
     </main>
   );

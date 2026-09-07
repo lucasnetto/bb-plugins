@@ -3,7 +3,7 @@ export type MultirepoCommand =
   | { command: "help"; exitCode: number }
   | { command: "invalid"; message: string }
   | { command: "status" | "links" }
-  | { command: "changes" | "files" | "prs"; repo: string }
+  | { command: "changes" | "files"; repo: string }
   | { command: "diff"; repo: string; path: string; mode: "staged" | "worktree" }
   | { command: "link"; url: string; reason: string }
   | { command: "unlink" | "guide-context"; url: string }
@@ -19,8 +19,7 @@ export function parseMultirepoCommand(argv: readonly string[]): MultirepoCommand
     case "links":
       return { command };
     case "changes":
-    case "files":
-    case "prs": {
+    case "files": {
       const [repo] = args;
       return repo ? { command, repo } : { command: "help", exitCode: 1 };
     }

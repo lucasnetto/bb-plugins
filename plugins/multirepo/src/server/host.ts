@@ -22,17 +22,5 @@ export default experimental_defineHostEntry({
           .pipe(Effect.flatMap((repoPath) => git.detail(repoPath, path, mode))),
         ctx.signal,
       ),
-    prs: ({ root, repo }, ctx) =>
-      runHost(git.repository(root, repo).pipe(Effect.flatMap(git.prs)), ctx.signal),
-    prFiles: ({ root, repo, number }, ctx) =>
-      runHost(
-        git.repository(root, repo).pipe(Effect.flatMap((path) => git.prFiles(path, number))),
-        ctx.signal,
-      ),
-    reviewTarget: ({ root, repo, number }, ctx) =>
-      runHost(
-        git.repository(root, repo).pipe(Effect.flatMap((path) => git.reviewTarget(path, number))),
-        ctx.signal,
-      ),
   },
 });

@@ -52,12 +52,22 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
   try {
     await slot.findByText("Fix API");
     expect(views).toEqual(["authored"]);
+    const stateFilter = slot.getByRole("combobox", { name: "Pull request state" });
+    expect((stateFilter as HTMLSelectElement).value).toBe("all");
+    fireEvent.change(stateFilter, { target: { value: "open" } });
+    await waitFor(() => expect(views).toEqual(["authored", "authored"]));
+    expect(JSON.stringify(slot.inspection.rpcCalls)).toContain('"state":"open"');
+    fireEvent.change(slot.getByRole("combobox", { name: "Pull request state" }), {
+      target: { value: "all" },
+    });
+    await waitFor(() => expect(views).toHaveLength(3));
+    await slot.findByText("Fix API");
     expect(slot.getByText("Draft")).toBeTruthy();
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Review requested" }), {
       button: 0,
       ctrlKey: false,
     });
-    await waitFor(() => expect(views).toEqual(["authored", "reviewing"]));
+    await waitFor(() => expect(views).toEqual(["authored", "authored", "authored", "reviewing"]));
     await slot.findByText("Fix API");
     fireEvent.click(slot.getByRole("button", { name: "Review acme/api #42" }));
     await waitFor(() => expect(slot.inspection.navigateCalls.length).toBe(1));

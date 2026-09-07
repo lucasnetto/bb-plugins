@@ -40,6 +40,7 @@ test("repository navigation loads the selected change and preserves its explicit
   );
   try {
     fireEvent.click(await slot.findByRole("button", { name: /api main/ }));
+    expect(slot.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Changes", "Files"]);
     fireEvent.click(await slot.findByRole("button", { name: /file\.ts/ }));
     const link = await slot.findByRole("link", { name: "Open file" });
     expect(link.getAttribute("href")).toBeTruthy();
@@ -50,47 +51,6 @@ test("repository navigation loads the selected change and preserves its explicit
     slot.lifecycle.unmount();
   }
 });
-test("repository PR tab loads file patches and navigates to the launched review thread", async () => {
-  const app = await loadPluginApp(() => import("../../src/ui/app"));
-  const slot = renderSlot(
-    app.navPanels.find((p) => p.id === "repos")!,
-    { subPath: "" },
-    {
-      rpc: {
-        workspace: () => workspace,
-        discover: () => repos,
-        changes: () => [],
-        prs: () => [pr],
-        prFiles: () => [
-          {
-            path: "file.ts",
-            status: "modified",
-            patch: "@@ -1 +1 @@\n-old\n+new\n",
-          },
-        ],
-        review: () => ({ threadId: "review-42" }),
-      },
-    },
-  );
-  try {
-    expect(app.navPanels.map((panel) => panel.id)).toEqual(["repos"]);
-    fireEvent.click(await slot.findByRole("button", { name: /api main/ }));
-    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Pull requests" }), {
-      button: 0,
-      ctrlKey: false,
-    });
-    fireEvent.click(await slot.findByRole("button", { name: /Fix validation/ }));
-    await slot.findByRole("button", { name: "file.ts" });
-    fireEvent.click(await slot.findByRole("button", { name: "Start review" }));
-    await waitFor(() =>
-      expect(JSON.stringify(slot.inspection.navigateCalls)).toContain("review-42"),
-    );
-    expect(JSON.stringify(slot.inspection.rpcCalls)).toContain('"number":42');
-  } finally {
-    slot.lifecycle.unmount();
-  }
-});
-
 test("linked PR picker opens the selected PR in its thread panel and unlink preserves the other PR", async () => {
   const app = await loadPluginApp(() => import("../../src/ui/app"));
   let links = [42, 43].map((number) => ({

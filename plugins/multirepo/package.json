@@ -54,7 +54,7 @@
   },
   "bb": {
     "name": "Multirepo",
-    "description": "Browse files, changes, and pull requests across a workspace of repositories.",
+    "description": "Browse workspace repositories and review pull requests linked to threads.",
     "branding": {
       "icon": "FolderGit2"
     },

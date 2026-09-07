@@ -72,46 +72,6 @@ export default function plugin(bb: BbPluginApi) {
           host.call("detail", { ...input, root: w.root }, { hostId: w.hostId, signal }),
         );
       }),
-    prs: (input: { repo: string }) =>
-      Effect.gen(function* () {
-        const w = yield* workspace();
-        return yield* call("host.read", (signal) =>
-          host.call("prs", { ...input, root: w.root }, { hostId: w.hostId, signal }),
-        );
-      }),
-    prFiles: (input: { repo: string; number: number }) =>
-      Effect.gen(function* () {
-        const w = yield* workspace();
-        return yield* call("host.read", (signal) =>
-          host.call("prFiles", { ...input, root: w.root }, { hostId: w.hostId, signal }),
-        );
-      }),
-    review: (input: { repo: string; number: number }) =>
-      Effect.gen(function* () {
-        const w = yield* workspace();
-        const target = yield* call("host.reviewTarget", (signal) =>
-          host.call("reviewTarget", { ...input, root: w.root }, { hostId: w.hostId, signal }),
-        );
-        const thread = yield* call("threads.spawn", () =>
-          bb.sdk.threads.spawn({
-            projectId: w.projectId,
-            environment: {
-              type: "host",
-              hostId: w.hostId,
-              workspace: { type: "unmanaged", path: w.root },
-            },
-            title: `${target.remote}#${input.number}: ${target.pr.title}`,
-            prompt: [
-              `Review ${target.pr.url}.`,
-              `The local repository is ${JSON.stringify(target.path)} inside the umbrella workspace ${JSON.stringify(w.root)}.`,
-              `Read the PR using gh pr view ${input.number} -R ${target.remote} --comments and gh pr diff ${input.number} -R ${target.remote}.`,
-              `The PR head is ${JSON.stringify(target.pr.headRefName)} and its base is ${JSON.stringify(target.pr.baseRefName)}. The local checkout may differ: inspect the exact PR revision, not unrelated local changes.`,
-              "Review correctness, regressions, and missing tests. Return findings with file/line references. Preserve all existing work; do not switch the shared checkout, edit files, push, or post to GitHub unless the user asks.",
-            ].join("\n"),
-          }),
-        );
-        return { threadId: thread.id };
-      }),
   };
   bb.rpc.register(rpcContract, {
     guideStart: handler(runtime, generation.guideStart),
@@ -134,9 +94,6 @@ export default function plugin(bb: BbPluginApi) {
     changes: handler(runtime, operations.changes),
     files: handler(runtime, operations.files),
     detail: handler(runtime, operations.detail),
-    prs: handler(runtime, operations.prs),
-    prFiles: handler(runtime, operations.prFiles),
-    review: handler(runtime, operations.review),
     reviewUrl: handler(runtime, operations.reviewUrl),
   });
   registerMultirepoCli(bb, runtime, operations, links, guides);

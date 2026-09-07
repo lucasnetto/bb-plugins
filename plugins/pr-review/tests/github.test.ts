@@ -7,6 +7,7 @@ const item = {
   title: "Change",
   user: { login: "lucas" },
   draft: true,
+  state: "open",
   updated_at: "2026-09-07T12:00:00Z",
 };
 function api(total = 1, incomplete = false) {
@@ -20,6 +21,28 @@ function api(total = 1, incomplete = false) {
   return { gh, calls };
 }
 describe("GitHub PR inbox", () => {
+  it("fetches all states and identifies closed and merged PRs", async () => {
+    const calls: string[][] = [];
+    const result = await listPullRequests(
+      async (args) => {
+        calls.push(args);
+        return args.includes("user")
+          ? { login: "lucas" }
+          : {
+              total_count: 2,
+              incomplete_results: false,
+              items: [
+                { ...item, state: "closed" },
+                { ...item, state: "closed", pull_request: { merged_at: "2026-09-07T12:00:00Z" } },
+              ],
+            };
+      },
+      { view: "authored", page: 1, state: "all" },
+    );
+    expect(calls[1]).toContain("q=is:pr author:lucas");
+    expect(result.rows.map((row) => row.state)).toEqual(["closed", "merged"]);
+    expect(githubQuery("reviewing", "lucas", "all")).toBe("is:pr review-requested:lucas");
+  });
   it("includes drafts and open authored PRs without restricting repositories", async () => {
     const { gh, calls } = api();
     const result = await listPullRequests(gh, { view: "authored", page: 1 });

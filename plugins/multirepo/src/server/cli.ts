@@ -11,7 +11,6 @@ interface WorkspaceCommands {
   discover: Operation<[]>;
   changes: Operation<[{ repo: string }]>;
   files: Operation<[{ repo: string }]>;
-  prs: Operation<[{ repo: string }]>;
   detail: Operation<[{ repo: string; path: string; mode: "staged" | "worktree" }]>;
 }
 
@@ -38,14 +37,13 @@ export function registerMultirepoCli(
         return {
           exitCode: input.exitCode,
           stdout:
-            "Usage: bb multirepo status | changes <repo> | files <repo> | prs <repo> | diff <repo> <path> [--staged] | links | link <url> [reason] | unlink <url> | guide-context <url> | guide-save <url> <base> <head> '<JSON>'",
+            "Usage: bb multirepo status | changes <repo> | files <repo> | diff <repo> <path> [--staged] | links | link <url> [reason] | unlink <url> | guide-context <url> | guide-save <url> <base> <head> '<JSON>'",
         };
       case "status":
         result = yield* operations.discover();
         break;
       case "changes":
       case "files":
-      case "prs":
         result = yield* operations[input.command]({ repo: input.repo });
         break;
       case "diff":
@@ -130,11 +128,6 @@ export function registerMultirepoCli(
         name: "files",
         summary: "List repository files",
         usage: "bb multirepo files <repo>",
-      },
-      {
-        name: "prs",
-        summary: "List open pull requests",
-        usage: "bb multirepo prs <repo>",
       },
       {
         name: "diff",

@@ -2,7 +2,14 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const viewSchema = z.enum(["authored", "reviewing"]);
-export const listInput = z.object({ view: viewSchema, page: z.number().int().min(1).max(20) });
+export const stateSchema = z.enum(["open", "all"]);
+const stateInput = stateSchema.optional();
+export type PrState = z.infer<typeof stateSchema>;
+export const listInput = z.object({
+  view: viewSchema,
+  state: stateInput,
+  page: z.number().int().min(1).max(20),
+});
 export const prUrl = z.string().regex(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*$/);
 export const pullRequestSchema = z.object({
   url: prUrl,
@@ -11,6 +18,7 @@ export const pullRequestSchema = z.object({
   title: z.string(),
   author: z.string(),
   isDraft: z.boolean(),
+  state: z.enum(["open", "closed", "merged"]).optional(),
   updatedAt: z.string(),
 });
 export const listOutput = z.object({
@@ -39,9 +47,14 @@ export const snapshotSchema = z.object({
 export type ListSnapshot = z.infer<typeof snapshotSchema>;
 export const rpcContract = defineRpcContract({
   list: { input: listInput, output: listOutput },
-  savedList: { input: z.object({ view: viewSchema }), output: snapshotSchema },
+  savedList: { input: z.object({ view: viewSchema, state: stateInput }), output: snapshotSchema },
   refreshList: {
-    input: z.object({ view: viewSchema, force: z.boolean(), loadMore: z.boolean() }),
+    input: z.object({
+      view: viewSchema,
+      state: stateInput,
+      force: z.boolean(),
+      loadMore: z.boolean(),
+    }),
     output: z.null(),
   },
   review: { input: z.object({ url: prUrl }), output: reviewOutput },

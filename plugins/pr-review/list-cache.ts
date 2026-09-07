@@ -9,6 +9,7 @@ import {
   type ListResult,
   type PullRequest,
   type View,
+  type PrState,
 } from "./contract";
 
 export function createListCache(bb: BbPluginApi) {
@@ -31,8 +32,11 @@ export function createListCache(bb: BbPluginApi) {
       input: null,
       outputSchema: workspaceSchema,
     });
-  const scopeOf = (w: { projectId: string; hostId: string; root: string }, view: View) =>
-    JSON.stringify([w.projectId, w.hostId, w.root, view]);
+  const scopeOf = (
+    w: { projectId: string; hostId: string; root: string },
+    view: View,
+    state: PrState,
+  ) => JSON.stringify([w.projectId, w.hostId, w.root, view, state]);
   function read(scope: string, view: View): ListSnapshot {
     const row = db.prepare("SELECT data FROM list_snapshots WHERE scope = ?").get(scope);
     if (!row) return { scope, view, result: null, fetchedAt: null, pageCount: 0, error: null };
@@ -51,18 +55,21 @@ export function createListCache(bb: BbPluginApi) {
     bb.realtime.publish(LIST_CHANGED, { scope: snapshot.scope, view: snapshot.view });
   }
   return {
-    savedList: async ({ view }: { view: View }) => read(scopeOf(await workspace(), view), view),
+    savedList: async ({ view, state = "open" }: { view: View; state?: PrState }) =>
+      read(scopeOf(await workspace(), view, state), view),
     refreshList: async ({
       view,
+      state = "open",
       force,
       loadMore,
     }: {
       view: View;
+      state?: PrState;
       force: boolean;
       loadMore: boolean;
     }) => {
       const w = await workspace();
-      const scope = scopeOf(w, view);
+      const scope = scopeOf(w, view, state);
       const running = pending.get(scope);
       if (running) return running;
       const saved = read(scope, view);
@@ -79,7 +86,7 @@ export function createListCache(bb: BbPluginApi) {
           for (let page = 1; page <= pages; page++) {
             const data = await host.call(
               "list",
-              { root: w.root, view, page },
+              { root: w.root, view, state, page },
               {
                 hostId: w.hostId,
                 signal: controller.signal,

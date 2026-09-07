@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { z } from "zod";
-import { listInput, prUrl, type ListResult, type View } from "./contract";
+import { listInput, prUrl, type ListResult, type View, type PrState } from "./contract";
 
 export type Gh = (args: string[]) => Promise<unknown>;
 const viewerSchema = z.object({ login: z.string().regex(/^[\w-]+$/) });
@@ -14,22 +14,24 @@ const searchSchema = z.object({
       title: z.string(),
       user: z.object({ login: z.string() }).nullable(),
       draft: z.boolean(),
+      state: z.enum(["open", "closed"]),
+      pull_request: z.object({ merged_at: z.string().nullable().optional() }).optional(),
       updated_at: z.string(),
     }),
   ),
 });
 
-export function githubQuery(view: View, viewer: string) {
+export function githubQuery(view: View, viewer: string, state: PrState = "open") {
   // review-requested includes direct requests AND requests to the viewer's teams.
-  // Omitting a draft qualifier includes both draft and ready open PRs.
-  return `is:pr is:open ${view === "authored" ? "author" : "review-requested"}:${viewer}`;
+  // Omitting a draft qualifier includes both draft and ready PRs.
+  return `is:pr ${state === "open" ? "is:open " : ""}${view === "authored" ? "author" : "review-requested"}:${viewer}`;
 }
 
 export async function listPullRequests(
   gh: Gh,
-  input: { view: View; page: number },
+  input: { view: View; page: number; state?: PrState },
 ): Promise<ListResult> {
-  const { view, page } = listInput.parse(input);
+  const { view, page, state } = listInput.parse(input);
   const { login } = viewerSchema.parse(await gh(["api", "--hostname", "github.com", "user"]));
   const result = searchSchema.parse(
     await gh([
@@ -40,7 +42,7 @@ export async function listPullRequests(
       "GET",
       "search/issues",
       "-f",
-      `q=${githubQuery(view, login)}`,
+      `q=${githubQuery(view, login, state)}`,
       "-f",
       "sort=updated",
       "-f",
@@ -51,13 +53,14 @@ export async function listPullRequests(
       `page=${page}`,
     ]),
   );
-  const rows = result.items.map((item) => ({
+  const rows: ListResult["rows"] = result.items.map((item) => ({
     url: item.html_url,
     repository: new URL(item.html_url).pathname.split("/").slice(1, 3).join("/"),
     number: item.number,
     title: item.title,
     author: item.user?.login ?? "ghost",
     isDraft: item.draft,
+    state: item.pull_request?.merged_at ? "merged" : item.state,
     updatedAt: item.updated_at,
   }));
   return {

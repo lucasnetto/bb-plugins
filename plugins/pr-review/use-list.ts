@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
-import { LIST_CHANGED, type ListSnapshot, type rpcContract, type View } from "./contract";
+import {
+  LIST_CHANGED,
+  type ListSnapshot,
+  type rpcContract,
+  type View,
+  type PrState,
+} from "./contract";
 
-export function useList(view: View) {
+export function useList(view: View, state: PrState) {
   const rpc = useRpc<typeof rpcContract>();
   const connection = useRealtimeConnectionState();
   const [snapshot, setSnapshot] = useState<ListSnapshot>();
@@ -15,12 +21,12 @@ export function useList(view: View) {
   const read = useCallback(async () => {
     const request = ++sequence.current;
     try {
-      const data = await rpc.call("savedList", { view });
+      const data = await rpc.call("savedList", { view, state });
       if (active.current && sequence.current === request) setSnapshot(data);
     } catch (reason) {
       if (active.current && sequence.current === request) setError(String(reason));
     }
-  }, [rpc, view]);
+  }, [rpc, view, state]);
   const refresh = useCallback(
     async (force = false, loadMore = false) => {
       if (refreshingRef.current) return;
@@ -28,7 +34,7 @@ export function useList(view: View) {
       setRefreshing(true);
       setError("");
       try {
-        await rpc.call("refreshList", { view, force, loadMore });
+        await rpc.call("refreshList", { view, state, force, loadMore });
         if (active.current) await read();
       } catch (reason) {
         if (active.current) setError(String(reason));
@@ -37,7 +43,7 @@ export function useList(view: View) {
         if (active.current) setRefreshing(false);
       }
     },
-    [rpc, view, read],
+    [rpc, view, state, read],
   );
   useRealtime(LIST_CHANGED, (payload) => {
     if (

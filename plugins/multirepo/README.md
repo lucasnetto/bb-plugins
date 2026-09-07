@@ -7,14 +7,13 @@ Browse a folder of independent Git repositories without changing bb core.
 Choose the umbrella project in **Settings → Multirepo → Workspace project**.
 The plugin uses that project's default local source and its owning machine.
 
-- **Repos** in the sidebar: search repositories, select one, then browse Changes, Files, or Pull requests.
+- **Repos** in the sidebar: search repositories, select one, then browse Changes or Files.
 - **Repos** in a thread's panel Actions: the same configured umbrella workspace beside the conversation.
 - **Pull requests** in the sidebar is provided by the PR Review plugin, with Created by me and Review requested views across GitHub.
 - Select a changed file to read its staged or working-tree diff. Untracked files open as source. **Open file** uses bb's native file preview and editor actions.
-- Select a PR to inspect its files and click **Start review** to create a review thread in the umbrella checkout. The prompt identifies the exact nested repo and PR, and tells the agent to preserve the shared checkout and report findings without posting to GitHub.
 - **Refresh** reloads repository state and the current view. This version uses explicit refresh, not background filesystem watching.
 
-Git and authenticated `gh` must be available on the workspace's machine. PR discovery supports `github.com` origin remotes over HTTPS or SSH. Failures from individual PR repositories are shown without discarding successful results.
+Git must be available on the workspace machine. Linked PR reviews also require authenticated `gh`. PR browsing is provided by the separate PR Review plugin.
 
 ## Agent/CLI access
 
@@ -24,7 +23,6 @@ bb multirepo changes canguruga
 bb multirepo files canguruga
 bb multirepo diff canguruga path/to/file
 bb multirepo diff canguruga path/to/file --staged
-bb multirepo prs tubarao
 ```
 
 Output is JSON. Commands are exposed through bb's plugin command inventory.
@@ -45,7 +43,7 @@ bb plugin build
 bb plugin install . --yes
 ```
 
-Source layout: `src/server/git.ts` reads Git/GitHub on the owning host; `src/server/host.ts` exposes typed host RPC; `src/server/server.ts` resolves the project and launches review threads; `src/ui/app.tsx` registers the panels and reuses bb source/diff viewers.
+Source layout: `src/server/git.ts` reads Git on the owning host; `src/server/host.ts` exposes typed host RPC; `src/server/server.ts` resolves the project and launches review threads; `src/ui/app.tsx` registers the panels and reuses bb source/diff viewers.
 
 ## Linked PRs per thread
 
