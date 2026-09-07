@@ -70,10 +70,10 @@ function PullRequestList({
           aria-label="Pull request state"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           value={state}
-          onChange={(event) => setState(event.target.value === "open" ? "open" : "all")}
+          onChange={(event) => setState(event.target.value === "ready" ? "ready" : "all")}
         >
-          <option value="open">Open</option>
-          <option value="all">All</option>
+          <option value="ready">Ready for review</option>
+          <option value="all">All open</option>
         </select>
         <select
           aria-label="Filter by repository"
@@ -112,12 +112,12 @@ function PullRequestList({
         <div className="flex-1 overflow-auto px-6 py-4" aria-busy={loading}>
           <p className="mb-4 text-sm text-muted-foreground">
             {view === "authored"
-              ? state === "open"
-                ? "Your open pull requests, including drafts."
-                : "Your pull requests across all states, including drafts."
-              : state === "open"
-                ? "Open pull requests awaiting review from you or a team you belong to."
-                : "Pull requests with review requests for you or a team you belong to, across all states."}
+              ? state === "ready"
+                ? "Your open pull requests ready for review, excluding drafts."
+                : "Your open pull requests, including drafts."
+              : state === "ready"
+                ? "Open pull requests awaiting review from you or a team you belong to, excluding drafts."
+                : "Open pull requests with review requests for you or a team you belong to, including drafts."}
           </p>
           {error ? (
             <div role="alert" className="mb-4 text-sm text-destructive">
@@ -189,13 +189,7 @@ function PullRequestList({
                             </div>
                           </div>
                           <Badge variant={pr.isDraft ? "secondary" : "outline"}>
-                            {pr.state === "merged"
-                              ? "Merged"
-                              : pr.state === "closed"
-                                ? "Closed"
-                                : pr.isDraft
-                                  ? "Draft"
-                                  : "Open"}
+                            {pr.isDraft ? "Draft" : "Open"}
                           </Badge>
                           <Button
                             variant="outline"
@@ -220,9 +214,9 @@ function PullRequestList({
                 {query || repository
                   ? "No matching pull requests"
                   : view === "authored"
-                    ? state === "open"
-                      ? "No open pull requests"
-                      : "No pull requests"
+                    ? state === "ready"
+                      ? "No pull requests ready for review"
+                      : "No open pull requests"
                     : "No reviews waiting for you"}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">

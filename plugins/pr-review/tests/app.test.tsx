@@ -54,9 +54,9 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
     expect(views).toEqual(["authored"]);
     const stateFilter = slot.getByRole("combobox", { name: "Pull request state" });
     expect((stateFilter as HTMLSelectElement).value).toBe("all");
-    fireEvent.change(stateFilter, { target: { value: "open" } });
+    fireEvent.change(stateFilter, { target: { value: "ready" } });
     await waitFor(() => expect(views).toEqual(["authored", "authored"]));
-    expect(JSON.stringify(slot.inspection.rpcCalls)).toContain('"state":"open"');
+    expect(JSON.stringify(slot.inspection.rpcCalls)).toContain('"state":"ready"');
     fireEvent.change(slot.getByRole("combobox", { name: "Pull request state" }), {
       target: { value: "all" },
     });

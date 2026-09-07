@@ -50,18 +50,18 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
     expect((await read()).result?.rows).toEqual([row(1)]);
     expect(
       snapshotSchema.parse(
-        await harness.behavior.callRpc("savedList", { view: "authored", state: "all" }),
+        await harness.behavior.callRpc("savedList", { view: "authored", state: "ready" }),
       ).result,
     ).toBeNull();
     await harness.behavior.callRpc("refreshList", {
       view: "authored",
-      state: "all",
+      state: "ready",
       force: false,
       loadMore: false,
     });
     expect(
       snapshotSchema.parse(
-        await harness.behavior.callRpc("savedList", { view: "authored", state: "all" }),
+        await harness.behavior.callRpc("savedList", { view: "authored", state: "ready" }),
       ).result?.rows,
     ).toEqual([row(1)]);
     await refresh(true, true);

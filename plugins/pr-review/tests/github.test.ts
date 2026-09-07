@@ -21,27 +21,18 @@ function api(total = 1, incomplete = false) {
   return { gh, calls };
 }
 describe("GitHub PR inbox", () => {
-  it("fetches all states and identifies closed and merged PRs", async () => {
-    const calls: string[][] = [];
-    const result = await listPullRequests(
-      async (args) => {
-        calls.push(args);
-        return args.includes("user")
-          ? { login: "lucas" }
-          : {
-              total_count: 2,
-              incomplete_results: false,
-              items: [
-                { ...item, state: "closed" },
-                { ...item, state: "closed", pull_request: { merged_at: "2026-09-07T12:00:00Z" } },
-              ],
-            };
-      },
-      { view: "authored", page: 1, state: "all" },
-    );
-    expect(calls[1]).toContain("q=is:pr author:lucas");
-    expect(result.rows.map((row) => row.state)).toEqual(["closed", "merged"]);
-    expect(githubQuery("reviewing", "lucas", "all")).toBe("is:pr review-requested:lucas");
+  it("always fetches open PRs and excludes drafts only for ready review", async () => {
+    for (const view of ["authored", "reviewing"] as const) {
+      for (const state of ["all", "ready"] as const) {
+        const { gh, calls } = api();
+        await listPullRequests(gh, { view, page: 2, state });
+        const qualifier = view === "authored" ? "author" : "review-requested";
+        expect(calls[1]).toContain(
+          `q=is:pr is:open ${qualifier}:lucas${state === "ready" ? " draft:false" : ""}`,
+        );
+        expect(calls[1]).toContain("page=2");
+      }
+    }
   });
   it("includes drafts and open authored PRs without restricting repositories", async () => {
     const { gh, calls } = api();

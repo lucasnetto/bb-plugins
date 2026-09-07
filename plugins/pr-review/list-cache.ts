@@ -36,7 +36,7 @@ export function createListCache(bb: BbPluginApi) {
     w: { projectId: string; hostId: string; root: string },
     view: View,
     state: PrState,
-  ) => JSON.stringify([w.projectId, w.hostId, w.root, view, state]);
+  ) => JSON.stringify(["open-prs-v2", w.projectId, w.hostId, w.root, view, state]);
   function read(scope: string, view: View): ListSnapshot {
     const row = db.prepare("SELECT data FROM list_snapshots WHERE scope = ?").get(scope);
     if (!row) return { scope, view, result: null, fetchedAt: null, pageCount: 0, error: null };
@@ -55,11 +55,11 @@ export function createListCache(bb: BbPluginApi) {
     bb.realtime.publish(LIST_CHANGED, { scope: snapshot.scope, view: snapshot.view });
   }
   return {
-    savedList: async ({ view, state = "open" }: { view: View; state?: PrState }) =>
+    savedList: async ({ view, state = "all" }: { view: View; state?: PrState }) =>
       read(scopeOf(await workspace(), view, state), view),
     refreshList: async ({
       view,
-      state = "open",
+      state = "all",
       force,
       loadMore,
     }: {

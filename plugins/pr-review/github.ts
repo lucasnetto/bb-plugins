@@ -14,17 +14,15 @@ const searchSchema = z.object({
       title: z.string(),
       user: z.object({ login: z.string() }).nullable(),
       draft: z.boolean(),
-      state: z.enum(["open", "closed"]),
-      pull_request: z.object({ merged_at: z.string().nullable().optional() }).optional(),
       updated_at: z.string(),
     }),
   ),
 });
 
-export function githubQuery(view: View, viewer: string, state: PrState = "open") {
+export function githubQuery(view: View, viewer: string, state: PrState = "all") {
   // review-requested includes direct requests AND requests to the viewer's teams.
   // Omitting a draft qualifier includes both draft and ready PRs.
-  return `is:pr ${state === "open" ? "is:open " : ""}${view === "authored" ? "author" : "review-requested"}:${viewer}`;
+  return `is:pr is:open ${view === "authored" ? "author" : "review-requested"}:${viewer}${state === "ready" ? " draft:false" : ""}`;
 }
 
 export async function listPullRequests(
@@ -60,7 +58,6 @@ export async function listPullRequests(
     title: item.title,
     author: item.user?.login ?? "ghost",
     isDraft: item.draft,
-    state: item.pull_request?.merged_at ? "merged" : item.state,
     updatedAt: item.updated_at,
   }));
   return {

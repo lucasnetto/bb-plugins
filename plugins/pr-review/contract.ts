@@ -2,7 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const viewSchema = z.enum(["authored", "reviewing"]);
-export const stateSchema = z.enum(["open", "all"]);
+export const stateSchema = z.enum(["ready", "all"]);
 const stateInput = stateSchema.optional();
 export type PrState = z.infer<typeof stateSchema>;
 export const listInput = z.object({
@@ -18,7 +18,6 @@ export const pullRequestSchema = z.object({
   title: z.string(),
   author: z.string(),
   isDraft: z.boolean(),
-  state: z.enum(["open", "closed", "merged"]).optional(),
   updatedAt: z.string(),
 });
 export const listOutput = z.object({
