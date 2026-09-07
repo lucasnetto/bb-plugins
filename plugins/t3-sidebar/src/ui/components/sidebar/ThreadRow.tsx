@@ -1,3 +1,4 @@
+import { requestLinkedReview } from "@/ui/lib/multirepo-navigation";
 import { snoozePresets, snoozeWakeLabel } from "@/ui/lib/snooze";
 import {
   DropdownMenu,
@@ -122,9 +123,7 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
               event.stopPropagation();
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
-              sessionStorage.setItem(`bb:multirepo:open-review:${threadId}`, pr.url);
-              actions.open(threadId);
-              window.dispatchEvent(new Event("bb:multirepo:open-review"));
+              requestLinkedReview(threadId, pr.url, (id) => actions.open(id));
             }}
             className="shrink-0 text-xs tabular-nums hover:underline"
             title={`${pr.title} (${pr.state}, last fetched)`}

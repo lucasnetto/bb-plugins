@@ -184,3 +184,30 @@ own panel. No BB internals or DOM selectors are used. Modified clicks retain
 the external GitHub URL.
 
 Code comments use a native BB mention chip beside the visible comment, instead of pasting the diff into the composer. The chip resolves its saved PR/file/line/code snapshot at send time and survives reloads. Removing the chip removes that context from the draft. Comment snapshots are deleted with their owning thread. Command-Enter in the comment field stages the comment and chip; it does not send the chat.
+
+## Browser integration
+
+Multirepo owns the sidebar-to-review navigation protocol. Its consumer is
+`src/ui/lib/review-navigation.ts`; T3 Sidebar's producer is
+`plugins/t3-sidebar/src/ui/lib/multirepo-navigation.ts`. Each adapter stays in
+its own plugin so the plugins remain independently distributable.
+
+To open a linked review, store the GitHub PR URL in session storage under
+`bb:multirepo:open-review:<threadId>`, navigate to that thread, then dispatch
+`bb:multirepo:open-review` on `window`. The thread header consumes and removes
+its own pending URL once, validates it, and opens the Linked PRs panel.
+Storage handles a header that mounts after navigation; the event handles a
+header already mounted in the same thread. Other threads' requests remain
+pending. Both sides must preserve these names and ordering when this protocol
+changes. The listener is removed when the header unmounts.
+
+## Guide generation internals
+
+`server/guide-models.ts` resolves model preferences, `server/guide-job-store.ts`
+owns job persistence, and `server/guide-generation.ts` orchestrates workers,
+completion, cancellation, and restart recovery. Job identity checks read the
+current stored job again after asynchronous work, so an old result cannot
+replace a cancelled or newer generation. The status-specific job schema lives
+in `shared/guide-generation.ts`; an append-only storage migration removes
+legacy placeholder fields before jobs are decoded. Failed and cancelled jobs
+retain any known revisions in their nullable `revision` field.

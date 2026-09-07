@@ -40,3 +40,27 @@ test("malformed GitHub JSON and payloads remain typed input failures", async () 
     expect(result).toBe("InputError");
   }
 });
+
+test("guide job responses require the fields guaranteed by each lifecycle stage", async () => {
+  const { rpcContract } = await import("../../src/shared/contract");
+  const validate = rpcContract.guideJob.output["~standard"].validate;
+  const identity = { id: "job", threadId: "t1", url: "https://github.com/org/api/pull/42" };
+  expect(await validate({ ...identity, status: "preparing" })).toEqual({
+    value: { ...identity, status: "preparing" },
+  });
+  const running = {
+    ...identity,
+    status: "running",
+    workerId: "worker",
+    base: "a".repeat(40),
+    head: "b".repeat(40),
+  };
+  expect(await validate(running)).toEqual({ value: running });
+  for (const invalid of [
+    { ...running, workerId: null },
+    { ...running, base: "" },
+    { ...running, head: undefined },
+    { ...identity, status: "error", workerId: null, revision: null, error: "" },
+  ])
+    expect((await validate(invalid)).issues).toBeDefined();
+});

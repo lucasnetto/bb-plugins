@@ -1,4 +1,4 @@
-import type { GuideJob, GuideModel } from "../../shared/guide-generation";
+import { guideWorkerId, type GuideJob, type GuideModel } from "../../shared/guide-generation";
 import { useEffect, useState } from "react";
 import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
@@ -24,8 +24,9 @@ export function useGuide(threadId: string, url: string, revision: number) {
             setJob((current) =>
               current?.id === value?.id &&
               current?.status === value?.status &&
-              current?.error === value?.error &&
-              current?.workerId === value?.workerId
+              (current?.status === "error" ? current.error : "") ===
+                (value?.status === "error" ? value.error : "") &&
+              (current ? guideWorkerId(current) : null) === (value ? guideWorkerId(value) : null)
                 ? current
                 : value,
             );

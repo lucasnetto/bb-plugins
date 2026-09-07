@@ -1,3 +1,4 @@
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { test, expect } from "vite-plus/test";
 import { Schema } from "effect";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -20,7 +21,7 @@ const guide = {
   ],
   unplacedFiles: ["api.test.ts"],
 };
-function setup() {
+function setup(prepareStorage?: (bb: BbPluginApi) => void) {
   let currentHead = head;
   let workerStatus: "active" | "idle" = "active";
   let output = "";
@@ -113,6 +114,7 @@ function setup() {
       };
     },
   });
+  prepareStorage?.(host.bb);
   plugin(host.bb);
   return {
     ...host,
@@ -405,6 +407,121 @@ test("duplicate completion events save only one guide and clean up the hidden wo
     expect(await harness.behavior.callRpc("guideGet", target)).toEqual(saved);
     expect(host.stopped).toEqual(["worker"]);
     expect(host.archived).toEqual(["worker"]);
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("legacy guide jobs migrate before recovery and remain readable after reload", async () => {
+  const host = setup((bb) => {
+    const db = bb.storage.database();
+    // Reproduce the previous release's migration history and stored JSON.
+    bb.storage.migrate(db, [
+      "CREATE TABLE linked_prs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
+      "CREATE TABLE review_comments (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, context TEXT NOT NULL)",
+      "CREATE TABLE review_guides (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
+      "CREATE TABLE review_guide_jobs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
+    ]);
+    for (const status of ["preparing", "running", "complete", "error", "cancelled"]) {
+      const started = status !== "preparing" && status !== "cancelled";
+      const job = {
+        id: status,
+        threadId: status,
+        url,
+        status,
+        workerId: started ? "worker" : null,
+        base: started ? base : "",
+        head: started ? head : "",
+        error: status === "error" ? "Original error" : "",
+      };
+      db.prepare("INSERT INTO review_guide_jobs (thread_id, url, data) VALUES (?, ?, ?)").run(
+        status,
+        url,
+        JSON.stringify(job),
+      );
+    }
+  });
+  let harness = host.harness;
+  try {
+    const expected = {
+      preparing: {
+        id: "preparing",
+        threadId: "preparing",
+        url,
+        status: "error",
+        workerId: null,
+        error: "Generation was interrupted before starting. Try again.",
+        revision: null,
+      },
+      running: {
+        id: "running",
+        threadId: "running",
+        url,
+        status: "running",
+        workerId: "worker",
+        base,
+        head,
+      },
+      complete: {
+        id: "complete",
+        threadId: "complete",
+        url,
+        status: "complete",
+        workerId: "worker",
+        base,
+        head,
+      },
+      error: {
+        id: "error",
+        threadId: "error",
+        url,
+        status: "error",
+        workerId: "worker",
+        error: "Original error",
+        revision: { base, head },
+      },
+      cancelled: {
+        id: "cancelled",
+        threadId: "cancelled",
+        url,
+        status: "cancelled",
+        workerId: null,
+        revision: null,
+      },
+    };
+    for (const [threadId, job] of Object.entries(expected)) {
+      expect(await harness.behavior.callRpc("guideJob", { threadId, url })).toEqual(job);
+    }
+    ({ harness } = await harness.lifecycle.reload(plugin));
+    for (const [threadId, job] of Object.entries(expected)) {
+      expect(await harness.behavior.callRpc("guideJob", { threadId, url })).toEqual(job);
+    }
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("guide-save CLI keeps URL, revisions, and JSON intact with --json in any position", async () => {
+  const { harness } = setup();
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
+    const args = ["guide-save", url, base, head, JSON.stringify(guide)];
+    for (let position = 0; position <= args.length; position++) {
+      const argv = [...args];
+      argv.splice(position, 0, "--json");
+      const result = await harness.behavior.runCli(argv, { threadId: target.threadId });
+      expect(result.exitCode).toBe(0);
+      expect(await harness.behavior.callRpc("guideGet", target)).toMatchObject({
+        base,
+        head,
+        guide,
+      });
+    }
+    expect((await harness.behavior.runCli(args)).exitCode).toBe(1);
+    expect(
+      (await harness.behavior.runCli(["guide-save", url, base], { threadId: target.threadId }))
+        .exitCode,
+    ).toBe(1);
   } finally {
     await harness.lifecycle.dispose();
   }

@@ -1,3 +1,4 @@
+import { listenForReviewRequests } from "./lib/review-navigation";
 import { PrReview } from "./review/PrReview";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -151,24 +152,13 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
 // BB's plugin-scoped realtime hook without touching BB's DOM or private state.
 export function LinkedPrHeader({ threadId }: PluginThreadHeaderActionProps) {
   const navigate = useBbNavigate();
-  useEffect(() => {
-    const key = `bb:multirepo:open-review:${threadId}`;
-    const open = () => {
-      const url = sessionStorage.getItem(key);
-      if (!url) return;
-      sessionStorage.removeItem(key);
-      const match = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/([1-9]\d*)$/.exec(url);
-      if (match)
-        navigate.openThreadPanel({
-          actionId: "linked-prs",
-          title: `${match[1]} #${match[2]}`,
-          params: { url },
-        });
-    };
-    open();
-    window.addEventListener("bb:multirepo:open-review", open);
-    return () => window.removeEventListener("bb:multirepo:open-review", open);
-  }, [threadId, navigate]);
+  useEffect(
+    () =>
+      listenForReviewRequests(threadId, ({ url, title }) => {
+        navigate.openThreadPanel({ actionId: "linked-prs", title, params: { url } });
+      }),
+    [threadId, navigate],
+  );
   useRealtime(LINKS_CHANGED, () => window.dispatchEvent(new Event("bb:multirepo:links-changed")));
   return (
     <Button
