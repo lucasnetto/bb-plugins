@@ -3,7 +3,7 @@ import { createFakePluginHost, experimental_scanPublicSdkOnly } from "@get-bb/pl
 import { fileURLToPath } from "node:url";
 import plugin from "../server";
 
-it("routes listing to the primary machine independently of Multirepo", async () => {
+it("routes listing to the primary machine without a local workspace", async () => {
   const { bb, harness } = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -17,7 +17,7 @@ it("routes listing to the primary machine independently of Multirepo", async () 
     },
   });
   try {
-    plugin(bb);
+    await plugin(bb);
     await harness.behavior.callRpc("list", { view: "reviewing", page: 2 });
     expect(harness.inspection.sdk.callsTo("plugins.callRpc")).toHaveLength(0);
   } finally {
@@ -27,7 +27,11 @@ it("routes listing to the primary machine independently of Multirepo", async () 
 it("uses only public SDK imports", () => {
   const result = experimental_scanPublicSdkOnly(fileURLToPath(new URL("..", import.meta.url)), {
     allow: [
-      /^react$/,
+      /^react(?:-dom)?$/,
+      /^effect$/,
+      /^better-sqlite3$/,
+      /^@pierre\//,
+      /^@hugeicons\//,
       /^sonner$/,
       /^class-variance-authority$/,
       /^@radix-ui\//,
@@ -39,4 +43,19 @@ it("uses only public SDK imports", () => {
   });
   expect(result.violations).toEqual([]);
   expect(result.privateDependencies).toEqual([]);
+});
+
+it("exposes PR commands and removes repository browsing APIs", async () => {
+  const { bb, harness } = createFakePluginHost({ pluginId: "pr-review" });
+  try {
+    await plugin(bb);
+    const help = await harness.behavior.runCli(["--help"]);
+    expect(help.stdout).toContain("bb pr-review links");
+    expect(help.stdout).not.toMatch(/multirepo|status|changes|files|diff/);
+    expect((await harness.behavior.runCli(["status"])).exitCode).toBe(1);
+    for (const method of ["workspace", "discover", "changes", "files", "detail"])
+      await expect(harness.behavior.callRpc(method, null)).rejects.toThrow();
+  } finally {
+    await harness.lifecycle.dispose();
+  }
 });

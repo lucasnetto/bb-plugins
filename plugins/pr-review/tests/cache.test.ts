@@ -43,7 +43,7 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
   const refresh = (force = true, loadMore = false) =>
     harness.behavior.callRpc("refreshList", { view: "authored", force, loadMore });
   try {
-    plugin(bb);
+    await plugin(bb);
     expect((await read()).result).toBeNull();
     expect(requests).toBe(0);
     await refresh();

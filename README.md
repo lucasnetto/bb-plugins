@@ -10,8 +10,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 | --------------------- | ------------------------------------------------------------- |
 | cursor-account-labels | Distinguish work and personal Cursor providers.               |
 | hide-models           | Hide selected models from the model picker.                   |
-| multirepo             | Browse files, changes, and pull requests across repositories. |
-| pr-review             | List your PRs and team review requests; open review threads.  |
+| pr-review             | Find PRs, review code with agents, and settle completed work. |
 | t3-sidebar            | Display a T3-style thread sidebar.                            |
 | workers               | Inspect hidden child workers and chat in the parent panel.    |
 
@@ -31,7 +30,7 @@ Build or check one plugin with a filter:
 
 ```sh
 vp run --filter bb-plugin-hide-models build
-vp test --project multirepo
+vp test --project pr-review
 ```
 
 `vp check` runs Oxfmt, Oxlint, and type checking together. Use `vp fmt` to

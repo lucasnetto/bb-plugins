@@ -12,10 +12,6 @@
       "source": "./plugins/hide-models"
     },
     {
-      "name": "multirepo",
-      "source": "./plugins/multirepo"
-    },
-    {
       "name": "t3-sidebar",
       "source": "./plugins/t3-sidebar"
     },

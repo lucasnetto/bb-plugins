@@ -4,16 +4,16 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "app.css",
+    "css": "src/ui/app.css",
     "baseColor": "neutral",
     "cssVariables": true
   },
   "aliases": {
-    "components": "@/components",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "utils": "@/lib/utils",
-    "hooks": "@/hooks"
+    "components": "@/ui/components",
+    "ui": "@/ui/components/ui",
+    "lib": "@/ui/lib",
+    "utils": "@/ui/lib/utils",
+    "hooks": "@/ui/hooks"
   },
   "registries": {
     "@bb": "https://raw.githubusercontent.com/get-bb/bb/desktop-v0.42.1/packages/plugin-registry/r/{name}.json"

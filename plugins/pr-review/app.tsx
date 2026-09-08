@@ -1,12 +1,13 @@
+import { registerReviewApp } from "./src/ui/app";
+import { draftPath } from "./src/ui/review-draft/navigation";
 import { useList } from "./use-list";
 import { useId, useState } from "react";
-import { definePluginApp, UrlLink } from "@get-bb/plugin-sdk/app";
-import { toast } from "sonner";
+import { definePluginApp, UrlLink, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import type { View, PrState } from "./contract";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Badge } from "./components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+import { Button } from "./src/ui/components/ui/button";
+import { Input } from "./src/ui/components/ui/input";
+import { Badge } from "./src/ui/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./src/ui/components/ui/tabs";
 
 function PullRequestList({
   view,
@@ -22,14 +23,9 @@ function PullRequestList({
   const [repository, setRepository] = useState("");
   const groupId = useId();
   const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(() => new Set());
+  const navigate = useBbNavigate();
   function review(url: string) {
-    const unhandled = window.dispatchEvent(
-      new CustomEvent("bb:multirepo:open-draft", {
-        detail: { url },
-        cancelable: true,
-      }),
-    );
-    if (unhandled) toast.error("Enable Multirepo to open the PR review screen.");
+    navigate.toPluginPanel("review", { subPath: draftPath(url) });
   }
   const repositories = [...new Set(result?.rows.map((pr) => pr.repository) ?? [])].sort();
   const rows =
@@ -257,6 +253,7 @@ export function PullRequestsPage() {
 }
 
 export default definePluginApp((app) => {
+  registerReviewApp(app);
   app.slots.navPanel({
     id: "pull-requests",
     title: "Pull requests",

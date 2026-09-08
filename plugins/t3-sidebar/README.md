@@ -90,18 +90,18 @@ vp test --project t3-sidebar
 
 ## Multiple linked PRs
 
-When Multirepo is installed, each thread card shows its explicitly linked PRs
-with repository names and numbers. Badges open the owning thread and its Multirepo PR review tab. Modified clicks
+When PR Review is installed, each thread card shows its explicitly linked PRs
+with repository names and numbers. Badges open the owning thread and its PR review tab. Modified clicks
 open GitHub. The GitHub plugin is not required.
 Tooltips show the last fetched status. Threads without manual links keep BB's branch-detected badge.
 
-The sidebar batches link reads through Multirepo's public local-auth HTTP
+The sidebar batches link reads through PR Review's public local-auth HTTP
 endpoint, reconciles on focus/reconnect, and listens to its documented
-`bb:multirepo:links-changed` invalidation event. No BB DOM selectors or internal
+`bb:pr-review:links-changed` invalidation event. No BB DOM selectors or internal
 state are used.
 
 PR navigation uses the one-use sessionStorage request and browser event
-`bb:multirepo:open-review` documented in Multirepo’s README.
+`bb:pr-review:open-review` documented in PR Review’s README.
 
 ### Effect backend workflows
 

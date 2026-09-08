@@ -56,7 +56,7 @@ export function LinkedPrProvider({ children }: { children: ReactNode }) {
     const refresh = () => {
       controller?.abort();
       controller = new AbortController();
-      fetch("/api/v1/plugins/multirepo/http/linked-prs", {
+      fetch("/api/v1/plugins/pr-review/http/linked-prs", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ threadIds: JSON.parse(ids) }),
@@ -73,11 +73,11 @@ export function LinkedPrProvider({ children }: { children: ReactNode }) {
     };
     refresh();
     window.addEventListener("focus", refresh);
-    window.addEventListener("bb:multirepo:links-changed", refresh);
+    window.addEventListener("bb:pr-review:links-changed", refresh);
     return () => {
       controller?.abort();
       window.removeEventListener("focus", refresh);
-      window.removeEventListener("bb:multirepo:links-changed", refresh);
+      window.removeEventListener("bb:pr-review:links-changed", refresh);
     };
   }, [ids, connection]);
   return <LinkedContext.Provider value={links}>{children}</LinkedContext.Provider>;

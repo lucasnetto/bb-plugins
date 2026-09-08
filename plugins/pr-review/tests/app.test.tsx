@@ -8,15 +8,9 @@ it("defaults to authored PRs, switches views, and opens a review draft without c
   const app = await loadPluginApp(() => import("../app"));
   const views: string[] = [];
   const openedUrls: string[] = [];
-  const reviewDrafts: unknown[] = [];
-  const receiveDraft = (event: Event) => {
-    if (event instanceof CustomEvent) reviewDrafts.push(event.detail);
-    event.preventDefault();
-  };
-  window.addEventListener("bb:multirepo:open-draft", receiveDraft);
   const url = "https://github.com/acme/api/pull/42";
   const slot = renderSlot(
-    app.navPanels[0]!,
+    app.navPanels.find((p) => p.id === "pull-requests")!,
     { subPath: "" },
     {
       openUrl: (url) => {
@@ -64,7 +58,7 @@ it("defaults to authored PRs, switches views, and opens a review draft without c
     fireEvent.click(slot.getByRole("link", { name: "Fix API" }));
     expect(openedUrls).toEqual([url]);
     expect(slot.inspection.rpcCalls.some((call) => call.method === "review")).toBe(false);
-    expect(sessionStorage.getItem("bb:multirepo:open-review:t1")).toBeNull();
+    expect(sessionStorage.getItem("bb:pr-review:open-review:t1")).toBeNull();
     expect(views).toEqual(["authored"]);
     const stateFilter = slot.getByRole("combobox", { name: "Pull request state" });
     expect((stateFilter as HTMLSelectElement).value).toBe("all");
@@ -84,12 +78,15 @@ it("defaults to authored PRs, switches views, and opens a review draft without c
     await waitFor(() => expect(views).toEqual(["authored", "authored", "authored", "reviewing"]));
     await slot.findByText("Fix API");
     fireEvent.click(slot.getByRole("button", { name: "Review acme/api #42" }));
-    expect(reviewDrafts).toEqual([{ url }]);
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "review",
+      options: { subPath: "acme/api/42" },
+    });
     expect(slot.inspection.navigateCalls.some((call) => call.method === "toThread")).toBe(false);
     expect(slot.inspection.rpcCalls.some((call) => call.method === "review")).toBe(false);
-    expect(sessionStorage.getItem("bb:multirepo:open-review:t1")).toBeNull();
+    expect(sessionStorage.getItem("bb:pr-review:open-review:t1")).toBeNull();
   } finally {
-    window.removeEventListener("bb:multirepo:open-draft", receiveDraft);
     slot.lifecycle.unmount();
   }
 });
@@ -104,7 +101,7 @@ it("shows SQLite rows on every mount while refresh is pending and rereads realti
   });
   const mount = () =>
     renderSlot(
-      app.navPanels[0]!,
+      app.navPanels.find((p) => p.id === "pull-requests")!,
       { subPath: "" },
       {
         rpc: {

@@ -1,36 +1,95 @@
-# PR Review
+# PR Review for bb
 
-A GitHub PR page inspired by [t3code's pull requests page](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/routes/_chat.pull-requests.tsx), using Multirepo's existing review threads and linked-PR panels.
+Find pull requests, review code with an agent, and track the linked conversation through completion.
 
-- **Created by me** is the default: all open PRs authored by the current GitHub user, including drafts.
-- Clicking a PR title opens it on GitHub.
-- **Review requested** includes open requests to the user and their teams. GitHub's `review-requested:USERNAME` qualifier resolves team membership; no separate organization-membership scan is needed. Completed review requests disappear according to GitHub's search semantics.
-- Results span accessible GitHub repositories, ordered by update time. Load more fetches 50 at a time. The text filter searches loaded results. GitHub's partial results and 1,000-result cap are disclosed.
-- Lists are persisted in SQLite per primary machine, view, and PR state. Opening the page reads the saved snapshot; GitHub refreshes in the background when it is over 60 seconds old. Manual Refresh bypasses that window. Realtime notifications update open pages, and failed refreshes keep the last successful list visible. Loaded pages are refreshed together so closed PRs disappear without retaining stale pagination.
-- **Review in thread** opens Multirepo’s draft review screen: BB’s composer beside the PR diff. Opening the screen starts no agent and creates no thread. Select code and collect comments; Send creates the conversation with your message, PR URL, and selected code context, links the PR manually, and opens its panel. No automatic review prompt is added.
+## Find and review a PR
 
-## Setup
+**Pull requests** lists **Created by me** and **Review requested** across accessible GitHub repositories. All open PRs, including drafts, are shown by default; choose **Ready for review** to exclude drafts. Filter by repository or search the loaded results, collapse repository groups, and load more in pages of 50. GitHub's partial results and 1,000-result search limit are disclosed.
 
-Install PR Review from this collection. On BB’s primary machine, install `gh` and sign in with `gh auth login --hostname github.com`. Listing and opening PRs works without Multirepo or a project. This version supports github.com.
+Lists are saved in SQLite per primary machine, view, and PR state. Opening the page displays the saved list, then refreshes it when older than 60 seconds. Manual Refresh bypasses that window. Failed refreshes preserve the last successful list.
 
-For **Review in thread**, also install Multirepo. A Workspace project is not required.
+**Review in thread** opens this plugin's PR review screen with BB's new-thread composer beside the diff. You can also enter a GitHub PR URL directly on the review screen. Select code and collect comments before starting a conversation. Only **Send** creates a thread, with your selected project, environment, model, permissions, message, and code context. The PR is linked manually and its panel opens beside the conversation. Opening a PR starts no agent, and Send adds no automatic review instruction.
+
+## PRs linked to a conversation
+
+Use the thread header, panel launcher, or command palette to open **Linked PRs**. A thread can have multiple PRs from different repositories. Paste a URL to link one, open its review, or unlink it independently. Canonical GitHub URL identity prevents duplicate links.
+
+The review viewer provides a file tree, split/unified diffs, wrapping, file collapse controls, and expandable unchanged lines. Complete file contents load from pinned GitHub revisions: the head commit and the comparison's merge base. Missing or binary patches have an explicit GitHub fallback. Refresh resets cached contents and line selections while preserving the unfinished comment.
+
+Select lines and choose **Add to chat**, **Ask**, **Explain**, or **Fix**. These actions stage text and a code-context mention chip in the existing draft; they never send it. The saved snapshot includes the PR, file, revisions, selected lines, and code. Removing the chip removes that context from the draft. Command-Enter stages the comment.
+
+Linked reviews use the thread environment's machine and its `gh` authentication. Reviews opened before thread creation and PR lists use BB's primary machine. No workspace setting or local repository is required. If the thread's current Git checkout matches the PR, its root is included in code context; parent folders are never scanned.
+
+## Guided reviews
+
+Choose **Guide → Generate guide**, then select the provider/model, reasoning, and service tier. A hidden worker creates a chaptered walkthrough directly in the panel without modifying the chat draft. Generation supports cancellation, errors, restart recovery, and worker cleanup.
+
+Configure the default in **PR Review settings → Guided review model**. Project overrides take precedence over the plugin default, with the thread model as fallback. The launch picker changes only that run.
+
+Chapters pair explanations with selectable diffs. Reviewed checkboxes collapse chapters and persist per thread/PR. Every changed file must appear exactly once; other files appear under Everything else. Guides are pinned to both revisions. Outdated explanations remain readable, but regeneration is required before reviewing newer code or changing progress.
+
+## Automatic settling
+
+**Automatically settle completed PR threads** is enabled by default and can be disabled in PR Review settings:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm --filter bb-plugin-multirepo build
-pnpm --filter bb-plugin-pr-review build
-bb plugin install path:. --plugin multirepo
-bb plugin install path:. --plugin pr-review
+bb plugin config pr-review set autoSettle false
 ```
 
-Open **Pull requests** in bb's navigation. Multirepo also supports browsing a single repository’s PRs from its Repos view.
+Every five minutes, it refreshes linked PRs for eligible threads. A visible, idle thread with at least one PR settles only when all linked PRs are confirmed merged or closed. Failed lookups, queued messages, active agents, and busy descendants defer settling.
 
-## Integration contract
+Manually un-settling a thread keeps it open across reloads. Another automatic settlement requires a PR URL never included in any previous settlement, with all current links closed or merged. Relinking or reopening/reclosing previously settled PRs does not cause another settlement.
 
-Uses only public SDK calls. Listing resolves `primaryHostId` from `bb.sdk.system.config()` and runs GitHub CLI through the plugin host entry from that machine’s home directory. It does not call Multirepo or look up a project.
+## Agent tools and CLI
 
-**Review in thread** dispatches Multirepo’s cancelable `bb:multirepo:open-draft` browser event with `{url}`. Multirepo acknowledges it with `preventDefault()` and navigates to `/plugins/multirepo/review/<owner>/<repository>/<number>`. An unhandled request asks the user to enable Multirepo.
+Agents have `link_pull_request`, `unlink_pull_request`, `list_linked_pull_requests`, `get_review_guide_context`, and `save_review_guide`.
 
-Multirepo owns draft loading, saved comments, and the composer. Its `startReview` RPC is called only on Send and returns `{threadId, warning}`. The existing `bb:multirepo:open-review:<threadId>` handoff opens the linked PR panel after thread navigation. A link failure returns the created thread with a warning so Send does not create a duplicate conversation.
+Link a PR when creating it, working on or reviewing it at the user's request, or explicitly asked to link it. Background references stay unlinked. Existing provider sessions can use the CLI:
 
-Tests cover query semantics, pagination/limits, validation/auth failures, remote-host routing, and the draft handoff without thread creation. Run `pnpm exec vp test --project pr-review`.
+```sh
+bb pr-review links
+bb pr-review link https://github.com/owner/repo/pull/123 requested-review
+bb pr-review unlink https://github.com/owner/repo/pull/123
+bb pr-review guide-context https://github.com/owner/repo/pull/123
+bb pr-review guide-save <url> <base> <head> '<JSON>'
+```
+
+Commands use the current thread and return bounded output. Guide context includes the walkthrough instructions and schema; oversized diffs direct the agent to inspect the PR using `gh`. Nothing posts a comment or review to GitHub.
+
+## Setup and migration from Multirepo
+
+Requires authenticated GitHub CLI on the relevant machine. This version supports github.com URLs.
+
+PR Review now owns the entire PR workflow. Repository browsing, its workspace setting, and all `bb multirepo` commands have been removed. Update T3 Sidebar with PR Review so its PR badges use the new integration.
+
+For an existing installation, disable Multirepo **before** loading the consolidated PR Review plugin. This stops the old schedules and workers' completion handlers from writing after the migration snapshot. Then reload/install PR Review and T3 Sidebar. After verifying the import, remove the retired Multirepo installation.
+
+On first load, PR Review copies links, guides and review progress, guide jobs, settlement history, and default/project guide models. The original PR list cache remains intact. Existing destination rows and settings win. The import is transactional for review rows and runs once, so later unlinking cannot resurrect old data. Old plugin data is read without modification and retained for recovery.
+
+**Unsent Multirepo drafts and their code chips are not migrated.** Recreate any needed draft comments in PR Review. Old plugin routes and commands have no compatibility aliases.
+
+## Sidebar integration
+
+T3 Sidebar reads the locally authenticated endpoint:
+
+`POST /api/v1/plugins/pr-review/http/linked-prs` with `{ threadIds }`.
+
+The thread header relays realtime changes as `bb:pr-review:links-changed`. The sidebar also refreshes on focus/reconnect. When PR Review is unavailable it falls back to branch-detected PR badges.
+
+To open a linked review, store the GitHub PR URL in session storage under `bb:pr-review:open-review:<threadId>`, navigate to that thread, then dispatch `bb:pr-review:open-review` on `window`. The owning thread header consumes and removes the validated URL once. Storage handles a header mounting after navigation; the event handles an already-mounted header. Modified clicks retain the external GitHub URL.
+
+PR Review owns the consumer in `src/ui/lib/review-navigation.ts`; T3 Sidebar owns its independent producer in `src/ui/lib/pr-review-navigation.ts`. Neither uses BB internals or DOM selectors for the handoff.
+
+## Development and attribution
+
+```sh
+vp install
+vp check plugins/pr-review plugins/t3-sidebar
+vp test --project pr-review --maxWorkers=4
+bb plugin build plugins/pr-review
+bb plugin build plugins/t3-sidebar
+```
+
+GitHub review workflows use the workspace-pinned Effect v4 runtime, with cancellation passed through to host calls and subprocesses. Runtime disposal interrupts in-flight work. Commands are not automatically retried.
+
+The styled Pierre diff viewer and tree are adapted from T3 Code commit `f3bbdb606f98d8cc2e6c2fd8074b5a0c12cc3828`; its MIT notice is retained in `src/ui/review/T3-LICENSE`. Guide organization and chapter cards are adapted from Plannotator commit `4afdd4cd89e863c997900c1860355dc10d9294b6`; its MIT notice is retained in `src/PLANNOTATOR-LICENSE`.

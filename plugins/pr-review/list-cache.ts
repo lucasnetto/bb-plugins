@@ -1,3 +1,4 @@
+import { initializeReviewDatabase } from "./src/server/database";
 import { primaryHostId } from "./listing-host";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -13,10 +14,7 @@ import {
 } from "./contract";
 
 export function createListCache(bb: BbPluginApi) {
-  const db = bb.storage.database();
-  bb.storage.migrate(db, [
-    "CREATE TABLE list_snapshots (scope TEXT PRIMARY KEY, data TEXT NOT NULL)",
-  ]);
+  const db = initializeReviewDatabase(bb);
   const host = bb.hosts.experimental_client({ contract: hostContract });
   const controller = new AbortController();
   // Share only in-flight work. All completed list data is stored in SQLite.

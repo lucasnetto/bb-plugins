@@ -7,12 +7,6 @@ export default defineConfig({
   },
   fmt: { ignorePatterns: ["**/dist/**", "pnpm-lock.yaml"] },
   test: {
-    projects: [
-      "plugins/multirepo",
-      "plugins/t3-sidebar",
-      "plugins/hide-models",
-      "plugins/pr-review",
-      "plugins/workers",
-    ],
+    projects: ["plugins/t3-sidebar", "plugins/hide-models", "plugins/pr-review", "plugins/workers"],
   },
 });

@@ -1,0 +1,41 @@
+import { reviewDraftHandlers } from "./review-thread";
+import { registerGuideGeneration } from "./guide-generation";
+import { createRuntime, handler } from "./server-effects";
+import { registerLinks } from "./links-server";
+import { registerGuides } from "./guides-server";
+import { registerPrReviewCli } from "./cli";
+import { type BbPluginApi } from "@get-bb/plugin-sdk";
+import { rpcContract } from "../shared/contract";
+export default function plugin(bb: BbPluginApi) {
+  const runtime = createRuntime(bb);
+  const links = registerLinks(bb, runtime);
+  const guides = registerGuides(bb, runtime, links);
+  const generation = registerGuideGeneration(bb, runtime, guides);
+  links.onUnlink(generation.guideCancel);
+  const operations = {
+    ...links,
+    ...reviewDraftHandlers(bb, links),
+  };
+  bb.rpc.register(rpcContract, {
+    guideStart: handler(runtime, generation.guideStart),
+    guideJob: handler(runtime, generation.guideJob),
+    guideCancel: handler(runtime, generation.guideCancel),
+    guideOptions: handler(runtime, generation.guideOptions),
+    guideSettings: handler(runtime, generation.guideSettings),
+    guideDefaultsSave: handler(runtime, generation.guideDefaultsSave),
+    guideGet: handler(runtime, guides.guideGet),
+    guideRequest: handler(runtime, guides.guideRequest),
+    guideProgress: handler(runtime, guides.guideProgress),
+    stageReviewComment: handler(runtime, operations.stageReviewComment),
+    linkedContents: handler(runtime, operations.linkedContents),
+    linkedList: handler(runtime, operations.linkedList),
+    linkedLink: handler(runtime, operations.linkedLink),
+    linkedUnlink: handler(runtime, operations.linkedUnlink),
+    linkedDetail: handler(runtime, operations.linkedDetail),
+    reviewDraftDefaults: handler(runtime, operations.reviewDraftDefaults),
+    reviewDraftDetail: handler(runtime, operations.reviewDraftDetail),
+    reviewDraftContents: handler(runtime, operations.reviewDraftContents),
+    startReview: handler(runtime, operations.startReview),
+  });
+  registerPrReviewCli(bb, runtime, links, guides);
+}

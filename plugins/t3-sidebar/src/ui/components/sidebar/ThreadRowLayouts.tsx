@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/components/ui/tool
 import { Icon } from "@/ui/components/ui/icon";
 import { cn } from "@/ui/lib/utils";
 import { pullRequestBadgeClass, type TopStatus } from "@/ui/lib/sidebar-logic";
-import { requestLinkedReview } from "@/ui/lib/multirepo-navigation";
+import { requestLinkedReview } from "@/ui/lib/pr-review-navigation";
 import { ThreadSnoozeMenu } from "./ThreadSnoozeMenu";
 import { useLinkedPrs } from "./LinkedPrs";
 import type { ThreadRowProps, ThreadRowProvider } from "./ThreadRow";

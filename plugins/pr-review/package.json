@@ -8,8 +8,13 @@
     "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/pr-review"
   },
   "dependencies": {
+    "@hugeicons/core-free-icons": "catalog:",
+    "@hugeicons/react": "catalog:",
+    "@pierre/trees": "catalog:",
+    "@radix-ui/react-checkbox": "catalog:",
     "@radix-ui/react-slot": "catalog:",
     "@radix-ui/react-tabs": "catalog:",
+    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -49,7 +54,7 @@
   },
   "bb": {
     "name": "PR Review",
-    "description": "Your pull requests and review requests, with Multirepo review threads.",
+    "description": "Find pull requests, review code with agents, and track linked PRs through completion.",
     "branding": {
       "icon": "GitPullRequest"
     },
