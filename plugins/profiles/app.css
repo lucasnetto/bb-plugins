@@ -1,0 +1,16 @@
+.bb-profiles-menu { padding: 10px; min-width: 220px; color: var(--foreground); }
+.bb-profiles-heading { color: var(--muted-foreground); font-size: 11px; margin: 0 8px 8px; }
+.bb-profiles-option { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 8px; text-decoration: none; color: inherit; }
+.bb-profiles-option:hover, .bb-profiles-option:focus-visible { background: var(--accent); }
+.bb-profiles-option:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.bb-profiles-option[aria-current] { background: var(--accent); }
+.bb-profiles-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; }
+.bb-profiles-dot-personal { background: #a78bfa; }
+.bb-profiles-dot-work { background: #60a5fa; }
+.bb-profiles-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bb-profiles-copy strong { font-size: 13px; font-weight: 500; }
+.bb-profiles-copy span { font-size: 11px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.bb-profiles-check { margin-left: auto; font-size: 13px; }
+.bb-profiles-note { font-size: 11px; color: var(--muted-foreground); margin: 10px 8px 0; }
+.bb-profiles-error, .bb-profiles-loading { font-size: 12px; padding: 12px; }
+.bb-profiles-error { color: var(--destructive); }

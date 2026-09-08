@@ -2,11 +2,21 @@ import { rpcContract } from "./contract.ts";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 import { WakeJobs, slots, validateSlot, type Slot } from "./wake.ts";
 
 const exec = promisify(execFile);
 export default function plugin(bb: BbPluginApi) {
+  const settings = bb.settings.define({
+    daemonService: {
+      type: "string",
+      label: "VM daemon service",
+      description: "The systemd user service enrolled with this bb instance.",
+      default: "bb-host-daemon-bb-plugins-getbb-app.service",
+      experimental_schema: z.string().regex(/^bb-host-daemon-[a-z0-9-]+\.service$/),
+    },
+  });
   const controller = new AbortController();
   const bindings = () => bb.storage.kv.get<Record<string, Slot>>("bindings");
   const jobs = new WakeJobs(async (hostId, slot) => {
@@ -19,7 +29,7 @@ export default function plugin(bb: BbPluginApi) {
           "-o",
           "BatchMode=yes",
           slot,
-          "systemctl --user start bb-host-daemon-bb-plugins-getbb-app.service",
+          `systemctl --user start ${(await settings.get()).daemonService}`,
         ],
         {
           signal: controller.signal,

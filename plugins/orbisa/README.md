@@ -15,7 +15,7 @@ The plugin holds messages targeting a disconnected, bound VM while the existing 
 4. Install this plugin on the Mac and bind each enrollment:
    `bb orbisa bind 180seg-orbisa-01 <host-id>` (repeat for 02 and 03).
 
-The current setup uses `https://personal.example.com` and systemd service `bb-host-daemon-bb-plugins-getbb-app.service`. A different server handle requires updating the service name in `server.ts`.
+The Work setup uses `https://work.example.com`. Set its service with `bb plugin config orbisa set daemonService bb-host-daemon-bb-plugins-work-getbb-app.service`. The setting accepts a systemd bb host-daemon service name; the default preserves the previous Personal enrollment during migration.
 
 ## Commands
 
