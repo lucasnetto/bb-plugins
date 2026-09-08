@@ -23,6 +23,7 @@ export function initializeReviewDatabase(bb: BbPluginApi) {
       ELSE data END`,
     // Retained for installations that already applied this migration.
     "CREATE TABLE pr_snapshots (scope TEXT PRIMARY KEY, data TEXT NOT NULL)",
+    "CREATE TABLE pr_auto_settled (thread_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL)",
   ]);
   return db;
 }

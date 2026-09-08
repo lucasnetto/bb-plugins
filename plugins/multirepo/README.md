@@ -218,3 +218,15 @@ replace a cancelled or newer generation. The status-specific job schema lives
 in `shared/guide-generation.ts`; an append-only storage migration removes
 legacy placeholder fields before jobs are decoded. Failed and cancelled jobs
 retain any known revisions in their nullable `revision` field.
+
+### Automatic settling
+
+Every five minutes, Multirepo checks linked PRs for idle, visible threads. When
+at least one PR is linked and every PR is confirmed merged or closed, it archives
+the thread using BB's native lifecycle (the sidebar's Settle behavior). Open or
+draft PRs, failed lookups, queued messages, and active background agents defer
+settling. PR summaries refresh even when no browser panel is open.
+
+Un-settle keeps that completed PR set open, including after a plugin reload. A
+new linked PR, or an observed reopening followed by closure, allows automatic
+settling again.

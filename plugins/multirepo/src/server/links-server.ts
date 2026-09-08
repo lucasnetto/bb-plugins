@@ -1,3 +1,4 @@
+import { registerAutoSettle } from "./auto-settle";
 import { initializeReviewDatabase } from "./database";
 import { registerLinkTools } from "./links-tools";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -185,6 +186,42 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         return detail;
       }),
   };
+  registerAutoSettle(bb, runtime, db, {
+    list: listRows,
+    refresh: Effect.fn("LinkedPr.refreshSummaries")(function* (
+      threadId: string,
+      rows: readonly LinkedPr[],
+    ) {
+      const env = yield* environment(threadId);
+      const refreshed = yield* Effect.forEach(rows, (row) =>
+        call("host.linkedSummary", (signal) =>
+          host.call(
+            "linkedSummary",
+            { root: env.root, url: row.url },
+            { hostId: env.hostId, signal },
+          ),
+        ).pipe(
+          Effect.flatMap((summary) =>
+            decodeSchema("linked PR.summary", linkedPrSchema, {
+              ...row,
+              ...summary,
+              ...parsePrUrl(row.url),
+            }),
+          ),
+        ),
+      );
+      yield* sync("refresh linked summaries", () => {
+        const update = db.prepare(
+          "UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ? AND data = ?",
+        );
+        refreshed.forEach((row, index) =>
+          update.run(JSON.stringify(row), threadId, row.url, JSON.stringify(rows[index])),
+        );
+        changed(threadId);
+      });
+      return refreshed;
+    }),
+  });
   registerLinkTools(bb, runtime, handlers);
   bb.events.on("thread.deleted", ({ thread }) =>
     runtime.runPromise(
@@ -192,6 +229,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
         db.prepare("DELETE FROM review_guides WHERE thread_id = ?").run(thread.id);
         db.prepare("DELETE FROM review_comments WHERE thread_id = ?").run(thread.id);
         db.prepare("DELETE FROM linked_prs WHERE thread_id = ?").run(thread.id);
+        db.prepare("DELETE FROM pr_auto_settled WHERE thread_id = ?").run(thread.id);
         changed(thread.id);
       }),
     ),
