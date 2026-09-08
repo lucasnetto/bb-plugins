@@ -22,6 +22,10 @@
     {
       "name": "pr-review",
       "source": "./plugins/pr-review"
+    },
+    {
+      "name": "workers",
+      "source": "./plugins/workers"
     }
   ]
 }

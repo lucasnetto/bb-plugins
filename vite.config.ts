@@ -12,6 +12,7 @@ export default defineConfig({
       "plugins/t3-sidebar",
       "plugins/hide-models",
       "plugins/pr-review",
+      "plugins/workers",
     ],
   },
 });

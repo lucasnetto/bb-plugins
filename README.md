@@ -13,6 +13,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 | multirepo             | Browse files, changes, and pull requests across repositories. |
 | pr-review             | List your PRs and team review requests; open review threads.  |
 | t3-sidebar            | Display a T3-style thread sidebar.                            |
+| workers               | Inspect hidden child workers and chat in the parent panel.    |
 
 ## Development
 

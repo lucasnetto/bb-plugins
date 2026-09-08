@@ -1,0 +1,41 @@
+{
+  "name": "bb-plugin-workers",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/workers",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "Workers",
+    "description": "Inspect child workers and chat with them inside the parent thread panel.",
+    "branding": {
+      "icon": "Users"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": []
+  }
+}
