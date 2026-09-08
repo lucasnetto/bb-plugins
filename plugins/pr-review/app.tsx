@@ -127,8 +127,7 @@ function PullRequestList({
                 Retry
               </Button>
               <p className="mt-2 text-muted-foreground">
-                Requires Multirepo with a workspace project selected and GitHub CLI signed in on
-                that machine.
+                Requires GitHub CLI signed in on BB’s primary machine.
               </p>
             </div>
           ) : null}

@@ -86,7 +86,7 @@ export function ghClient(root: string, signal: AbortSignal): Gh {
           if (error) {
             reject(
               new Error(
-                `GitHub request failed. Check gh auth status on the workspace machine. ${stderr.trim().slice(0, 2000) || error.message}`,
+                `GitHub request failed. Check gh auth status on BB’s primary machine. ${stderr.trim().slice(0, 2000) || error.message}`,
               ),
             );
             return;

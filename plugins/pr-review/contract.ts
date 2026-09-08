@@ -27,12 +27,6 @@ export const listOutput = z.object({
   nextPage: z.number().int().nullable(),
   incomplete: z.boolean(),
 });
-export const workspaceSchema = z.object({
-  root: z.string(),
-  hostId: z.string(),
-  projectId: z.string(),
-  name: z.string(),
-});
 export const reviewOutput = z.object({ threadId: z.string(), warning: z.string().nullable() });
 export const LIST_CHANGED = "pr-list-changed";
 export const snapshotSchema = z.object({
@@ -59,7 +53,7 @@ export const rpcContract = defineRpcContract({
   review: { input: z.object({ url: prUrl }), output: reviewOutput },
 });
 export const hostContract = defineRpcContract({
-  list: { input: listInput.extend({ root: z.string() }), output: listOutput },
+  list: { input: listInput, output: listOutput },
 });
 export type View = z.infer<typeof viewSchema>;
 export type PullRequest = z.infer<typeof pullRequestSchema>;

@@ -3,27 +3,29 @@ import { createFakePluginHost, experimental_scanPublicSdkOnly } from "@get-bb/pl
 import { fileURLToPath } from "node:url";
 import plugin from "../server";
 
-it("routes listing to the workspace machine and reviews through Multirepo", async () => {
+it("routes listing to the primary machine independently of Multirepo and reviews through Multirepo", async () => {
   const { bb, harness } = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
+      system: { config: async () => ({ primaryHostId: "remote" }) },
       plugins: {
-        callRpc: async ({ method }: { method: string }) =>
-          method === "workspace"
-            ? { root: "/work", hostId: "remote", projectId: "p1", name: "Work" }
-            : { threadId: "t1", warning: null },
+        callRpc: async ({ method }: { method: string }) => {
+          if (method !== "reviewUrl") throw new Error("Project not found");
+          return { threadId: "t1", warning: null };
+        },
       },
     },
     experimental_callHostRpc: async ({ hostId, method, input }) => {
       expect(hostId).toBe("remote");
       expect(method).toBe("list");
-      expect(input).toEqual({ root: "/work", view: "reviewing", page: 2 });
+      expect(input).toEqual({ view: "reviewing", page: 2 });
       return { viewer: "lucas", rows: [], total: 0, nextPage: null, incomplete: false };
     },
   });
   try {
     plugin(bb);
     await harness.behavior.callRpc("list", { view: "reviewing", page: 2 });
+    expect(harness.inspection.sdk.callsTo("plugins.callRpc")).toHaveLength(0);
     expect(
       await harness.behavior.callRpc("review", { url: "https://github.com/acme/api/pull/42" }),
     ).toEqual({ threadId: "t1", warning: null });
@@ -33,7 +35,7 @@ it("routes listing to the workspace machine and reviews through Multirepo", asyn
     await expect(
       harness.behavior.callRpc("review", { url: "https://evil.test/pull/42" }),
     ).rejects.toThrow();
-    expect(harness.inspection.sdk.callsTo("plugins.callRpc")).toHaveLength(2);
+    expect(harness.inspection.sdk.callsTo("plugins.callRpc")).toHaveLength(1);
   } finally {
     await harness.lifecycle.dispose();
   }

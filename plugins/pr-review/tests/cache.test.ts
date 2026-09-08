@@ -22,7 +22,7 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
   let { bb, harness } = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
-      plugins: { callRpc: async () => ({ root: "/work", hostId, projectId: "p1", name: "Work" }) },
+      system: { config: async () => ({ primaryHostId: hostId }) },
     },
     experimental_callHostRpc: async ({ input }) => {
       requests++;

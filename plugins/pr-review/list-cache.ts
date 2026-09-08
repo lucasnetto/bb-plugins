@@ -1,10 +1,10 @@
+import { primaryHostId } from "./listing-host";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   hostContract,
   LIST_CHANGED,
   snapshotSchema,
-  workspaceSchema,
   type ListSnapshot,
   type ListResult,
   type PullRequest,
@@ -25,18 +25,8 @@ export function createListCache(bb: BbPluginApi) {
     controller.abort();
     await Promise.allSettled(pending.values());
   });
-  const workspace = () =>
-    bb.sdk.plugins.callRpc({
-      pluginId: "multirepo",
-      method: "workspace",
-      input: null,
-      outputSchema: workspaceSchema,
-    });
-  const scopeOf = (
-    w: { projectId: string; hostId: string; root: string },
-    view: View,
-    state: PrState,
-  ) => JSON.stringify(["open-prs-v2", w.projectId, w.hostId, w.root, view, state]);
+  const scopeOf = (hostId: string, view: View, state: PrState) =>
+    JSON.stringify(["open-prs-v3", hostId, view, state]);
   function read(scope: string, view: View): ListSnapshot {
     const row = db.prepare("SELECT data FROM list_snapshots WHERE scope = ?").get(scope);
     if (!row) return { scope, view, result: null, fetchedAt: null, pageCount: 0, error: null };
@@ -56,7 +46,7 @@ export function createListCache(bb: BbPluginApi) {
   }
   return {
     savedList: async ({ view, state = "all" }: { view: View; state?: PrState }) =>
-      read(scopeOf(await workspace(), view, state), view),
+      read(scopeOf(await primaryHostId(bb), view, state), view),
     refreshList: async ({
       view,
       state = "all",
@@ -68,8 +58,8 @@ export function createListCache(bb: BbPluginApi) {
       force: boolean;
       loadMore: boolean;
     }) => {
-      const w = await workspace();
-      const scope = scopeOf(w, view, state);
+      const hostId = await primaryHostId(bb);
+      const scope = scopeOf(hostId, view, state);
       const running = pending.get(scope);
       if (running) return running;
       const saved = read(scope, view);
@@ -86,9 +76,9 @@ export function createListCache(bb: BbPluginApi) {
           for (let page = 1; page <= pages; page++) {
             const data = await host.call(
               "list",
-              { root: w.root, view, state, page },
+              { view, state, page },
               {
-                hostId: w.hostId,
+                hostId,
                 signal: controller.signal,
               },
             );
