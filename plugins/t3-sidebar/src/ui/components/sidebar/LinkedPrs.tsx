@@ -5,7 +5,7 @@ type SidebarPr = {
   repository: string;
   number: number;
   title: string;
-  state: "OPEN" | "CLOSED" | "MERGED";
+  state: "open" | "closed" | "merged" | "draft";
 };
 type LinkMap = Record<string, SidebarPr[]>;
 function parseLinks(value: unknown): LinkMap {
@@ -23,6 +23,7 @@ function parseLinks(value: unknown): LinkMap {
         typeof pr.repository !== "string" ||
         typeof pr.number !== "number" ||
         typeof pr.title !== "string" ||
+        typeof pr.isDraft !== "boolean" ||
         !["OPEN", "CLOSED", "MERGED"].includes(String(pr.state))
       )
         throw new Error("Invalid linked PR");
@@ -31,7 +32,14 @@ function parseLinks(value: unknown): LinkMap {
         repository: pr.repository,
         number: pr.number,
         title: pr.title,
-        state: pr.state as SidebarPr["state"],
+        state:
+          pr.state === "MERGED"
+            ? "merged"
+            : pr.state === "CLOSED"
+              ? "closed"
+              : pr.isDraft
+                ? "draft"
+                : "open",
       };
     });
   }

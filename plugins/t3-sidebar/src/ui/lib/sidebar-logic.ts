@@ -257,22 +257,10 @@ export function isTrailingDoubleClick(detail: number): boolean {
 
 export function pullRequestBadgeClass(input: {
   state: "closed" | "draft" | "merged" | "open";
-  attention: string;
 }): string {
-  if (input.state === "merged") return "text-violet-600 dark:text-violet-400";
-  if (input.state === "closed") return "text-red-600 dark:text-red-400";
-  if (input.state === "draft") return "text-muted-foreground";
-  switch (input.attention) {
-    case "checks_failed":
-    case "conflicts":
-    case "changes_requested":
-    case "blocked":
-      return "text-red-600 dark:text-red-400";
-    case "checks_pending":
-      return "text-amber-600 dark:text-amber-400";
-    case "ready_to_merge":
-      return "text-emerald-600 dark:text-emerald-400";
-    default:
-      return "text-green-600 dark:text-green-400";
-  }
+  // Match t3code's ThreadStatusIndicators.prStatusIndicator in both themes.
+  if (input.state === "merged") return "text-violet-600 dark:text-violet-300/90";
+  if (input.state === "closed") return "text-red-600 dark:text-red-300/90";
+  if (input.state === "draft") return "text-zinc-500 dark:text-zinc-400/80";
+  return "text-emerald-600 dark:text-emerald-300/90";
 }

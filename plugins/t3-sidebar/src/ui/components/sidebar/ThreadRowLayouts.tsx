@@ -243,7 +243,10 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
               event.preventDefault();
               requestLinkedReview(threadId, pr.url, (id) => actions.open(id));
             }}
-            className="shrink-0 text-xs tabular-nums hover:underline"
+            className={cn(
+              "shrink-0 text-xs tabular-nums hover:underline",
+              pullRequestBadgeClass(pr),
+            )}
             title={`${pr.title} (${pr.state}, last fetched)`}
             aria-label={`${pr.repository} #${pr.number}: ${pr.title} (${pr.state})`}
           >
