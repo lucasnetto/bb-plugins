@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { definePluginApp, useBbContext, useRpc, type ExperimentalSidebarNavigationProps } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, useBbContext, useBbNavigate, useRpc, type ExperimentalSidebarNavigationProps } from "@get-bb/plugin-sdk/app";
 import type { ProfileInfo, rpcContract } from "./contract.ts";
-import { LAST_THREAD_KEY, RESUME_PARAM, profileSwitchUrl, savedThreadPath } from "./navigation.ts";
+import { LAST_THREAD_KEY, profileSwitchUrl, resumeThread, savedThreadPath } from "./navigation.ts";
 import "./app.css";
 
 function ProfileOptions({ compact = false }: { compact?: boolean }) {
@@ -61,6 +61,10 @@ function ProfileSelector() {
 
 function RememberThread() {
   const { projectId, threadId } = useBbContext();
+  const navigate = useBbNavigate();
+  useEffect(() => {
+    resumeThread(window, id => navigate.toThread(id));
+  }, [navigate]);
   useEffect(() => {
     if (!projectId || !threadId) return;
     const path = savedThreadPath(`/projects/${projectId}/threads/${threadId}`);
@@ -78,21 +82,6 @@ function ProfileNavigation({ experimental_Original: Original }: ExperimentalSide
 }
 
 export default definePluginApp(app => {
-  app.contentScripts.register({
-    id: "resume-thread",
-    mount() {
-      const url = new URL(window.location.href);
-      if (url.pathname !== "/" || url.searchParams.get(RESUME_PARAM) !== "1") return;
-      let path: string | null = null;
-      try { path = savedThreadPath(window.localStorage.getItem(LAST_THREAD_KEY)); } catch { /* Fall back to New thread. */ }
-      if (path) {
-        window.location.replace(path);
-      } else {
-        url.searchParams.delete(RESUME_PARAM);
-        window.history.replaceState(window.history.state, "", url.href);
-      }
-    },
-  });
   app.slots.experimental_appOverlay({ id: "remember-thread", component: RememberThread });
   app.slots.experimental_sidebarNavigation({
     id: "profiles", title: "Profiles", description: "Profile icons above the standard navigation.", component: ProfileNavigation,

@@ -7,7 +7,7 @@ import { createFakePluginHost, makeMessageDispatchHookContext } from "@get-bb/pl
 import plugin from "./server.ts";
 import type { ProfileInfo } from "./contract.ts";
 import { resolveProfile } from "./profile.ts";
-import { destinationUrl, profileSwitchUrl, savedThreadPath } from "./navigation.ts";
+import { destinationUrl, profileSwitchUrl, resumeThread, savedThreadPath } from "./navigation.ts";
 
 test("profile selection rejects an unknown instance instead of falling back to Personal", () => {
   assert.equal(resolveProfile("/home/example/.bb"), "personal");
@@ -60,5 +60,57 @@ test("restoration accepts only saved local thread routes", () => {
   assert.equal(savedThreadPath("/projects/proj_123/threads/thr_456"), "/projects/proj_123/threads/thr_456");
   for (const value of [null, "", "/", "/settings", "https://evil.example/projects/p/threads/t", "//evil.example", "/projects/p/threads/../settings", "/projects/p/threads/t?redirect=elsewhere"]) {
     assert.equal(savedThreadPath(value), null);
+  }
+});
+
+
+test("restoration navigates inside BB once, consumes the marker and preserves history state", () => {
+  const location = { href: "https://work.example.com/?bb-profile-resume=1&keep=yes#anchor" };
+  const state = { key: "router-entry", idx: 2 };
+  const opened: string[] = [];
+  const browser = {
+    location,
+    localStorage: { getItem: () => "/projects/proj_123/threads/thr_456" },
+    history: {
+      state,
+      replaceState(nextState: unknown, _title: string, url: string) {
+        assert.equal(nextState, state);
+        location.href = url;
+      },
+    },
+  } as unknown as Parameters<typeof resumeThread>[0];
+  resumeThread(browser, id => opened.push(id));
+  resumeThread(browser, id => opened.push(id));
+  assert.deepEqual(opened, ["thr_456"]);
+  assert.equal(location.href, "https://work.example.com/?keep=yes#anchor");
+});
+
+test("direct visits never read storage or trigger restoration", () => {
+  for (const href of ["https://work.example.com/", "https://work.example.com/?bb-profile-resume=0", "https://work.example.com/projects/p/threads/t?bb-profile-resume=1"]) {
+    const browser = {
+      location: { href },
+      get localStorage() { throw new Error("Should not read storage"); },
+      get history() { throw new Error("Should not change history"); },
+    } as unknown as Parameters<typeof resumeThread>[0];
+    resumeThread(browser, () => assert.fail("Should not navigate"));
+  }
+});
+
+test("missing, unsafe and unavailable storage leave New thread open and clear the marker", () => {
+  for (const saved of [null, "https://evil.example/", "/settings", "blocked"]) {
+    const location = { href: "https://work.example.com/?bb-profile-resume=1" };
+    const browser = {
+      location,
+      get localStorage() {
+        if (saved === "blocked") throw new Error("Storage is disabled");
+        return { getItem: () => saved };
+      },
+      history: {
+        state: null,
+        replaceState(_state: unknown, _title: string, url: string) { location.href = url; },
+      },
+    } as unknown as Parameters<typeof resumeThread>[0];
+    resumeThread(browser, () => assert.fail("Should not navigate"));
+    assert.equal(location.href, "https://work.example.com/");
   }
 });
