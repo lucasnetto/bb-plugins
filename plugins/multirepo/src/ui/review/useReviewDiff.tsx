@@ -27,7 +27,7 @@ export function useReviewDiff({
   setNotice,
 }: {
   detail: LinkedDetail | null;
-  threadId: string;
+  threadId: string | null;
   url: string;
   revision: number;
   setSelectedPath: Dispatch<SetStateAction<string | null>>;

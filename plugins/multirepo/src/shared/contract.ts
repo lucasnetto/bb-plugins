@@ -1,3 +1,4 @@
+import { startReviewInput } from "./review-draft-contract";
 import {
   guideStartInput,
   guideJobSchema,
@@ -22,6 +23,9 @@ import { guideTarget, guideProgressInput, savedGuideSchema } from "./guide-contr
 
 export const repoInput = Schema.Struct({ repo: Schema.String.check(Schema.isMinLength(1)) });
 const rootInput = Schema.Struct({ root: Schema.String.check(Schema.isMinLength(1)) });
+const linkedRootInput = Schema.Struct({
+  root: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
+});
 export const changeSchema = Schema.Struct({
   path: Schema.String,
   oldPath: Schema.NullOr(Schema.String),
@@ -49,15 +53,15 @@ export const detailSchema = Schema.Struct({
 });
 export const hostContract = defineRpcContract({
   linkedContents: {
-    input: standardSchema(rootInput.pipe(Schema.fieldsAssign(linkedContentsInput.fields))),
+    input: standardSchema(linkedRootInput.pipe(Schema.fieldsAssign(linkedContentsInput.fields))),
     output: standardSchema(linkedContentsSchema),
   },
   linkedSummary: {
-    input: standardSchema(rootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    input: standardSchema(linkedRootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
     output: standardSchema(prSummarySchema),
   },
   linkedDetail: {
-    input: standardSchema(rootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
+    input: standardSchema(linkedRootInput.pipe(Schema.fieldsAssign({ url: Schema.String }))),
     output: standardSchema(linkedDetailSchema),
   },
   discover: {
@@ -84,8 +88,20 @@ export const reviewCommentInput = Schema.Struct({
   context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
 export const rpcContract = defineRpcContract({
-  reviewUrl: {
+  reviewDraftDefaults: {
+    input: standardSchema(Schema.Null),
+    output: standardSchema(Schema.Struct({ projectId: Schema.String, hostId: Schema.String })),
+  },
+  reviewDraftDetail: {
     input: standardSchema(Schema.Struct({ url: Schema.String })),
+    output: standardSchema(linkedDetailSchema),
+  },
+  reviewDraftContents: {
+    input: standardSchema(linkedContentsInput),
+    output: standardSchema(linkedContentsSchema),
+  },
+  startReview: {
+    input: standardSchema(startReviewInput),
     output: standardSchema(
       Schema.Struct({ threadId: Schema.String, warning: Schema.NullOr(Schema.String) }),
     ),

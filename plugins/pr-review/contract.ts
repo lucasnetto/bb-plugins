@@ -27,7 +27,6 @@ export const listOutput = z.object({
   nextPage: z.number().int().nullable(),
   incomplete: z.boolean(),
 });
-export const reviewOutput = z.object({ threadId: z.string(), warning: z.string().nullable() });
 export const LIST_CHANGED = "pr-list-changed";
 export const snapshotSchema = z.object({
   scope: z.string(),
@@ -50,7 +49,6 @@ export const rpcContract = defineRpcContract({
     }),
     output: z.null(),
   },
-  review: { input: z.object({ url: prUrl }), output: reviewOutput },
 });
 export const hostContract = defineRpcContract({
   list: { input: listInput, output: listOutput },

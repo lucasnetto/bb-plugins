@@ -1,4 +1,4 @@
-import { createReviewThread } from "./review-thread";
+import { reviewDraftHandlers } from "./review-thread";
 import { registerGuideGeneration } from "./guide-generation";
 import { Effect } from "effect";
 import { call, sync, createRuntime, handler } from "./server-effects";
@@ -42,7 +42,7 @@ export default function plugin(bb: BbPluginApi) {
   links.onUnlink(generation.guideCancel);
   const operations = {
     ...links,
-    reviewUrl: createReviewThread(bb, workspace, links),
+    ...reviewDraftHandlers(bb, links),
     workspace,
     discover: () =>
       Effect.gen(function* () {
@@ -94,7 +94,10 @@ export default function plugin(bb: BbPluginApi) {
     changes: handler(runtime, operations.changes),
     files: handler(runtime, operations.files),
     detail: handler(runtime, operations.detail),
-    reviewUrl: handler(runtime, operations.reviewUrl),
+    reviewDraftDefaults: handler(runtime, operations.reviewDraftDefaults),
+    reviewDraftDetail: handler(runtime, operations.reviewDraftDetail),
+    reviewDraftContents: handler(runtime, operations.reviewDraftContents),
+    startReview: handler(runtime, operations.startReview),
   });
   registerMultirepoCli(bb, runtime, operations, links, guides);
 }

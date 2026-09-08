@@ -1,3 +1,4 @@
+import type { DraftComment } from "../../shared/review-draft-contract";
 import { useState } from "react";
 import { useRpc, useComposer } from "@get-bb/plugin-sdk/app";
 import type { FileDiffMetadata } from "@pierre/diffs";
@@ -9,6 +10,7 @@ import { buildReviewDraftText, type ReviewAction } from "./reviewDraftText";
 
 export function useReviewComposer({
   threadId,
+  onDraftComment,
   url,
   detail,
   selectedPath,
@@ -18,7 +20,8 @@ export function useReviewComposer({
   setNotice,
   setError,
 }: {
-  threadId: string;
+  threadId: string | null;
+  onDraftComment?: (comment: DraftComment) => void;
   url: string;
   detail: LinkedDetail | null;
   selectedPath: string | null;
@@ -47,17 +50,22 @@ export function useReviewComposer({
       const targetLabel = targetPath
         ? `${targetPath.split("/").pop()}${lineLabel}`
         : `${detail.pr.repository} #${detail.pr.number}`;
-      const { id } = await rpc.call("stageReviewComment", {
-        threadId,
-        url,
-        label: targetLabel,
-        context: prompt,
-      });
       const target = selection ? "this code" : targetPath ? "this file" : "this PR";
       const text = buildReviewDraftText(action, target, comment);
-      composer.updateText((current) => (current ? `${current}\n\n${text} ` : `${text} `));
-      composer.insertMention({ provider: "review-comment", id, label: targetLabel });
-      composer.focus();
+      if (threadId) {
+        const { id } = await rpc.call("stageReviewComment", {
+          threadId,
+          url,
+          label: targetLabel,
+          context: prompt,
+        });
+        composer.updateText((current) => (current ? `${current}\n\n${text} ` : `${text} `));
+        composer.insertMention({ provider: "review-comment", id, label: targetLabel });
+        composer.focus();
+      } else {
+        if (!onDraftComment) throw new Error("This review draft is not available.");
+        onDraftComment({ id: crypto.randomUUID(), label: targetLabel, text, context: prompt });
+      }
       setComment("");
       setNotice("Added to your draft.");
     } catch (error) {

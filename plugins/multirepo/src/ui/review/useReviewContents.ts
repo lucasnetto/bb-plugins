@@ -21,7 +21,7 @@ export function useReviewContents({
 }: {
   detail: LinkedDetail | null;
   rpc: ReturnType<typeof useRpc<typeof rpcContract>>;
-  threadId: string;
+  threadId: string | null;
   url: string;
   setNotice: (value: string) => void;
   setError: (value: string) => void;
@@ -47,15 +47,17 @@ export function useReviewContents({
           throw new Error("Refresh this PR before expanding context.");
         setNotice("Loading unchanged lines…");
         setError("");
-        const contents = await rpc.call("linkedContents", {
-          threadId,
+        const input = {
           url,
           path: fileDiff.name,
           oldPath: fileDiff.prevName ?? fileDiff.name,
           base: detail.baseRefOid,
           head: detail.headRefOid,
           changeType: fileDiff.type,
-        });
+        };
+        const contents = threadId
+          ? await rpc.call("linkedContents", { ...input, threadId })
+          : await rpc.call("reviewDraftContents", input);
         const key = `${url}:${detail.baseRefOid}:${detail.headRefOid}`;
         const oldFile = {
           name: fileDiff.prevName ?? fileDiff.name,

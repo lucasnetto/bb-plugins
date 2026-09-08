@@ -6,9 +6,9 @@ import type { LinkedDetail } from "../../shared/links-contract";
 // Keep successful and in-flight requests across panel unmounts. Bound the cache
 // because PR details include patches; Refresh explicitly replaces the entry.
 const details = new Map<string, { value?: LinkedDetail; request: Promise<LinkedDetail> }>();
-const cacheKey = (threadId: string, url: string) => JSON.stringify([threadId, url]);
+const cacheKey = (threadId: string | null, url: string) => JSON.stringify([threadId, url]);
 
-export function useReviewData(threadId: string, url: string) {
+export function useReviewData(threadId: string | null, url: string) {
   const rpc = useRpc<typeof rpcContract>();
   const key = cacheKey(threadId, url);
   const [detail, setDetail] = useState<LinkedDetail | null>(() => details.get(key)?.value ?? null);
@@ -20,7 +20,9 @@ export function useReviewData(threadId: string, url: string) {
     let disposed = false;
     let entry = details.get(key);
     if (!entry) {
-      const request = rpc.call("linkedDetail", { threadId, url });
+      const request = threadId
+        ? rpc.call("linkedDetail", { threadId, url })
+        : rpc.call("reviewDraftDetail", { url });
       entry = { request };
       const created = entry;
       details.set(key, entry);

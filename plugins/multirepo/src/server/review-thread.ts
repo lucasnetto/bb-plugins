@@ -1,57 +1,83 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { hostContract } from "../shared/contract";
-import { parsePrUrl } from "../shared/links-contract";
-import { call, sync, type BackendError } from "./server-effects";
+import { linkedContentsInput, parsePrUrl } from "../shared/links-contract";
+import { startReviewInput } from "../shared/review-draft-contract";
+import { call, sync, fail } from "./server-effects";
 import type { registerLinks } from "./links-server";
 
-type Workspace = { root: string; hostId: string; projectId: string; name: string };
-
-/** Public URL-based entry for PR browsers; Multirepo owns the review workflow. */
-export function createReviewThread(
+export function reviewDraftHandlers(
   bb: BbPluginApi,
-  workspace: () => Effect.Effect<Workspace, BackendError>,
   links: Pick<ReturnType<typeof registerLinks>, "linkedLink">,
 ) {
   const host = bb.hosts.experimental_client({ contract: hostContract });
-  return Effect.fn("Multirepo.reviewUrl")(function* ({ url }: { url: string }) {
-    const ref = yield* sync("review URL", () => parsePrUrl(url));
-    const w = yield* workspace();
-    // Verify access and fetch the title before creating any thread.
-    const pr = yield* call("host.linkedSummary", (signal) =>
-      host.call("linkedSummary", { root: w.root, url: ref.url }, { hostId: w.hostId, signal }),
-    );
-    const thread = yield* call("threads.spawn", () =>
-      bb.sdk.threads.spawn({
-        projectId: w.projectId,
-        environment: {
-          type: "host",
-          hostId: w.hostId,
-          workspace: { type: "unmanaged", path: w.root },
-        },
-        title: `${ref.repository}#${ref.number}: ${pr.title}`,
-        prompt: [
-          `Review ${ref.url}.`,
-          `Use Multirepo's linked PR review flow. Link this PR with reason requested-review if it is not already linked.`,
-          `The umbrella workspace is ${JSON.stringify(w.root)}. Find the repository locally if available; the PR may also belong to a repository outside this workspace.`,
-          `Read the PR using gh pr view ${ref.number} -R ${ref.repository} --comments and gh pr diff ${ref.number} -R ${ref.repository}.`,
-          "Inspect the exact PR revisions, not unrelated local changes. Review correctness, regressions, and missing tests. Return findings with file/line references.",
-          "Preserve all existing work; do not switch the shared checkout, edit files, push, or post to GitHub unless the user asks.",
-        ].join("\n"),
-      }),
-    );
-    // A link failure must still return the created thread: retrying the button
-    // should not silently create another agent run after a successful spawn.
-    const warning = yield* links
-      .linkedLink({ threadId: thread.id, url: ref.url, reason: "requested-review" })
-      .pipe(
-        Effect.as(null as string | null),
-        Effect.catchTag("BackendError", (error) =>
-          Effect.succeed(
-            `Review thread created, but linking the PR failed: ${error.message}. The agent can retry linking it.`,
-          ),
-        ),
-      );
-    return { threadId: thread.id, warning };
+  const primary = Effect.fn("Review.primary")(function* () {
+    const { primaryHostId } = yield* call("system.config", () => bb.sdk.system.config());
+    if (!primaryHostId)
+      return yield* fail("Connect a primary machine to BB to review pull requests.");
+    return primaryHostId;
   });
+  return {
+    reviewDraftDefaults: Effect.fn("Review.defaults")(function* () {
+      const hostId = yield* primary();
+      const projects = yield* call("projects.list", () =>
+        bb.sdk.projects.list({ includePersonal: true }),
+      );
+      const project = projects.find((project) => project.kind === "personal");
+      if (!project) return yield* fail("BB's personal project is unavailable.");
+      return { hostId, projectId: project.id };
+    }),
+    reviewDraftDetail: Effect.fn("Review.detail")(function* ({ url }: { url: string }) {
+      const ref = yield* sync("review URL", () => parsePrUrl(url));
+      const hostId = yield* primary();
+      return yield* call("host.linkedDetail", (signal) =>
+        host.call("linkedDetail", { root: null, url: ref.url }, { hostId, signal }),
+      );
+    }),
+    reviewDraftContents: Effect.fn("Review.contents")(function* (
+      input: Schema.Schema.Type<typeof linkedContentsInput>,
+    ) {
+      const ref = yield* sync("review URL", () => parsePrUrl(input.url));
+      const hostId = yield* primary();
+      return yield* call("host.linkedContents", (signal) =>
+        host.call("linkedContents", { ...input, root: null, url: ref.url }, { hostId, signal }),
+      );
+    }),
+    startReview: Effect.fn("Review.start")(function* ({
+      url,
+      request,
+      comments,
+    }: Schema.Schema.Type<typeof startReviewInput>) {
+      const ref = yield* sync("review URL", () => parsePrUrl(url));
+      if (!request.input.some((entry) => entry.type !== "text" || entry.text.trim()))
+        return yield* fail("Write a message before starting the conversation.");
+      // This handler is called only by the composer's explicit Send action.
+      const context = [
+        `Pull request: ${ref.url}`,
+        ...comments.map(
+          (comment) =>
+            `${comment.label}\n${comment.text}\n\nSelected PR context:\n${comment.context}`,
+        ),
+      ].join("\n\n");
+      const thread = yield* call("threads.spawn", () =>
+        bb.sdk.threads.spawn({
+          ...request,
+          title: `${ref.repository} #${ref.number}`,
+          input: [{ type: "text", text: context, mentions: [] }, ...request.input],
+        }),
+      );
+      // Return the created thread even on link failure so Send cannot duplicate it.
+      const warning = yield* links
+        .linkedLink({ threadId: thread.id, url: ref.url, reason: "manual" })
+        .pipe(
+          Effect.as(null as string | null),
+          Effect.catchTag("BackendError", (error) =>
+            Effect.succeed(
+              `Thread created, but linking the PR failed: ${error.message}. Retry from the Linked PRs panel.`,
+            ),
+          ),
+        );
+      return { threadId: thread.id, warning };
+    }),
+  };
 }

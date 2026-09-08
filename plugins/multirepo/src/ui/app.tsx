@@ -1,3 +1,5 @@
+import { ReviewDraftPage, ReviewDraftPanel } from "./review-draft/ReviewDraftPage";
+import { ReviewDraftNavigation, reviewDraftTab } from "./review-draft/navigation";
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { GuideModelSettings } from "./review/GuideGenerator";
 import { LinkedPrsPanel, LinkedPrHeader } from "./linked-prs";
@@ -7,6 +9,26 @@ function ReposPage() {
   return <Workspace />;
 }
 export default definePluginApp((app) => {
+  app.slots.experimental_appOverlay({
+    id: "review-draft-navigation",
+    component: ReviewDraftNavigation,
+  });
+  app.slots.navPanel({
+    id: "review",
+    title: "PR review",
+    icon: "GitPullRequest",
+    path: "review",
+    component: ReviewDraftPage,
+    fixedTabs: [
+      {
+        ...reviewDraftTab,
+        title: "Pull request",
+        icon: "GitPullRequest",
+        component: ReviewDraftPanel,
+        layout: "flush",
+      },
+    ],
+  });
   app.slots.settingsSection({
     id: "guide-model",
     title: "Guided review model",

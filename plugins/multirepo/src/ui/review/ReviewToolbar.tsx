@@ -13,7 +13,7 @@ export function ReviewToolbar({
 }: {
   fileCount: number;
   guideOpen: boolean;
-  onToggleGuide: () => void;
+  onToggleGuide?: () => void;
   treeOpen: boolean;
   onToggleTree: () => void;
   loading: boolean;
@@ -25,14 +25,16 @@ export function ReviewToolbar({
       <span className="mr-auto px-2 text-xs font-medium">
         Code <span className="text-muted-foreground">{fileCount}</span>
       </span>
-      <Button
-        size="sm"
-        variant={guideOpen ? "secondary" : "ghost"}
-        aria-pressed={guideOpen}
-        onClick={onToggleGuide}
-      >
-        Guide
-      </Button>
+      {onToggleGuide ? (
+        <Button
+          size="sm"
+          variant={guideOpen ? "secondary" : "ghost"}
+          aria-pressed={guideOpen}
+          onClick={onToggleGuide}
+        >
+          Guide
+        </Button>
+      ) : null}
       <Button
         size="sm"
         variant={display.style === "unified" ? "secondary" : "ghost"}

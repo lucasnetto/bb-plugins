@@ -3,11 +3,17 @@ import { expect, it } from "vite-plus/test";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-it("defaults to authored PRs, switches views, and hands a review to Multirepo", async () => {
+it("defaults to authored PRs, switches views, and opens a review draft without creating a thread", async () => {
   sessionStorage.clear();
   const app = await loadPluginApp(() => import("../app"));
   const views: string[] = [];
   const openedUrls: string[] = [];
+  const reviewDrafts: unknown[] = [];
+  const receiveDraft = (event: Event) => {
+    if (event instanceof CustomEvent) reviewDrafts.push(event.detail);
+    event.preventDefault();
+  };
+  window.addEventListener("bb:multirepo:open-draft", receiveDraft);
   const url = "https://github.com/acme/api/pull/42";
   const slot = renderSlot(
     app.navPanels[0]!,
@@ -50,7 +56,6 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
           views.push((input as { view: string }).view);
           return null;
         },
-        review: () => ({ threadId: "t1", warning: null }),
       },
     },
   );
@@ -79,9 +84,12 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
     await waitFor(() => expect(views).toEqual(["authored", "authored", "authored", "reviewing"]));
     await slot.findByText("Fix API");
     fireEvent.click(slot.getByRole("button", { name: "Review acme/api #42" }));
-    await waitFor(() => expect(slot.inspection.navigateCalls.length).toBe(1));
-    expect(sessionStorage.getItem("bb:multirepo:open-review:t1")).toBe(url);
+    expect(reviewDrafts).toEqual([{ url }]);
+    expect(slot.inspection.navigateCalls.some((call) => call.method === "toThread")).toBe(false);
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "review")).toBe(false);
+    expect(sessionStorage.getItem("bb:multirepo:open-review:t1")).toBeNull();
   } finally {
+    window.removeEventListener("bb:multirepo:open-draft", receiveDraft);
     slot.lifecycle.unmount();
   }
 });

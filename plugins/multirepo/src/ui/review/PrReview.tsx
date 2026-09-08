@@ -1,3 +1,4 @@
+import type { DraftComment } from "../../shared/review-draft-contract";
 // BB adapter for T3 Code's PR code tab. Ported components retain T3-LICENSE.
 import { useEffect, useState, type CSSProperties } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
@@ -15,7 +16,24 @@ import { useReviewComposer } from "./useReviewComposer";
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
   return <PrReviewContent key={`${threadId}:${url}`} threadId={threadId} url={url} />;
 }
-function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
+export function DraftPrReview({
+  url,
+  onComment,
+}: {
+  url: string;
+  onComment: (comment: DraftComment) => void;
+}) {
+  return <PrReviewContent key={url} threadId={null} url={url} onDraftComment={onComment} />;
+}
+function PrReviewContent({
+  threadId,
+  url,
+  onDraftComment,
+}: {
+  threadId: string | null;
+  url: string;
+  onDraftComment?: (comment: DraftComment) => void;
+}) {
   const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
     useReviewData(threadId, url);
   const [notice, setNotice] = useState("");
@@ -38,6 +56,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
   });
   const draft = useReviewComposer({
     threadId,
+    onDraftComment,
     url,
     detail,
     selectedPath,
@@ -96,7 +115,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
       <ReviewToolbar
         fileCount={detail?.files.length ?? 0}
         guideOpen={guideOpen}
-        onToggleGuide={toggleGuide}
+        onToggleGuide={threadId ? toggleGuide : undefined}
         treeOpen={treeOpen}
         onToggleTree={() => setTreeOpen(!treeOpen)}
         loading={loading}
@@ -113,7 +132,7 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           Loading diff…
         </p>
       ) : null}
-      {guideOpen ? (
+      {guideOpen && threadId ? (
         <ReviewGuidePanel
           threadId={threadId}
           guideRequestOpen={guideRequestOpen}

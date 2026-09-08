@@ -4,7 +4,7 @@ import type { rpcContract } from "../../shared/contract";
 import type { SavedGuide } from "../../shared/guide-contract";
 
 export function useSavedGuide(
-  threadId: string,
+  threadId: string | null,
   url: string,
   revision: number,
   refreshRevision: number,
@@ -17,6 +17,10 @@ export function useSavedGuide(
   const [savingProgress, setSavingProgress] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!threadId) {
+      setLoading(false);
+      return;
+    }
     let disposed = false;
     setLoading(true);
     rpc
@@ -40,7 +44,7 @@ export function useSavedGuide(
     };
   }, [rpc, threadId, url, connection, refreshRevision, revision]);
   async function mark(chapter: number, reviewed: boolean) {
-    if (!data || savingProgress) return;
+    if (!threadId || !data || savingProgress) return;
     setSavingProgress(true);
     setError("");
     try {

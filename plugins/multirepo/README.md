@@ -4,7 +4,7 @@ Browse a folder of independent Git repositories without changing bb core.
 
 ## Use
 
-Choose the umbrella project in **Settings → Multirepo → Workspace project**.
+For repository browsing, choose the umbrella project in **Settings → Multirepo → Workspace project**.
 The plugin uses that project's default local source and its owning machine.
 
 - **Repos** in the sidebar: search repositories, select one, then browse Changes or Files.
@@ -14,6 +14,16 @@ The plugin uses that project's default local source and its owning machine.
 - **Refresh** reloads repository state and the current view. This version uses explicit refresh, not background filesystem watching.
 
 Git must be available on the workspace machine. Linked PR reviews also require authenticated `gh`. PR browsing is provided by the separate PR Review plugin.
+
+## Review before starting a thread
+
+**Review in thread** on the Pull requests page opens **PR review**, with BB’s new-thread composer beside the diff. You can also enter a PR URL directly on this screen. It uses GitHub CLI on BB’s primary machine and does not need the configured Workspace project or a local repository.
+
+Select code and use **Add to chat** to collect comments. Each comment preserves the PR URL, file, selected lines, and exact revisions. Comments survive navigation and reloads within the same window; the composer’s draft is persisted by BB. Remove a comment to omit it from the conversation.
+
+Only **Send** creates a thread and starts the agent with your message and comments. The selected project, environment, model, and permissions are preserved. The PR is linked with reason `manual`, and its review panel opens beside the new thread. There is no automatic review instruction. Guide generation is available after creating the thread.
+
+The public browser handoff is a cancelable `bb:multirepo:open-draft` event with `{url}` in `detail`. The app-wide listener acknowledges accepted requests and opens the review route. The previous automatic `reviewUrl` RPC is replaced by read-only `reviewDraftDefaults`, `reviewDraftDetail`, and `reviewDraftContents`, plus `startReview` for explicit submissions.
 
 ## Agent/CLI access
 
@@ -43,7 +53,7 @@ bb plugin build
 bb plugin install . --yes
 ```
 
-Source layout: `src/server/git.ts` reads Git on the owning host; `src/server/host.ts` exposes typed host RPC; `src/server/server.ts` resolves the project and launches review threads; `src/ui/app.tsx` registers the panels and reuses bb source/diff viewers.
+Source layout: `src/server/git.ts` reads Git on the owning host; `src/server/host.ts` exposes typed host RPC; `src/server/server.ts` resolves the project for repository browsing; `src/server/review-thread.ts` serves review drafts and creates conversations only on Send; `src/ui/app.tsx` registers the panels and reuses bb source/diff viewers.
 
 ## Linked PRs per thread
 

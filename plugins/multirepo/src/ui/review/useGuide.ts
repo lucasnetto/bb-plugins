@@ -5,7 +5,7 @@ import { useSavedGuide } from "./useSavedGuide";
 import { useGuideGeneration } from "./useGuideGeneration";
 
 /** Coordinate shared invalidation and keep guide mutations mutually exclusive. */
-export function useGuide(threadId: string, url: string, revision: number) {
+export function useGuide(threadId: string | null, url: string, revision: number) {
   const [refreshRevision, setRefreshRevision] = useState(0);
   const refresh = useCallback(() => setRefreshRevision((value) => value + 1), []);
   useRealtime(GUIDE_CHANGED, (payload) => {

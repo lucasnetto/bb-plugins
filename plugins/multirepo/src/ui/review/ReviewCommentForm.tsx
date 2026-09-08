@@ -9,7 +9,7 @@ export function ReviewCommentForm({
   loading,
   draft,
 }: {
-  threadId: string;
+  threadId: string | null;
   pullRequestNumber: number | undefined;
   hasDetail: boolean;
   hasSelection: boolean;

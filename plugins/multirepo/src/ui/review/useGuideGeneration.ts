@@ -4,7 +4,7 @@ import type { rpcContract } from "../../shared/contract";
 import { guideWorkerId, type GuideJob, type GuideModel } from "../../shared/guide-generation";
 
 export function useGuideGeneration(
-  threadId: string,
+  threadId: string | null,
   url: string,
   revision: number,
   refresh: () => void,
@@ -17,6 +17,7 @@ export function useGuideGeneration(
   const [error, setError] = useState("");
   const generating = job?.status === "running" || job?.status === "preparing";
   useEffect(() => {
+    if (!threadId) return;
     let disposed = false;
     const load = () =>
       rpc.call("guideJob", { threadId, url }).then(
@@ -46,7 +47,7 @@ export function useGuideGeneration(
     };
   }, [rpc, threadId, url, revision, connection, generating]);
   async function start(model: GuideModel) {
-    if (blocked || operation !== null) return false;
+    if (!threadId || blocked || operation !== null) return false;
     setOperation("starting");
     setError("");
     try {
@@ -60,7 +61,7 @@ export function useGuideGeneration(
     }
   }
   async function cancel() {
-    if (blocked || operation !== null) return;
+    if (!threadId || blocked || operation !== null) return;
     setOperation("cancelling");
     try {
       await rpc.call("guideCancel", { threadId, url });

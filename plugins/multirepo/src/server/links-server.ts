@@ -43,17 +43,14 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
   const changed = (threadId: string) => bb.realtime.publish(LINKS_CHANGED, { threadId });
   const environment = Effect.fn("LinkedPr.environment")(function* (threadId: string) {
     const thread = yield* call("threads.get", () => bb.sdk.threads.get({ threadId }));
-    if (!thread.environmentId)
-      return yield* sync("thread workspace", () => {
-        throw new Error("This thread needs a workspace before a PR can be fetched.");
-      });
+    if (!thread.environmentId) {
+      const { primaryHostId } = yield* call("system.config", () => bb.sdk.system.config());
+      if (!primaryHostId) return yield* fail("Connect a primary machine to fetch this PR.");
+      return { root: null, hostId: primaryHostId };
+    }
     const environmentId = thread.environmentId;
     const env = yield* call("environments.get", () => bb.sdk.environments.get({ environmentId }));
-    if (!env.path)
-      return yield* sync("thread workspace", () => {
-        throw new Error("The thread environment has no workspace path.");
-      });
-    return { root: env.path, hostId: env.hostId };
+    return { root: env.path ?? null, hostId: env.hostId };
   });
   bb.ui.registerMentionProvider({
     id: "review-comment",

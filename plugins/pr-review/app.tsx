@@ -1,8 +1,8 @@
 import { useList } from "./use-list";
-import { useId, useRef, useState } from "react";
-import { definePluginApp, useRpc, useBbNavigate, UrlLink } from "@get-bb/plugin-sdk/app";
+import { useId, useState } from "react";
+import { definePluginApp, UrlLink } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { rpcContract, View, PrState } from "./contract";
+import type { View, PrState } from "./contract";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Badge } from "./components/ui/badge";
@@ -17,32 +17,19 @@ function PullRequestList({
   state: PrState;
   setState: (state: PrState) => void;
 }) {
-  const rpc = useRpc<typeof rpcContract>();
-  const navigate = useBbNavigate();
   const { result, fetchedAt, error, loading, showLoading, refresh } = useList(view, state);
   const [query, setQuery] = useState("");
   const [repository, setRepository] = useState("");
   const groupId = useId();
   const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(() => new Set());
-  const [pending, setPending] = useState<string | null>(null);
-  const reviewing = useRef(false);
-
-  async function review(url: string) {
-    if (reviewing.current) return;
-    reviewing.current = true;
-    setPending(url);
-    try {
-      const opened = await rpc.call("review", { url });
-      if (opened.warning) toast.error(opened.warning);
-      // Multirepo's documented handoff opens its PR panel after thread navigation.
-      sessionStorage.setItem(`bb:multirepo:open-review:${opened.threadId}`, url);
-      navigate.toThread(opened.threadId);
-    } catch (reason) {
-      toast.error(String(reason));
-    } finally {
-      reviewing.current = false;
-      setPending(null);
-    }
+  function review(url: string) {
+    const unhandled = window.dispatchEvent(
+      new CustomEvent("bb:multirepo:open-draft", {
+        detail: { url },
+        cancelable: true,
+      }),
+    );
+    if (unhandled) toast.error("Enable Multirepo to open the PR review screen.");
   }
   const repositories = [...new Set(result?.rows.map((pr) => pr.repository) ?? [])].sort();
   const rows =
@@ -193,11 +180,10 @@ function PullRequestList({
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={pending !== null}
                             aria-label={`Review ${pr.repository} #${pr.number}`}
                             onClick={() => review(pr.url)}
                           >
-                            {pending === pr.url ? "Opening review…" : "Review in thread"}
+                            Review in thread
                           </Button>
                         </li>
                       ))}
