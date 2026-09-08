@@ -174,6 +174,18 @@ function PullRequestList({
                           <div className="min-w-0 flex-1 basis-60">
                             <UrlLink
                               href={pr.url}
+                              onClick={(event) => {
+                                if (
+                                  event.button !== 0 ||
+                                  event.metaKey ||
+                                  event.ctrlKey ||
+                                  event.shiftKey ||
+                                  event.altKey
+                                )
+                                  return;
+                                event.preventDefault();
+                                void review(pr.url);
+                              }}
                               className="break-words text-sm font-medium hover:underline"
                             >
                               {pr.title}

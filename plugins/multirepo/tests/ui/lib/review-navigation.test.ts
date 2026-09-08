@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, test } from "vite-plus/test";
-import { listenForReviewRequests } from "../../../src/ui/lib/review-navigation";
+import { listenForPrLinks, listenForReviewRequests } from "../../../src/ui/lib/review-navigation";
 
 test("review handoff consumes once on mount or event, isolates threads, and removes its listener", () => {
   const url = "https://github.com/org/api/pull/42";
@@ -29,5 +29,61 @@ test("review handoff consumes once on mount or event, isolates threads, and remo
   } finally {
     stop();
     sessionStorage.clear();
+  }
+});
+
+test("PR links open the panel, preserve modified clicks, and fall back when unavailable", () => {
+  const anchor = document.createElement("a");
+  anchor.href = "https://github.com/org/api/pull/42?foo=bar";
+  const child = document.createElement("span");
+  anchor.append(child);
+  document.body.append(anchor);
+  const opened: unknown[] = [];
+  let available = true;
+  const stop = listenForPrLinks((request) => {
+    opened.push(request);
+    return available;
+  });
+  // Avoid jsdom attempting browser navigation after testing the capture handler.
+  anchor.addEventListener("click", (event) => event.preventDefault());
+  const click = (options: MouseEventInit = {}) => {
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...options });
+    child.dispatchEvent(event);
+    return event;
+  };
+  try {
+    expect(click().defaultPrevented).toBe(true);
+    expect(opened).toEqual([{ url: "https://github.com/org/api/pull/42", title: "org/api #42" }]);
+    for (const options of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ])
+      click(options);
+    expect(opened).toHaveLength(1);
+    anchor.href = "https://github.com/org/api/issues/42";
+    click();
+    expect(opened).toHaveLength(1);
+    anchor.href = "https://github.com/org/api/pull/42";
+    anchor.setAttribute("data-pr-browser", "");
+    click();
+    expect(opened).toHaveLength(1);
+    anchor.removeAttribute("data-pr-browser");
+    available = false;
+    let reachedAnchor = false;
+    anchor.addEventListener("click", () => {
+      reachedAnchor = true;
+    });
+    click();
+    expect(reachedAnchor).toBe(true);
+    expect(opened).toHaveLength(2);
+    stop();
+    click();
+    expect(opened).toHaveLength(2);
+  } finally {
+    stop();
+    anchor.remove();
   }
 });

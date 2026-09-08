@@ -79,7 +79,9 @@ function PrReviewContent({ threadId, url }: { threadId: string; url: string }) {
           </span>
           <span>{detail?.pr.state.toLowerCase()}</span>
           <span className="ml-auto">
-            <UrlLink href={url}>Open on GitHub ↗</UrlLink>
+            <UrlLink href={url} data-pr-browser>
+              Open on GitHub ↗
+            </UrlLink>
           </span>
         </div>
         <h2 className="mt-2 truncate text-sm font-semibold" title={detail?.pr.title}>
