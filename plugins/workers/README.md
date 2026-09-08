@@ -35,3 +35,12 @@ bb plugin build plugins/workers
 bb plugin install path:. --plugin workers
 bb plugin reload workers
 ```
+
+## Agent delegation
+
+The plugin bundles the [bb-workers skill](skills/bb-workers/SKILL.md). Ask an
+agent to “use bb workers,” “delegate to Fable,” or invoke `$bb-workers` to use
+hidden child threads, keep discussion in the parent, and review worker results.
+It does not turn on delegation for ordinary coding requests. Model preferences
+come from your request or project instructions, not a fixed model in the skill.
+New agent sessions discover the skill after the plugin is refreshed.
