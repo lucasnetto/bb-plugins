@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
+import { definePluginApp, useBbContext, useRpc, type ExperimentalSidebarNavigationProps } from "@get-bb/plugin-sdk/app";
 import type { ProfileInfo, rpcContract } from "./contract.ts";
-import { destinationUrl } from "./navigation.ts";
+import { LAST_THREAD_KEY, RESUME_PARAM, profileSwitchUrl, savedThreadPath } from "./navigation.ts";
 import "./app.css";
 
-function ProfileSelector() {
+function ProfileOptions({ compact = false }: { compact?: boolean }) {
   const rpc = useRpc<typeof rpcContract>();
   const [info, setInfo] = useState<ProfileInfo | null>(null);
   const [error, setError] = useState(false);
@@ -17,12 +17,33 @@ function ProfileSelector() {
   }, [rpc]);
   if (error) return <p role="alert" className="bb-profiles-error">Profiles are unavailable. Reload to retry.</p>;
   if (!info) return <p className="bb-profiles-loading">Loading profiles…</p>;
+  if (compact) return <div className="bb-profiles-strip" role="group" aria-label="Account profiles">
+    {info.profiles.map(profile => <a
+      key={profile.id}
+      className="bb-profiles-icon"
+      href={profileSwitchUrl(profile.url, profile.localUrl, window.location.hostname)}
+      aria-label={`${profile.name}${profile.id === info.current ? " (current profile)" : " — switch profile"}`}
+      title={profile.name}
+      aria-current={profile.id === info.current ? "true" : undefined}
+      onClick={event => { if (profile.id === info.current) event.preventDefault(); }}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {profile.id === "personal" ? <>
+          <circle cx="12" cy="8" r="4" />
+          <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+        </> : <>
+          <rect x="3" y="7" width="18" height="14" rx="2" />
+          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12a20 20 0 0 0 18 0M12 12v3" />
+        </>}
+      </svg>
+    </a>)}
+  </div>;
   return <div className="bb-profiles-menu" aria-label="Account profiles">
     <p className="bb-profiles-heading">Profile</p>
     {info.profiles.map(profile => <a
       key={profile.id}
       className="bb-profiles-option"
-      href={destinationUrl(profile.url, profile.localUrl, window.location.hostname)}
+      href={profileSwitchUrl(profile.url, profile.localUrl, window.location.hostname)}
       aria-current={profile.id === info.current ? "true" : undefined}
       onClick={event => { if (profile.id === info.current) event.preventDefault(); }}
     >
@@ -34,7 +55,48 @@ function ProfileSelector() {
   </div>;
 }
 
+function ProfileSelector() {
+  return <ProfileOptions />;
+}
+
+function RememberThread() {
+  const { projectId, threadId } = useBbContext();
+  useEffect(() => {
+    if (!projectId || !threadId) return;
+    const path = savedThreadPath(`/projects/${projectId}/threads/${threadId}`);
+    if (!path) return;
+    try { window.localStorage.setItem(LAST_THREAD_KEY, path); } catch { /* Storage may be unavailable. */ }
+  }, [projectId, threadId]);
+  return null;
+}
+
+function ProfileNavigation({ experimental_Original: Original }: ExperimentalSidebarNavigationProps) {
+  return <>
+    <ProfileOptions compact />
+    <Original />
+  </>;
+}
+
 export default definePluginApp(app => {
+  app.contentScripts.register({
+    id: "resume-thread",
+    mount() {
+      const url = new URL(window.location.href);
+      if (url.pathname !== "/" || url.searchParams.get(RESUME_PARAM) !== "1") return;
+      let path: string | null = null;
+      try { path = savedThreadPath(window.localStorage.getItem(LAST_THREAD_KEY)); } catch { /* Fall back to New thread. */ }
+      if (path) {
+        window.location.replace(path);
+      } else {
+        url.searchParams.delete(RESUME_PARAM);
+        window.history.replaceState(window.history.state, "", url.href);
+      }
+    },
+  });
+  app.slots.experimental_appOverlay({ id: "remember-thread", component: RememberThread });
+  app.slots.experimental_sidebarNavigation({
+    id: "profiles", title: "Profiles", description: "Profile icons above the standard navigation.", component: ProfileNavigation,
+  });
   app.experimental_sidebarFooter.register({
     kind: "disclosure", id: "profiles", label: "Switch profile", icon: "Users", component: ProfileSelector,
   });

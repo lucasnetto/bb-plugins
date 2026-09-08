@@ -7,7 +7,7 @@ import { createFakePluginHost, makeMessageDispatchHookContext } from "@get-bb/pl
 import plugin from "./server.ts";
 import type { ProfileInfo } from "./contract.ts";
 import { resolveProfile } from "./profile.ts";
-import { destinationUrl } from "./navigation.ts";
+import { destinationUrl, profileSwitchUrl, savedThreadPath } from "./navigation.ts";
 
 test("profile selection rejects an unknown instance instead of falling back to Personal", () => {
   assert.equal(resolveProfile("/home/example/.bb"), "personal");
@@ -49,3 +49,16 @@ for (const profile of ["personal", "work"] as const) {
     }
   });
 }
+
+
+test("profile switching requests restoration on the destination origin", () => {
+  assert.equal(profileSwitchUrl("https://work.example.com", "http://127.0.0.1:48886", "127.0.0.1"), "http://127.0.0.1:48886/?bb-profile-resume=1");
+  assert.equal(profileSwitchUrl("https://work.example.com", "http://127.0.0.1:48886", "personal.example.com"), "https://work.example.com/?bb-profile-resume=1");
+});
+
+test("restoration accepts only saved local thread routes", () => {
+  assert.equal(savedThreadPath("/projects/proj_123/threads/thr_456"), "/projects/proj_123/threads/thr_456");
+  for (const value of [null, "", "/", "/settings", "https://evil.example/projects/p/threads/t", "//evil.example", "/projects/p/threads/../settings", "/projects/p/threads/t?redirect=elsewhere"]) {
+    assert.equal(savedThreadPath(value), null);
+  }
+});
