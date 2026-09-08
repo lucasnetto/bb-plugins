@@ -62,6 +62,8 @@ function setup() {
     },
     link: (value = url) =>
       harness.behavior.callRpc("linkedLink", { threadId: "t1", url: value, reason: "manual" }),
+    unlink: (value = url) =>
+      harness.behavior.callRpc("linkedUnlink", { threadId: "t1", url: value }),
     sweep: () => harness.behavior.runSchedule("settle-completed-prs"),
     archived: () => thread.archivedAt !== null,
     reload: async () => {
@@ -137,7 +139,7 @@ test("rechecks thread activity after GitHub calls", async () => {
   }
 });
 
-test("Un-settle survives reload; a reopened PR becoming terminal arms settlement again", async () => {
+test("Un-settle survives reload and reopening or reclosing the same PR", async () => {
   const h = setup();
   try {
     await h.link();
@@ -152,7 +154,7 @@ test("Un-settle survives reload; a reopened PR becoming terminal arms settlement
     await h.sweep();
     h.states.set(url, "MERGED");
     await h.sweep();
-    assert.equal(h.archived(), true);
+    assert.equal(h.archived(), false);
   } finally {
     await h.dispose();
   }
@@ -176,6 +178,28 @@ test("a new PR allows settlement after Un-settle, and an archive failure is retr
     h.states.set(other, "CLOSED");
     await h.sweep();
     assert.equal(h.archived(), true);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test("removing or relinking previously settled PRs never counts as a new PR", async () => {
+  const h = setup();
+  try {
+    await h.link();
+    await h.link(other);
+    h.states.set(url, "MERGED");
+    h.states.set(other, "CLOSED");
+    await h.sweep();
+    assert.equal(h.archived(), true);
+    h.setThread({ archivedAt: null });
+    await h.unlink(other);
+    await h.sweep();
+    assert.equal(h.archived(), false);
+    await h.link(other);
+    await h.reload();
+    await h.sweep();
+    assert.equal(h.archived(), false);
   } finally {
     await h.dispose();
   }

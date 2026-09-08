@@ -227,6 +227,8 @@ the thread using BB's native lifecycle (the sidebar's Settle behavior). Open or
 draft PRs, failed lookups, queued messages, and active background agents defer
 settling. PR summaries refresh even when no browser panel is open.
 
-Un-settle keeps that completed PR set open, including after a plugin reload. A
-new linked PR, or an observed reopening followed by closure, allows automatic
-settling again.
+Un-settle keeps the thread open, including after a plugin reload. Multirepo
+remembers PR URLs from all previous automatic settlements. Settling again requires
+at least one new PR URL and every currently linked PR to be merged or closed.
+Reopening, reclosing, removing, or relinking previously settled PRs does not
+trigger another settlement.

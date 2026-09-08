@@ -68,25 +68,26 @@ export function registerAutoSettle(
     if (rows.length === 0) return;
     // Every PR must be successfully fetched during this pass. Never trust stale terminal states.
     const refreshed = yield* links.refresh(threadId, rows);
-    if (!terminal(refreshed)) {
-      yield* sync("auto settle.reset", () =>
-        db.prepare("DELETE FROM pr_auto_settled WHERE thread_id = ?").run(threadId),
-      );
-      return;
-    }
+    if (!terminal(refreshed)) return;
     const key = fingerprint(refreshed);
     const previous = yield* sync("auto settle.previous", () =>
       db.prepare("SELECT fingerprint FROM pr_auto_settled WHERE thread_id = ?").get(threadId),
     );
-    if (previous) {
-      const saved = yield* decodeSchema(
-        "auto settle.previous",
-        Schema.Struct({ fingerprint: Schema.String }),
-        previous,
-      );
-      // Native Un-settle is an override for this completed set, including after reload.
-      if (saved.fingerprint === key) return;
-    }
+    // Keep the existing on-disk format, but compare PR identity, not link timestamps.
+    const saved = previous
+      ? yield* decodeSchema(
+          "auto settle.previous",
+          Schema.Struct({
+            fingerprint: Schema.fromJsonString(
+              Schema.Array(Schema.Tuple([Schema.String, Schema.Finite])),
+            ),
+          }),
+          previous,
+        )
+      : { fingerprint: [] };
+    const settledPrs = new Map<string, number>(saved.fingerprint);
+    // Un-settle stays open until there is a PR never included in an earlier settlement.
+    if (refreshed.every(({ url }) => settledPrs.has(url))) return;
     if (!(yield* descendantsIdle(threadId))) return;
     const after = yield* eligible(threadId);
     if (!after || after.updatedAt !== before.updatedAt) return;
@@ -96,7 +97,17 @@ export function registerAutoSettle(
     yield* sync("auto settle.remember", () => {
       db.prepare(
         "INSERT OR REPLACE INTO pr_auto_settled (thread_id, fingerprint) VALUES (?, ?)",
-      ).run(threadId, key);
+      ).run(
+        threadId,
+        JSON.stringify(
+          [
+            ...new Map([
+              ...settledPrs,
+              ...current.map(({ url, linkedAt }) => [url, linkedAt] as const),
+            ]),
+          ].sort(([a], [b]) => a.localeCompare(b)),
+        ),
+      );
       bb.log.info(`Settled ${threadId}: all linked PRs are merged or closed`);
     });
   });
