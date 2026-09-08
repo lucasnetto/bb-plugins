@@ -3,6 +3,7 @@
 A GitHub PR page inspired by [t3code's pull requests page](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/routes/_chat.pull-requests.tsx), using Multirepo's existing review threads and linked-PR panels.
 
 - **Created by me** is the default: all open PRs authored by the current GitHub user, including drafts.
+- Clicking a PR title opens it on GitHub.
 - **Review requested** includes open requests to the user and their teams. GitHub's `review-requested:USERNAME` qualifier resolves team membership; no separate organization-membership scan is needed. Completed review requests disappear according to GitHub's search semantics.
 - Results span accessible GitHub repositories, ordered by update time. Load more fetches 50 at a time. The text filter searches loaded results. GitHub's partial results and 1,000-result cap are disclosed.
 - Lists are persisted in SQLite per workspace, machine, and view. Opening the page reads the saved snapshot; GitHub refreshes in the background when it is over 60 seconds old. Manual Refresh bypasses that window. Realtime notifications update open pages, and failed refreshes keep the last successful list visible. Loaded pages are refreshed together so closed PRs disappear without retaining stale pagination.

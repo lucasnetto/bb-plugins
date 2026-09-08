@@ -7,11 +7,16 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
   sessionStorage.clear();
   const app = await loadPluginApp(() => import("../app"));
   const views: string[] = [];
+  const openedUrls: string[] = [];
   const url = "https://github.com/acme/api/pull/42";
   const slot = renderSlot(
     app.navPanels[0]!,
     { subPath: "" },
     {
+      openUrl: (url) => {
+        openedUrls.push(url);
+        return true;
+      },
       rpc: {
         savedList: (input) => {
           const { view } = input as { view: string };
@@ -51,6 +56,10 @@ it("defaults to authored PRs, switches views, and hands a review to Multirepo", 
   );
   try {
     await slot.findByText("Fix API");
+    fireEvent.click(slot.getByRole("link", { name: "Fix API" }));
+    expect(openedUrls).toEqual([url]);
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "review")).toBe(false);
+    expect(sessionStorage.getItem("bb:multirepo:open-review:t1")).toBeNull();
     expect(views).toEqual(["authored"]);
     const stateFilter = slot.getByRole("combobox", { name: "Pull request state" });
     expect((stateFilter as HTMLSelectElement).value).toBe("all");
