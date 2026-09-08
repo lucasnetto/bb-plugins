@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-orbisa",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "react": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.42.1",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "Orbisa",
+    "description": "Wake isolated Orbisa execution machines on demand from one Mac bb server.",
+    "branding": {
+      "icon": "Zap"
+    },
+    "server": "./server.ts",
+    "skills": [],
+    "app": "./app.tsx"
+  }
+}

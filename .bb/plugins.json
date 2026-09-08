@@ -26,6 +26,10 @@
     {
       "name": "workers",
       "source": "./plugins/workers"
+    },
+    {
+      "name": "orbisa",
+      "source": "./plugins/orbisa"
     }
   ]
 }
