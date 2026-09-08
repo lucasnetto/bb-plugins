@@ -1,6 +1,6 @@
 import { listenForPrLinks, listenForReviewRequests } from "./lib/review-navigation";
 import { PrReview } from "./review/PrReview";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import {
   useRpc,
   useRealtime,
@@ -109,6 +109,23 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
       setError(String(e));
     }
   }
+  function openReview(event: MouseEvent<HTMLAnchorElement>, pr: LinkedPr) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    navigate.openThreadPanel({
+      actionId: "linked-prs",
+      title: `${pr.repository} #${pr.number}`,
+      params: { url: pr.url },
+    });
+  }
   if (selectedUrl)
     return (
       <LinkedPrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
@@ -152,24 +169,29 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
           className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3"
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium">{pr.title}</p>
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium hover:underline focus-visible:underline"
+              onClick={(event) => openReview(event, pr)}
+            >
+              {pr.title}
+            </a>
             <p className="text-xs text-muted-foreground">
               {pr.repository} #{pr.number} · {pr.state} · {pr.reason}
             </p>
           </div>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                navigate.openThreadPanel({
-                  actionId: "linked-prs",
-                  title: `${pr.repository} #${pr.number}`,
-                  params: { url: pr.url },
-                })
-              }
-            >
-              Review
+            <Button size="sm" variant="outline" asChild>
+              <a
+                href={pr.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => openReview(event, pr)}
+              >
+                Review
+              </a>
             </Button>
             <Button size="sm" variant="ghost" onClick={() => void unlink(pr)}>
               Unlink

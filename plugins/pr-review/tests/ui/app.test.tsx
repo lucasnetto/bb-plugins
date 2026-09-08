@@ -39,13 +39,26 @@ test("linked PR picker opens the selected PR in its thread panel and unlink pres
     },
   );
   try {
-    const reviews = await slot.findAllByRole("button", { name: "Review" });
+    const reviews = await slot.findAllByRole("link", { name: "Review" });
+    const titles = slot.getAllByRole("link", { name: pr.title });
+    for (const link of [titles[1], reviews[1]]) {
+      expect(link.getAttribute("href")).toBe("https://github.com/org/api/pull/43");
+      expect(link.getAttribute("target")).toBe("_blank");
+      const before = slot.inspection.navigateCalls.length;
+      expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+      expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+      expect(slot.inspection.navigateCalls).toHaveLength(before);
+    }
+    fireEvent.click(titles[1]);
+    expect(JSON.stringify(slot.inspection.navigateCalls)).toContain(
+      "https://github.com/org/api/pull/43",
+    );
     fireEvent.click(reviews[1]);
     expect(JSON.stringify(slot.inspection.navigateCalls)).toContain(
       "https://github.com/org/api/pull/43",
     );
     fireEvent.click(slot.getAllByRole("button", { name: "Unlink" })[0]);
-    await waitFor(() => expect(slot.getAllByRole("button", { name: "Review" })).toHaveLength(1));
+    await waitFor(() => expect(slot.getAllByRole("link", { name: "Review" })).toHaveLength(1));
     expect(links[0].number).toBe(43);
   } finally {
     slot.lifecycle.unmount();
