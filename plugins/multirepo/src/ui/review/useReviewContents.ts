@@ -8,6 +8,8 @@ import type { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
 import type { LinkedDetail } from "../../shared/links-contract";
 
+const contentsCache = new WeakMap<LinkedDetail, Map<string, FileDiffMetadata>>();
+
 /** Load full file contents for context expansion and quotes at the displayed PR revisions. */
 export function useReviewContents({
   detail,
@@ -26,7 +28,15 @@ export function useReviewContents({
 }) {
   const [loadedContentsRevision, setLoadedContentsRevision] = useState(0);
   // A refreshed detail starts a new cache. The revision tells the viewer when this map changes.
-  const fullDiffs = useMemo(() => new Map<string, FileDiffMetadata>(), [detail]);
+  const fullDiffs = useMemo(() => {
+    if (!detail) return new Map<string, FileDiffMetadata>();
+    let cached = contentsCache.get(detail);
+    if (!cached) {
+      cached = new Map<string, FileDiffMetadata>();
+      contentsCache.set(detail, cached);
+    }
+    return cached;
+  }, [detail]);
   const loadDiffFiles = useMemo<FileDiffContentsLoader>(() => {
     const pending = new Map<string, ReturnType<FileDiffContentsLoader>>();
     return (fileDiff) => {

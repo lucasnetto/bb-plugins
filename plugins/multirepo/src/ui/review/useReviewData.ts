@@ -3,19 +3,40 @@ import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
 import type { LinkedDetail } from "../../shared/links-contract";
 
+// Keep successful and in-flight requests across panel unmounts. Bound the cache
+// because PR details include patches; Refresh explicitly replaces the entry.
+const details = new Map<string, { value?: LinkedDetail; request: Promise<LinkedDetail> }>();
+const cacheKey = (threadId: string, url: string) => JSON.stringify([threadId, url]);
+
 export function useReviewData(threadId: string, url: string) {
   const rpc = useRpc<typeof rpcContract>();
-  const [detail, setDetail] = useState<LinkedDetail | null>(null);
+  const key = cacheKey(threadId, url);
+  const [detail, setDetail] = useState<LinkedDetail | null>(() => details.get(key)?.value ?? null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!details.get(key)?.value);
   const [revision, setRevision] = useState(0);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   useEffect(() => {
     let disposed = false;
-    setLoading(true);
+    let entry = details.get(key);
+    if (!entry) {
+      const request = rpc.call("linkedDetail", { threadId, url });
+      entry = { request };
+      const created = entry;
+      details.set(key, entry);
+      if (details.size > 20) details.delete(details.keys().next().value!);
+      void request.then(
+        (value) => {
+          created.value = value;
+        },
+        () => {
+          if (details.get(key) === created) details.delete(key);
+        },
+      );
+    }
+    setLoading(!entry.value);
     setError("");
-    rpc
-      .call("linkedDetail", { threadId, url })
+    entry.request
       .then(
         (value) => {
           if (disposed) return;
@@ -34,7 +55,7 @@ export function useReviewData(threadId: string, url: string) {
     return () => {
       disposed = true;
     };
-  }, [rpc, threadId, url, revision]);
+  }, [rpc, threadId, url, key, revision]);
 
   return {
     detail,
@@ -42,7 +63,10 @@ export function useReviewData(threadId: string, url: string) {
     setError,
     loading,
     revision,
-    refresh: () => setRevision((value) => value + 1),
+    refresh: () => {
+      details.delete(key);
+      setRevision((value) => value + 1);
+    },
     selectedPath,
     setSelectedPath,
   };
