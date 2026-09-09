@@ -6,11 +6,13 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 
 import { projectSettingsContract } from "./project-settings-contract";
 import { projectThreadContract } from "./project-thread-contract";
+import { sideThreadContract } from "./side-thread-contract";
 
 export const rpcContract = defineRpcContract({
   ...snoozeContract,
   ...projectSettingsContract,
   ...projectThreadContract,
+  ...sideThreadContract,
   project_hosts: {
     input: standardSchema(Schema.Null),
     output: standardSchema(

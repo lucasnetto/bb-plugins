@@ -8,8 +8,14 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { T3ThreadList } from "@/ui/components/sidebar/T3ThreadList";
 import { ProjectsPanel } from "@/ui/components/projects/ProjectsPanel";
+import { PromoteSideThread } from "@/ui/components/sidebar/PromoteSideThread";
 
 export default definePluginApp((app) => {
+  app.composer.customize({
+    id: "promote-side-thread",
+    scopes: ["thread", "side-chat"],
+    actions: [{ id: "promote", component: PromoteSideThread }],
+  });
   app.slots.navPanel({
     id: "projects",
     path: "projects",

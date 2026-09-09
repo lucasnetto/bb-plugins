@@ -9,6 +9,11 @@ t3code's inbox model:
 - **Cards, not rows.** Every live thread is a three-line card: project ·
   status/time, title, branch · PR · provider.
 - **Pinned block** on top, closed by a thin divider.
+- **Promote side chats.** In a side chat's composer, choose **Promote to sidebar**
+  to turn it into a standalone thread and open it. Its conversation, model,
+  provider session and workspace stay intact, and running work continues. The
+  existing side-chat tab still points to the same conversation. Only live side
+  chats show this action; workers and archived threads are excluded.
 - **Static order.** Active cards sort by creation, newest first. Activity
   never reorders the list; status lives in each card's label.
 - **Status vocabulary** (t3code hues): `Working` (sky), `Monitoring` (sky),

@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { call, sync, createRuntime } from "./lib/server-effects";
 import { createProjectSettingsHandlers, registerProjectAutoPull } from "./lib/project-settings";
 import { createProjectThreadHandlers } from "./lib/project-thread-create";
+import { createSideThreadHandlers } from "./lib/side-thread";
 
 import { createSettledHandlers } from "./lib/settled";
 import { rpcContract } from "../shared/rpc-contract";
@@ -15,6 +16,7 @@ export default function plugin(bb: BbPluginApi) {
     ...createSnoozeHandlers(bb),
     ...createProjectSettingsHandlers(bb),
     ...createProjectThreadHandlers(bb),
+    ...createSideThreadHandlers(bb),
     project_hosts: () =>
       runtime.runPromise(
         call("hosts.list", () => bb.sdk.hosts.list()).pipe(
