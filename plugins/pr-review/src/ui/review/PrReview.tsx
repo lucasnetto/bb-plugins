@@ -112,6 +112,7 @@ function PrReviewContent({
             })
           ) {
             draft.setComment((current) => (current === body ? "" : current));
+            clearSelection();
           }
         } catch (cause) {
           setError(String(cause));
