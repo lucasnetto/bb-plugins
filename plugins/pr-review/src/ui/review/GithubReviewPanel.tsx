@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Markdown, UrlLink } from "@get-bb/plugin-sdk/app";
+import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "../components/ui/button";
 import { reviewFingerprint, type GithubComment } from "../../shared/github-review-contract";
 import type { useGithubReview } from "./useGithubReview";
+import { ReviewCommentBody } from "./ReviewCommentBody";
 export type GithubReview = ReturnType<typeof useGithubReview>;
 
 function DraftComment({
@@ -70,7 +71,7 @@ function DraftComment({
           </Button>
         </>
       ) : (
-        <Markdown content={comment.body} />
+        <ReviewCommentBody content={comment.body} />
       )}
       {pending && !editing && (
         <div className="flex gap-2">

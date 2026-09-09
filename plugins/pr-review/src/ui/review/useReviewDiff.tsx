@@ -1,5 +1,4 @@
 import type { GithubComment } from "../../shared/github-review-contract";
-import { Markdown } from "@get-bb/plugin-sdk/app";
 import {
   useCallback,
   useEffect,
@@ -19,6 +18,7 @@ import type { StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
 import { useReviewContents } from "./useReviewContents";
 import { parseReviewFile, ContextHeader, diffRecordVersion } from "./diff-adapter";
 import { selectedFileEnd } from "./expandedSelection";
+import { ReviewCommentBody } from "./ReviewCommentBody";
 
 export type ReviewSelection = NonNullable<CodeViewProps<undefined, undefined>["selectedLines"]>;
 export type ReviewAnnotationRenderer = NonNullable<
@@ -237,7 +237,7 @@ export function useReviewDiff({
                 View review
               </button>
             </div>
-            <Markdown className="min-w-0 max-w-full overflow-x-auto" content={comment.body} />
+            <ReviewCommentBody content={comment.body} />
           </div>
         ))}
       </div>

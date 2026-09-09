@@ -13,6 +13,7 @@ import { parsePrUrl } from "../../shared/links-contract";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { DraftPrReview } from "../review/PrReview";
+import { ReviewCommentBody } from "../review/ReviewCommentBody";
 import { useDraftComments } from "./comments";
 import { draftUrl, draftPath, reviewDraftTab } from "./navigation";
 
@@ -145,7 +146,7 @@ function ReviewConversation({ url }: { url: string }) {
                     Remove
                   </Button>
                 </div>
-                <p className="whitespace-pre-wrap break-words text-sm">{comment.text}</p>
+                <ReviewCommentBody content={comment.text} />
               </li>
             ))}
           </ol>
