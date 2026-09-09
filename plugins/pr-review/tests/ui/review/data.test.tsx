@@ -59,6 +59,8 @@ test("panel remounts reuse in-flight and completed PR details; refresh fetches a
     expect(calls).toBe(1);
     fireEvent.click(slot.getByText("Refresh"));
     await waitFor(() => expect(calls).toBe(2));
+    expect(slot.queryByText("Loading")).toBeNull();
+    expect(slot.getByText("Cached PR")).toBeTruthy();
     resolve({ pr: { title: "Updated PR" }, files: [] });
     await slot.findByText("Updated PR");
   } finally {

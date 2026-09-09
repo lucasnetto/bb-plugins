@@ -2,7 +2,7 @@ import { Button } from "../components/ui/button";
 import { GuideGenerator } from "./GuideGenerator";
 import { GuidedReview } from "./GuidedReview";
 import type { useGuide } from "./useGuide";
-import type { ReviewSelection, useReviewDiff } from "./useReviewDiff";
+import type { ReviewAnnotationRenderer, ReviewSelection, useReviewDiff } from "./useReviewDiff";
 
 export function ReviewGuidePanel({
   threadId,
@@ -16,6 +16,7 @@ export function ReviewGuidePanel({
   selectedPath,
   setSelectedPath,
   onSelection,
+  annotation,
 }: {
   threadId: string;
   guideRequestOpen: boolean;
@@ -28,6 +29,7 @@ export function ReviewGuidePanel({
   selectedPath: string | null;
   setSelectedPath: (path: string | null) => void;
   onSelection: (selection: ReviewSelection | null | undefined) => void;
+  annotation: ReviewAnnotationRenderer;
 }) {
   return (
     <>
@@ -72,6 +74,7 @@ export function ReviewGuidePanel({
           selection={diff.selection.lines}
           onSelection={onSelection}
           header={diff.viewer.header}
+          annotation={annotation}
         />
       ) : (
         <div className="flex flex-1 flex-col items-start justify-center gap-3 p-6">

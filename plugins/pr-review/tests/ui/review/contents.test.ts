@@ -1,7 +1,28 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { parseDiffFromFile, parsePatchFiles } from "@pierre/diffs";
-import { selectedFilePatch } from "../../../src/ui/review/expandedSelection";
+import { selectedFileEnd, selectedFilePatch } from "../../../src/ui/review/expandedSelection";
+
+test("inline composers anchor below the last selected row, including reversed and cross-side ranges", () => {
+  const diff = parseDiffFromFile(
+    { name: "file.ts", contents: "context\nold\nafter\n" },
+    { name: "file.ts", contents: "context\nnew\nextra\nafter\n" },
+  );
+  assert.deepEqual(selectedFileEnd(diff, { start: 3, end: 2, side: "additions" }), {
+    side: "additions",
+    lineNumber: 3,
+  });
+  assert.deepEqual(selectedFileEnd(diff, { start: 2, end: 1, side: "deletions" }), {
+    side: "deletions",
+    lineNumber: 2,
+  });
+  assert.deepEqual(
+    selectedFileEnd(diff, { start: 2, end: 2, side: "additions", endSide: "deletions" }),
+    { side: "additions", lineNumber: 2 },
+  );
+  assert.equal(selectedFileEnd(diff, { start: 100, end: 101 }), null);
+});
+
 test("expanded unchanged lines can be quoted before and after the patch", () => {
   const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}\n`);
   const oldFile = { name: "file.ts", contents: lines.join("") };

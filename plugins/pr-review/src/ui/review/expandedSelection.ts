@@ -1,5 +1,10 @@
 // Adapted from T3 Code reviewCommentContext.ts. See T3-LICENSE.
-import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
+import type {
+  DiffLineAnnotation,
+  FileDiffMetadata,
+  SelectedLineRange,
+  SelectionSide,
+} from "@pierre/diffs";
 
 /** A contiguous run of rows, without allocating the individual file lines. */
 interface DiffReviewSegment {
@@ -134,6 +139,19 @@ function findReviewRowIndex(
   return preferredIndex >= 0
     ? preferredIndex
     : findOnSide(coordinate === "oldStart" ? "newStart" : "oldStart");
+}
+
+export function selectedFileEnd(
+  fileDiff: FileDiffMetadata,
+  range: SelectedLineRange,
+): DiffLineAnnotation | null {
+  const segments = diffReviewSegments(fileDiff);
+  const start = findReviewRowIndex(segments, range.start, range.side);
+  const end = findReviewRowIndex(segments, range.end, range.endSide ?? range.side);
+  if (start < 0 || end < 0) return null;
+  return start > end
+    ? { lineNumber: range.start, side: range.side ?? "additions" }
+    : { lineNumber: range.end, side: range.endSide ?? range.side ?? "additions" };
 }
 
 export function selectedFilePatch(fileDiff: FileDiffMetadata, range: SelectedLineRange) {

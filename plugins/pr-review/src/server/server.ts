@@ -1,3 +1,4 @@
+import { githubReviewHandlers } from "./github-review-server";
 import { reviewDraftHandlers } from "./review-thread";
 import { registerGuideGeneration } from "./guide-generation";
 import { createRuntime, handler } from "./server-effects";
@@ -12,11 +13,14 @@ export default function plugin(bb: BbPluginApi) {
   const guides = registerGuides(bb, runtime, links);
   const generation = registerGuideGeneration(bb, runtime, guides);
   links.onUnlink(generation.guideCancel);
+  const github = githubReviewHandlers(bb, links);
   const operations = {
     ...links,
     ...reviewDraftHandlers(bb, links),
   };
   bb.rpc.register(rpcContract, {
+    githubReview: handler(runtime, github.githubReview),
+    githubReviewMutate: handler(runtime, github.githubReviewMutate),
     guideStart: handler(runtime, generation.guideStart),
     guideJob: handler(runtime, generation.guideJob),
     guideCancel: handler(runtime, generation.guideCancel),

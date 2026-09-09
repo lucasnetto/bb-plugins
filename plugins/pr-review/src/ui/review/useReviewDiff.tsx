@@ -1,3 +1,5 @@
+import type { GithubComment } from "../../shared/github-review-contract";
+import { Markdown } from "@get-bb/plugin-sdk/app";
 import {
   useCallback,
   useEffect,
@@ -5,6 +7,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { type CodeViewDiffItem } from "@pierre/diffs";
@@ -15,9 +18,16 @@ import type { LinkedDetail } from "../../shared/links-contract";
 import type { StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
 import { useReviewContents } from "./useReviewContents";
 import { parseReviewFile, ContextHeader, diffRecordVersion } from "./diff-adapter";
+import { selectedFileEnd } from "./expandedSelection";
 
 export type ReviewSelection = NonNullable<CodeViewProps<undefined, undefined>["selectedLines"]>;
+export type ReviewAnnotationRenderer = NonNullable<
+  CodeViewProps<undefined, undefined>["renderAnnotation"]
+>;
 export function useReviewDiff({
+  comments = [],
+  pendingReviewId,
+  onOpenReview,
   detail,
   threadId,
   url,
@@ -26,6 +36,9 @@ export function useReviewDiff({
   setError,
   setNotice,
 }: {
+  comments?: GithubComment[];
+  pendingReviewId?: number;
+  onOpenReview?: () => void;
   detail: LinkedDetail | null;
   threadId: string | null;
   url: string;
@@ -42,9 +55,11 @@ export function useReviewDiff({
   const [wrap, setWrap] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selection, setSelection] = useState<ReviewSelection | null>(null);
+  const [selecting, setSelecting] = useState(false);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
   useEffect(() => {
     setSelection(null);
+    setSelecting(false);
     setNotice("");
   }, [rpc, threadId, url, revision, setNotice]);
   const { fullDiffs, loadedContentsRevision, loadDiffFiles } = useReviewContents({
@@ -62,6 +77,22 @@ export function useReviewDiff({
         .filter((item): item is CodeViewDiffItem => item !== null) ?? [],
     [detail],
   );
+  const selectionAnchor = useMemo(() => {
+    if (!selection || selecting) return null;
+    const item = parsed.find((item) => `${contextRevision}:${item.id}` === selection.id);
+    if (!item) return null;
+    const anchor = selectedFileEnd(fullDiffs.get(item.id) ?? item.fileDiff, selection.range);
+    return anchor ? { ...anchor, id: selection.id } : null;
+  }, [selection, selecting, parsed, contextRevision, fullDiffs, loadedContentsRevision]);
+  const annotationSignature = JSON.stringify([comments, selectionAnchor]);
+  const annotationVersion = useRef({ signature: "", version: 0 });
+  if (annotationVersion.current.signature !== annotationSignature) {
+    annotationVersion.current = {
+      signature: annotationSignature,
+      version: annotationVersion.current.version + 1,
+    };
+  }
+  const commentsVersion = annotationVersion.current.version;
   // Pierre reconciles existing records only when their version changes, including collapse state.
   const items = useMemo(
     () =>
@@ -69,10 +100,45 @@ export function useReviewDiff({
         ...item,
         id: `${contextRevision}:${item.id}`,
         fileDiff: fullDiffs.get(item.id) ?? item.fileDiff,
-        version: diffRecordVersion(revision, fullDiffs.has(item.id), collapsed.has(item.id)),
+        version:
+          diffRecordVersion(revision, fullDiffs.has(item.id), collapsed.has(item.id)) +
+          commentsVersion * 1000000,
+        annotations: [
+          ...new Map(
+            [
+              ...comments
+                .filter(
+                  (c) =>
+                    c.path === item.fileDiff.name &&
+                    !c.outdated &&
+                    (c.line !== null || c.subjectType === "FILE"),
+                )
+                .map((c) => {
+                  const annotation = {
+                    side: c.side === "LEFT" ? ("deletions" as const) : ("additions" as const),
+                    lineNumber: c.line ?? 0,
+                  };
+                  return annotation;
+                }),
+              ...(selectionAnchor?.id === `${contextRevision}:${item.id}` ? [selectionAnchor] : []),
+            ].map(
+              (annotation) => [`${annotation.side}:${annotation.lineNumber}`, annotation] as const,
+            ),
+          ).values(),
+        ],
         collapsed: collapsed.has(item.id),
       })),
-    [parsed, collapsed, fullDiffs, loadedContentsRevision, revision, contextRevision],
+    [
+      parsed,
+      collapsed,
+      fullDiffs,
+      loadedContentsRevision,
+      revision,
+      contextRevision,
+      comments,
+      commentsVersion,
+      selectionAnchor,
+    ],
   );
   const entries = useMemo(
     () =>
@@ -97,6 +163,8 @@ export function useReviewDiff({
       overflow: wrap ? "wrap" : "scroll",
       diffIndicators: "bars",
       enableLineSelection: true,
+      onLineSelectionStart: () => setSelecting(true),
+      onLineSelectionEnd: () => setSelecting(false),
       lineHoverHighlight: "both",
       hunkSeparators: "line-info",
       expandUnchanged,
@@ -135,11 +203,54 @@ export function useReviewDiff({
     },
     [collapsed, toggle, loadDiffFiles],
   );
+  const annotation = (
+    anchor: Parameters<ReviewAnnotationRenderer>[0],
+    item: Parameters<ReviewAnnotationRenderer>[1],
+    selectionContent?: ReactNode,
+  ) => {
+    if (item.type !== "diff" || !("side" in anchor)) return null;
+    const side = anchor.side === "deletions" ? "LEFT" : "RIGHT";
+    const matching = comments.filter(
+      (c) =>
+        c.path === item.fileDiff.name && (c.line ?? 0) === anchor.lineNumber && c.side === side,
+    );
+    return (
+      <div className="flex min-w-0 flex-col gap-2 px-3 py-2 font-sans text-sm whitespace-normal text-foreground [overflow-wrap:anywhere]">
+        {selectionAnchor?.id === item.id &&
+        selectionAnchor.side === anchor.side &&
+        selectionAnchor.lineNumber === anchor.lineNumber
+          ? selectionContent
+          : null}
+        {matching.map((comment) => (
+          <div
+            key={comment.id}
+            className="min-w-0 rounded-md border border-border bg-background p-3"
+          >
+            <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {comment.user?.login} ·{" "}
+                {comment.pull_request_review_id === pendingReviewId
+                  ? "Pending · only you"
+                  : "Published"}
+              </span>
+              <button className="underline" onClick={onOpenReview}>
+                View review
+              </button>
+            </div>
+            <Markdown className="min-w-0 max-w-full overflow-x-auto" content={comment.body} />
+          </div>
+        ))}
+      </div>
+    );
+  };
   const selectionPath = selection
     ? (items.find((item) => item.id === selection.id)?.fileDiff.name ?? null)
     : null;
   const allFilesCollapsed = parsed.length > 0 && collapsed.size === parsed.length;
-  const clearSelection = useCallback(() => setSelection(null), []);
+  const clearSelection = useCallback(() => {
+    setSelection(null);
+    setSelecting(false);
+  }, []);
   function selectLines(next: ReviewSelection | null | undefined) {
     setSelection(next ?? null);
     if (next) setSelectedPath(items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
@@ -171,7 +282,7 @@ export function useReviewDiff({
   }
   function reveal(path: string) {
     setSelectedPath(path);
-    setSelection(null);
+    clearSelection();
     setNotice("");
     setCollapsed((current) => {
       const next = new Set(current);
@@ -194,7 +305,7 @@ export function useReviewDiff({
       expandContext,
     },
     selection: { lines: selection, path: selectionPath, selectLines, clear: clearSelection },
-    viewer: { ref: viewer, mode, items, options, header },
+    viewer: { ref: viewer, mode, items, options, header, annotation },
     files: { entries, fullDiffs, hasReadablePatch, reveal, expandAll: expandAllFiles },
   };
 }

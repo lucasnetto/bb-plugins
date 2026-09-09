@@ -14,9 +14,9 @@ Lists are saved in SQLite per primary machine, view, and PR state. Opening the p
 
 Use the thread header, panel launcher, or command palette to open **Linked PRs**. A thread can have multiple PRs from different repositories. Paste a URL to link one, open its review, or unlink it independently. Canonical GitHub URL identity prevents duplicate links.
 
-The review viewer provides a file tree, split/unified diffs, wrapping, file collapse controls, and expandable unchanged lines. Complete file contents load from pinned GitHub revisions: the head commit and the comparison's merge base. Missing or binary patches have an explicit GitHub fallback. Refresh resets cached contents and line selections while preserving the unfinished comment.
+The review viewer provides a file tree, split/unified diffs, wrapping, file collapse controls, and expandable unchanged lines. Complete file contents load from pinned GitHub revisions: the head commit and the comparison's merge base. Missing or binary patches have an explicit GitHub fallback. Background refresh preserves the selection and unfinished comment; a new revision clears the selection and reloads cached contents.
 
-Select lines and choose **Add to chat**, **Ask**, **Explain**, or **Fix**. These actions stage text and a code-context mention chip in the existing draft; they never send it. The saved snapshot includes the PR, file, revisions, selected lines, and code. Removing the chip removes that context from the draft. Command-Enter stages the comment.
+Select lines to open a comment composer directly below the selection in Code or Guide view. It appears when the selection gesture finishes and preserves typed text when moved or closed. Choose **Add to chat**, **Ask**, **Explain**, or **Fix** to stage text and a code-context mention chip in the existing draft; these actions never send it. The saved snapshot includes the PR, file, revisions, selected lines, and code. Removing the chip removes that context from the draft. Command-Enter stages the comment.
 
 Linked reviews use the thread environment's machine and its `gh` authentication. Reviews opened before thread creation and PR lists use BB's primary machine. No workspace setting or local repository is required. If the thread's current Git checkout matches the PR, its root is included in code context; parent folders are never scanned.
 
@@ -93,3 +93,21 @@ bb plugin build plugins/t3-sidebar
 GitHub review workflows use the workspace-pinned Effect v4 runtime, with cancellation passed through to host calls and subprocesses. Runtime disposal interrupts in-flight work. Commands are not automatically retried.
 
 The styled Pierre diff viewer and tree are adapted from T3 Code commit `f3bbdb606f98d8cc2e6c2fd8074b5a0c12cc3828`; its MIT notice is retained in `src/ui/review/T3-LICENSE`. Guide organization and chapter cards are adapted from Plannotator commit `4afdd4cd89e863c997900c1860355dc10d9294b6`; its MIT notice is retained in `src/PLANNOTATOR-LICENSE`.
+
+## GitHub reviews
+
+Select lines and choose **Add to review** to save a private pending comment on
+GitHub, or **Add to chat** to send the selected code to the agent composer.
+The GitHub review section shows pending and published comments, supports editing
+and removing pending comments, and submits or discards the shared pending review.
+It includes comments started on GitHub under the same authenticated `gh` account.
+
+Line-comment drafts live on GitHub. The overall summary is temporary editor text
+sent on submission: GitHub's API cannot add a summary to an existing empty-body
+pending review. Review state refreshes in the background every 30 seconds and on
+window focus; PR details refresh every minute. Existing content stays visible,
+and refreshes preserve unsaved editor text. New commits and edits from another
+client are checked before writing. A failed write is never retried automatically.
+
+The plugin uses the thread's host and its existing GitHub CLI authentication;
+standalone reviews use the primary host. It adds no draft database or credentials.

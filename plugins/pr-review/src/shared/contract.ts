@@ -1,3 +1,9 @@
+import {
+  githubReviewTarget,
+  githubReviewMutation,
+  githubReviewStateSchema,
+  githubReviewAction,
+} from "./github-review-contract";
 import { startReviewInput } from "./review-draft-contract";
 import {
   guideStartInput,
@@ -25,6 +31,22 @@ const linkedRootInput = Schema.Struct({
   root: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
 });
 export const hostContract = defineRpcContract({
+  githubReview: {
+    input: standardSchema(
+      Schema.Struct({ root: Schema.NullOr(Schema.String), url: Schema.String }),
+    ),
+    output: standardSchema(githubReviewStateSchema),
+  },
+  githubReviewMutate: {
+    input: standardSchema(
+      Schema.Struct({
+        root: Schema.NullOr(Schema.String),
+        url: Schema.String,
+        action: githubReviewAction,
+      }),
+    ),
+    output: standardSchema(Schema.Struct({ url: Schema.String })),
+  },
   linkedContents: {
     input: standardSchema(linkedRootInput.pipe(Schema.fieldsAssign(linkedContentsInput.fields))),
     output: standardSchema(linkedContentsSchema),
@@ -45,6 +67,14 @@ export const reviewCommentInput = Schema.Struct({
   context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
 export const rpcContract = defineRpcContract({
+  githubReview: {
+    input: standardSchema(githubReviewTarget),
+    output: standardSchema(githubReviewStateSchema),
+  },
+  githubReviewMutate: {
+    input: standardSchema(githubReviewMutation),
+    output: standardSchema(Schema.Struct({ url: Schema.String })),
+  },
   reviewDraftDefaults: {
     input: standardSchema(Schema.Null),
     output: standardSchema(Schema.Struct({ projectId: Schema.String, hostId: Schema.String })),

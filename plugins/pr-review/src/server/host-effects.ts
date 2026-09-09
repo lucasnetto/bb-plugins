@@ -18,20 +18,26 @@ export type Command = (
   program: string,
   args: string[],
   signal?: AbortSignal,
+  stdin?: string,
 ) => Promise<string>;
 export class Commands extends Context.Service<
   Commands,
   {
-    run: (cwd: string, program: string, args: string[]) => Effect.Effect<string, CommandError>;
+    run: (
+      cwd: string,
+      program: string,
+      args: string[],
+      stdin?: string,
+    ) => Effect.Effect<string, CommandError>;
   }
 >()("pr-review/Commands") {}
 
 const exec = promisify(execFile);
-const nativeCommand: Command = async (cwd, program, args, signal) => {
-  const { stdout } = await exec(program, args, {
+const nativeCommand: Command = async (cwd, program, args, signal, stdin) => {
+  const options = {
     cwd,
     signal,
-    encoding: "utf8",
+    encoding: "utf8" as const,
     maxBuffer: MAX_BYTES,
     env: {
       ...process.env,
@@ -39,23 +45,34 @@ const nativeCommand: Command = async (cwd, program, args, signal) => {
       GIT_TERMINAL_PROMPT: "0",
       GH_PROMPT_DISABLED: "1",
     },
+  };
+  if (stdin === undefined) return (await exec(program, args, options)).stdout;
+  return new Promise<string>((resolve, reject) => {
+    const child = execFile(program, args, options, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
+    child.stdin?.on("error", () => {
+      /* execFile reports command failure. */
+    });
+    child.stdin?.end(stdin);
   });
-  return stdout;
 };
 export const commandLayer = (run: Command = nativeCommand) =>
   Layer.succeed(
     Commands,
     Commands.of({
-      run: Effect.fn("Commands.run")((cwd: string, program: string, args: string[]) =>
-        Effect.tryPromise({
-          try: (signal) => run(cwd, program, args, signal),
-          catch: (cause) =>
-            new CommandError({
-              operation: `${program} ${args.join(" ")}`,
-              message: String(cause),
-              cause,
-            }),
-        }),
+      run: Effect.fn("Commands.run")(
+        (cwd: string, program: string, args: string[], stdin?: string) =>
+          Effect.tryPromise({
+            try: (signal) => run(cwd, program, args, signal, stdin),
+            catch: (cause) =>
+              new CommandError({
+                operation: `${program} ${args.join(" ")}`,
+                message: String(cause),
+                cause,
+              }),
+          }),
       ),
     }),
   );
@@ -64,8 +81,9 @@ export const command = Effect.fn("Host.command")(function* (
   cwd: string,
   program: string,
   args: string[],
+  stdin?: string,
 ) {
-  return yield* (yield* Commands).run(cwd, program, args);
+  return yield* (yield* Commands).run(cwd, program, args, stdin);
 });
 // Classify failures from non-schema parsers such as PR URLs.
 export const decode = <A>(read: () => A) =>

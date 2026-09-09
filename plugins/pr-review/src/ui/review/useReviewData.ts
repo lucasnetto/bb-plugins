@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
 import type { LinkedDetail } from "../../shared/links-contract";
@@ -15,6 +15,9 @@ export function useReviewData(threadId: string | null, url: string) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!details.get(key)?.value);
   const [revision, setRevision] = useState(0);
+  const [requestRevision, setRequestRevision] = useState(0);
+  const currentDetail = useRef(detail);
+  const refreshing = useRef(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   useEffect(() => {
     let disposed = false;
@@ -36,13 +39,23 @@ export function useReviewData(threadId: string | null, url: string) {
         },
       );
     }
-    setLoading(!entry.value);
+    setLoading(!currentDetail.current);
+    refreshing.current = true;
     setError("");
     entry.request
       .then(
         (value) => {
           if (disposed) return;
-          setDetail(value);
+          const previous = currentDetail.current;
+          if (JSON.stringify(previous) !== JSON.stringify(value)) {
+            currentDetail.current = value;
+            setDetail(value);
+            if (
+              previous &&
+              (previous.headRefOid !== value.headRefOid || previous.baseRefOid !== value.baseRefOid)
+            )
+              setRevision((current) => current + 1);
+          }
           setSelectedPath((current) =>
             value.files.some((f) => f.path === current) ? current : (value.files[0]?.path ?? null),
           );
@@ -52,23 +65,41 @@ export function useReviewData(threadId: string | null, url: string) {
         },
       )
       .finally(() => {
-        if (!disposed) setLoading(false);
+        if (!disposed) {
+          setLoading(false);
+          refreshing.current = false;
+        }
       });
     return () => {
       disposed = true;
     };
-  }, [rpc, threadId, url, key, revision]);
+  }, [rpc, threadId, url, key, requestRevision]);
 
+  const refresh = useCallback(() => {
+    if (refreshing.current) return;
+    details.delete(key);
+    setRequestRevision((value) => value + 1);
+  }, [key]);
+  useEffect(() => {
+    const background = () => {
+      if (document.visibilityState !== "hidden") refresh();
+    };
+    window.addEventListener("focus", background);
+    document.addEventListener("visibilitychange", background);
+    const timer = window.setInterval(background, 60000);
+    return () => {
+      window.removeEventListener("focus", background);
+      document.removeEventListener("visibilitychange", background);
+      window.clearInterval(timer);
+    };
+  }, [refresh]);
   return {
     detail,
     error,
     setError,
     loading,
     revision,
-    refresh: () => {
-      details.delete(key);
-      setRevision((value) => value + 1);
-    },
+    refresh,
     selectedPath,
     setSelectedPath,
   };

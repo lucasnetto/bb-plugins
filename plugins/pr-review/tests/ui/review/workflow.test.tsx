@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { test, expect, vi } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { ReactNode } from "react";
 import type { CodeViewDiffItem } from "@pierre/diffs";
-import type { ReviewSelection } from "../../../src/ui/review/useReviewDiff";
+import type {
+  ReviewAnnotationRenderer,
+  ReviewSelection,
+} from "../../../src/ui/review/useReviewDiff";
 
 // Substitute only the virtualized renderer. The controller, hydration header,
 // data/composer hooks, and source-context extraction run as in the plugin.
@@ -12,10 +15,12 @@ vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
   StyledDiffCodeView: ({
     items,
     renderHeaderPrefix,
+    renderAnnotation,
     onSelectedLinesChange,
   }: {
     items: CodeViewDiffItem[];
     renderHeaderPrefix?: (item: CodeViewDiffItem) => ReactNode;
+    renderAnnotation?: ReviewAnnotationRenderer;
     onSelectedLinesChange?: (selection: ReviewSelection) => void;
   }) => (
     <div data-testid="viewer">
@@ -33,6 +38,24 @@ vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
           >
             Select unchanged line in {item.fileDiff.name}
           </button>
+          <button
+            onClick={() =>
+              onSelectedLinesChange?.({
+                id: item.id,
+                range: { start: 3, end: 2, side: "additions" },
+              })
+            }
+          >
+            Select upward range in {item.fileDiff.name}
+          </button>
+          {item.annotations?.map((anchor) => (
+            <div
+              key={`${anchor.side}:${anchor.lineNumber}`}
+              data-testid={`annotation-${anchor.side}-${anchor.lineNumber}`}
+            >
+              {renderAnnotation?.(anchor, item)}
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -95,6 +118,31 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     fireEvent.change(await slot.findByLabelText("Comment on selected code"), {
       target: { value: "Check this line" },
     });
+    expect(
+      within(slot.getByTestId("annotation-additions-1")).getByLabelText("Comment on selected code"),
+    ).toHaveProperty("value", "Check this line");
+    expect(slot.getAllByLabelText("Comment on selected code")).toHaveLength(1);
+    const input = slot.getByLabelText("Comment on selected code");
+    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(
+        slot.inspection.rpcCalls.filter((call) => call.method === "linkedDetail"),
+      ).toHaveLength(2),
+    );
+    expect(slot.getByLabelText("Comment on selected code")).toBe(input);
+    expect(input).toHaveProperty("value", "Check this line");
+    fireEvent.click(slot.getByRole("button", { name: "Select upward range in api.ts" }));
+    expect(
+      within(slot.getByTestId("annotation-additions-3")).getByLabelText("Comment on selected code"),
+    ).toHaveProperty("value", "Check this line");
+    expect(slot.queryByTestId("annotation-additions-1")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Close comment" }));
+    expect(slot.queryByLabelText("Comment on selected code")).toBeNull();
+    fireEvent.click(select);
+    expect(slot.getByLabelText("Comment on selected code")).toHaveProperty(
+      "value",
+      "Check this line",
+    );
     fireEvent.click(slot.getByRole("button", { name: "Add to chat ⌘↵" }));
     await slot.findByText("Added to your draft.");
     expect(staged).toEqual([
@@ -178,7 +226,9 @@ test("draft review attaches exact code context locally without calling thread or
     expect(
       slot.inspection.rpcCalls
         .map((call) => call.method)
-        .every((method) => ["reviewDraftDetail", "reviewDraftContents"].includes(method)),
+        .every((method) =>
+          ["reviewDraftDetail", "reviewDraftContents", "githubReview"].includes(method),
+        ),
     ).toBe(true);
     expect(slot.queryByRole("button", { name: "Guide" })).toBeNull();
   } finally {

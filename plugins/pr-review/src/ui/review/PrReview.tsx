@@ -1,3 +1,6 @@
+import { useGithubReview } from "./useGithubReview";
+import { GithubReviewPanel } from "./GithubReviewPanel";
+import { githubSelection } from "./githubSelection";
 import type { DraftComment } from "../../shared/review-draft-contract";
 // BB adapter for T3 Code's PR code tab. Ported components retain T3-LICENSE.
 import { useEffect, useState, type CSSProperties } from "react";
@@ -10,7 +13,7 @@ import { ReviewGuidePanel } from "./ReviewGuidePanel";
 import { ReviewCommentForm } from "./ReviewCommentForm";
 import { useGuide } from "./useGuide";
 import { useReviewData } from "./useReviewData";
-import { useReviewDiff } from "./useReviewDiff";
+import { useReviewDiff, type ReviewAnnotationRenderer } from "./useReviewDiff";
 import { useReviewComposer } from "./useReviewComposer";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
@@ -36,6 +39,7 @@ function PrReviewContent({
 }) {
   const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
     useReviewData(threadId, url);
+  const github = useGithubReview(threadId, url);
   const [notice, setNotice] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
   const guide = useGuide(threadId, url, revision);
@@ -46,6 +50,9 @@ function PrReviewContent({
     !!detail &&
     (guide.data.base !== detail.baseRefOid || guide.data.head !== detail.headRefOid);
   const diff = useReviewDiff({
+    comments: github.state?.head === detail?.headRefOid ? github.state?.comments : undefined,
+    pendingReviewId: github.state?.pending?.id,
+    onOpenReview: () => github.setOpen(true),
     detail,
     threadId,
     url,
@@ -76,6 +83,42 @@ function PrReviewContent({
     diff.files.expandAll();
   }
   const unavailable = selectedPath && !diff.files.hasReadablePatch(selectedPath);
+  const commentForm = diff.selection.lines ? (
+    <ReviewCommentForm
+      threadId={threadId}
+      pullRequestNumber={detail?.pr.number}
+      hasDetail={!!detail}
+      loading={loading}
+      draft={draft}
+      githubDisabled={github.busy || !github.synced || !github.state}
+      onClose={clearSelection}
+      onAddToReview={async () => {
+        if (!github.state || !diff.selection.lines || !diff.selection.path || !detail?.headRefOid)
+          return;
+        try {
+          const body = draft.comment;
+          const position = githubSelection(diff.selection.lines.range);
+          if (
+            await github.mutate({
+              kind: "add",
+              login: github.state.login,
+              reviewId: github.state.pending?.id ?? null,
+              head: detail.headRefOid,
+              path: diff.selection.path,
+              body,
+              ...position,
+            })
+          ) {
+            draft.setComment((current) => (current === body ? "" : current));
+          }
+        } catch (cause) {
+          setError(String(cause));
+        }
+      }}
+    />
+  ) : null;
+  const renderAnnotation: ReviewAnnotationRenderer = (anchor, item) =>
+    diff.viewer.annotation(anchor, item, commentForm);
   return (
     <section
       aria-label="Pull request code review"
@@ -145,6 +188,7 @@ function PrReviewContent({
           selectedPath={selectedPath}
           setSelectedPath={setSelectedPath}
           onSelection={selectLines}
+          annotation={renderAnnotation}
         />
       ) : null}
       {!guideOpen ? (
@@ -167,6 +211,7 @@ function PrReviewContent({
                 selectedLines={diff.selection.lines}
                 onSelectedLinesChange={selectLines}
                 renderHeaderPrefix={diff.viewer.header}
+                renderAnnotation={renderAnnotation}
               />
             )}
             {!loading && detail?.files.length === 0 ? (
@@ -185,16 +230,7 @@ function PrReviewContent({
           ) : null}
         </div>
       ) : null}
-      {diff.selection.lines || draft.comment ? (
-        <ReviewCommentForm
-          threadId={threadId}
-          pullRequestNumber={detail?.pr.number}
-          hasDetail={!!detail}
-          hasSelection={!!diff.selection.lines}
-          loading={loading}
-          draft={draft}
-        />
-      ) : null}
+      <GithubReviewPanel head={detail?.headRefOid} review={github} onReveal={diff.files.reveal} />
       <footer className="flex shrink-0 flex-wrap items-center gap-1 border-t border-border px-3 py-2">
         <span
           className="mr-auto min-w-0 truncate text-xs text-muted-foreground"

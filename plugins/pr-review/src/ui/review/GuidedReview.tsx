@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 
 type Selection = CodeViewProps<undefined, undefined>["selectedLines"];
 type DiffProps = {
+  annotation?: CodeViewProps<undefined, undefined>["renderAnnotation"];
   options: StyledDiffCodeViewOptions<undefined>;
   selection: Selection;
   onSelection: (selection: Selection) => void;
@@ -70,6 +71,7 @@ function GuideFile({
                 selectedLines={diff.selection?.id === item.id ? diff.selection : null}
                 onSelectedLinesChange={diff.onSelection}
                 renderHeaderPrefix={diff.header}
+                renderAnnotation={diff.annotation}
               />
             ) : (
               <div className="truncate border-b border-border/40 px-3 py-2 font-mono text-xs text-muted-foreground">
