@@ -1,0 +1,53 @@
+{
+  "name": "bb-plugin-bb-fonts",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/fonts"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@pierre/diffs": "catalog:",
+    "@radix-ui/react-alert-dialog": "catalog:",
+    "@radix-ui/react-context-menu": "catalog:",
+    "@radix-ui/react-dialog": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@radix-ui/react-hover-card": "catalog:",
+    "@radix-ui/react-menubar": "catalog:",
+    "@radix-ui/react-navigation-menu": "catalog:",
+    "@radix-ui/react-popover": "catalog:",
+    "@radix-ui/react-select": "catalog:",
+    "@radix-ui/react-tooltip": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "sonner": "catalog:",
+    "tailwind-merge": "catalog:",
+    "vaul": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "BB Fonts",
+    "description": "Choose fonts for the BB interface and code, with live previews and custom installed fonts.",
+    "branding": {
+      "icon": "./assets/icon.svg"
+    },
+    "server": "./src/server/server.ts",
+    "app": "./src/ui/app.tsx",
+    "skills": []
+  }
+}
