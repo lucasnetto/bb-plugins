@@ -161,7 +161,7 @@ export function useReviewDiff({
       themeType: mode,
       diffStyle: style,
       overflow: wrap ? "wrap" : "scroll",
-      diffIndicators: "bars",
+      diffIndicators: "classic",
       enableLineSelection: true,
       onLineSelectionStart: () => setSelecting(true),
       onLineSelectionEnd: () => setSelecting(false),
