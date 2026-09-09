@@ -9,6 +9,16 @@ import type {
   ReviewSelection,
 } from "../../../src/ui/review/useReviewDiff";
 
+// jsdom has no layout observer; browser layout is verified in the live panel.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
 // Substitute only the virtualized renderer. The controller, hydration header,
 // data/composer hooks, and source-context extraction run as in the plugin.
 vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({

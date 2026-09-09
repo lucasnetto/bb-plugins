@@ -5,6 +5,16 @@ import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing
 import type { CodeViewDiffItem } from "@pierre/diffs";
 import type { SavedGuide } from "../../../src/shared/guide-contract";
 
+// jsdom has no layout observer; browser layout is verified in the live panel.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
 // Exercise the actual review controller independently of browser layout/virtualization.
 vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
   StyledDiffCodeView: ({ items }: { items: CodeViewDiffItem[] }) => (

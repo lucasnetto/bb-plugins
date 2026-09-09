@@ -8,6 +8,7 @@ import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "../components/ui/button";
 import { StyledDiffCodeView } from "./StyledDiffCodeView";
 import { DiffFileTree } from "./DiffFileTree";
+import { ResizableFilesSidebar } from "./ResizableFilesSidebar";
 import { ReviewToolbar } from "./ReviewToolbar";
 import { ReviewGuidePanel } from "./ReviewGuidePanel";
 import { ReviewCommentForm } from "./ReviewCommentForm";
@@ -42,6 +43,7 @@ function PrReviewContent({
   const github = useGithubReview(threadId, url);
   const [notice, setNotice] = useState("");
   const [treeOpen, setTreeOpen] = useState(true);
+  const [treeWidth, setTreeWidth] = useState<number | null>(null);
   const guide = useGuide(threadId, url, revision);
   const [guideRequestOpen, setGuideRequestOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -219,14 +221,14 @@ function PrReviewContent({
             ) : null}
           </div>
           {treeOpen ? (
-            <aside className="flex min-h-0 w-[35%] min-w-36 max-w-72 shrink-0 border-l border-border">
+            <ResizableFilesSidebar width={treeWidth} onWidthChange={setTreeWidth}>
               <DiffFileTree
                 entries={diff.files.entries}
                 onSelectFile={diff.files.reveal}
                 selectedPath={selectedPath}
                 ariaLabel="Changed files"
               />
-            </aside>
+            </ResizableFilesSidebar>
           ) : null}
         </div>
       ) : null}
