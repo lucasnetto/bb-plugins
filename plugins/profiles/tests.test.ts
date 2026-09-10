@@ -39,10 +39,11 @@ for (const profile of ["personal", "work"] as const) {
         assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor-personal" } }))).action, "reject");
       }
       const cursor = registrations.providerRegistrations[0];
-      const launch = cursor.experimental_bridgeOptions?.acpLaunchSpec as { command: string; env: Record<string, string> };
+      const launch = cursor.experimental_bridgeOptions?.acpLaunchSpec as { command: string; env: Record<string, string>; modelCli: unknown };
       assert.equal(profile === "personal" ? launch.command.endsWith("cursor-agent-personal-acp") : launch.command === "bb-cursor-work-acp", true);
       assert.deepEqual(launch.env, {});
-      assert.equal("modelCli" in launch, profile === "personal", "Work discovers models from authenticated ACP, avoiding the CLI default alias");
+      assert.deepEqual(launch.modelCli, { listArgs: ["--list-models"], primaryModels: [] }, "Both accounts discover models and effort variants through the CLI");
+      assert.deepEqual(cursor.experimental_bridgeOptions?.excludedCursorModelIds, profile === "personal" ? [] : ["auto", "default"]);
     } finally {
       await harness.lifecycle.dispose();
       rmSync(root, { recursive: true, force: true });

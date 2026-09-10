@@ -8,7 +8,7 @@ Personal uses the existing Codex home and the Personal Cursor API key from macOS
 
 This installation is configured for `~/.bb` and `~/.bb-work`, with separate server and daemon services. Disable the bundled ACP provider before enabling this plugin, because both register Cursor. The profile is determined by the instance's data directory and cannot be changed by the selector. Local clients switch between loopback addresses; remote clients switch between the two authenticated bb Connect addresses.
 
-Work discovers its model list through the authenticated ACP session, because Cursor’s CLI model list can advertise a `default` alias that its ACP model selector rejects. Install its launcher and key with the sibling Orbisa repository’s `scripts/install-bb-work-cursor`.
+Both profiles discover models and thinking levels through their authenticated launcher's `--list-models` command. Work omits Auto because its account rejects that alias over ACP. Personal retains Auto. The selected effort is applied to Cursor's effort setting, including its separate thinking on/off toggle. Install the Work launcher and key with the sibling Orbisa repository’s `scripts/install-bb-work-cursor`.
 
 Choose Profiles under Settings → Appearance → Navigation if another navigation replacement is selected. The profile row keeps BB’s standard navigation and works alongside a custom thread list.
 

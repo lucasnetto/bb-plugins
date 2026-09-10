@@ -22,7 +22,7 @@ export function cursorProvider(profile: Profile, id: string, personalCommand: st
       supportsThreadRename: false,
       fork: "none",
       permissionModes: ["accept-edits", "full"],
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     },
     maintenance: { health: true, usage: false, installation: false },
     models: { scope: "host" },
@@ -34,12 +34,14 @@ export function cursorProvider(profile: Profile, id: string, personalCommand: st
     experimental_bridgeOptions: {
       acpDialect: "cursor",
       parameterizedModelPicker: true,
+      // Work advertises Auto but rejects both aliases when selected over ACP.
+      excludedCursorModelIds: personal ? [] : ["auto", "default"],
       acpLaunchSpec: {
         displayName: "Cursor",
         command: personal ? personalCommand : "bb-cursor-work-acp",
         args: [],
         env: {},
-        ...(personal ? { modelCli: { listArgs: ["--list-models"], primaryModels: [] } } : {}),
+        modelCli: { listArgs: ["--list-models"], primaryModels: [] },
       },
     },
     composerActions: [],

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "bb plugin build",
-    "test": "node --experimental-strip-types --test tests.test.ts"
+    "test": "node --experimental-strip-types --test *.test.ts"
   },
   "engines": {
     "bb": ">=0.42.1",

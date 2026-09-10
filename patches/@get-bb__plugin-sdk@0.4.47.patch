@@ -1,0 +1,75 @@
+diff --git a/dist/provider-bridge-acp.js b/dist/provider-bridge-acp.js
+index ca5a587d015d15a1cffe0cc3ad51914fcccb32c7..45ec8e7282f809c0ed4d76f1ab7d75a571457278 100644
+--- a/dist/provider-bridge-acp.js
++++ b/dist/provider-bridge-acp.js
+@@ -6413,9 +6413,13 @@ function findAcpModelConfigOption(configOptions) {
+   return options.find((option) => option.category === "model") ?? options.find((option) => option.id === "model");
+ }
+ function findAcpThoughtLevelConfigOption(configOptions) {
+-  return (configOptions ?? []).find(
++  const options = (configOptions ?? []).filter(
+     (option) => option.category === "thought_level"
+   );
++  // Cursor exposes its boolean thinking toggle before the effort selector.
++  return options.find((option) => (option.options ?? []).some(
++    (value) => acpNativeValueToReasoningLevel(value.value) !== void 0
++  )) ?? options[0];
+ }
+ var ACP_NATIVE_REASONING_LEVEL_BY_VALUE = {
+   none: "none",
+@@ -8374,7 +8378,26 @@ async function selectAcpNativeReasoning(args) {
+   if (reasoningLevel === void 0) {
+     return;
+   }
+-  const thoughtLevelOption = findAcpThoughtLevelConfigOption(args.configOptions) ?? nativeReasoningToThoughtLevelOption(args.nativeReasoning);
++  let configOptions = args.configOptions;
++  const thinkingOption = (configOptions ?? []).find((option) =>
++    option.id === "thinking" && option.category === "thought_level" &&
++    ["false", "true"].every((value) => option.options?.some((entry) => entry.value === value))
++  );
++  if (thinkingOption) {
++    const value = reasoningLevel === "none" ? "false" : "true";
++    if (thinkingOption.currentValue !== value) {
++      const state = await args.connection.request({
++        method: "session/set_config_option",
++        params: { sessionId: args.sessionId, configId: thinkingOption.id, value },
++        resultSchema: acpConfigStateResultSchema
++      });
++      configOptions = state.configOptions ?? configOptions;
++    }
++    if (reasoningLevel === "none") {
++      return;
++    }
++  }
++  const thoughtLevelOption = findAcpThoughtLevelConfigOption(configOptions) ?? nativeReasoningToThoughtLevelOption(args.nativeReasoning);
+   if (!thoughtLevelOption) {
+     return;
+   }
+@@ -8385,18 +8408,15 @@ async function selectAcpNativeReasoning(args) {
+   if (value === void 0) {
+     return;
+   }
+-  try {
+-    await args.connection.request({
+-      method: "session/set_config_option",
+-      params: {
+-        sessionId: args.sessionId,
+-        configId: thoughtLevelOption.id,
+-        value
+-      },
+-      resultSchema: acpConfigStateResultSchema
+-    });
+-  } catch {
+-  }
++  await args.connection.request({
++    method: "session/set_config_option",
++    params: {
++      sessionId: args.sessionId,
++      configId: thoughtLevelOption.id,
++      value
++    },
++    resultSchema: acpConfigStateResultSchema
++  });
+ }
+ async function selectAcpNativeServiceTier(args) {
+   const serviceTier = args.modelSelection.serviceTier;
