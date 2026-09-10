@@ -102,7 +102,7 @@ it("starts only the submitted conversation, preserves model choices and links th
     expect(spawned).toHaveLength(1);
     expect(spawned[0]).toMatchObject({
       ...request,
-      title: "org/external #42",
+      title: "Fix",
       input: [
         {
           type: "text",

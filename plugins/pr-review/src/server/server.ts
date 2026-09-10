@@ -1,4 +1,5 @@
 import { githubReviewHandlers } from "./github-review-server";
+import { registerWorkspace } from "./workspace-server";
 import { reviewDraftHandlers } from "./review-thread";
 import { registerGuideGeneration } from "./guide-generation";
 import { createRuntime, handler } from "./server-effects";
@@ -10,6 +11,7 @@ import { rpcContract } from "../shared/contract";
 export default function plugin(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   const links = registerLinks(bb, runtime);
+  registerWorkspace(bb, runtime, links);
   const guides = registerGuides(bb, runtime, links);
   const generation = registerGuideGeneration(bb, runtime, guides);
   links.onUnlink(generation.guideCancel);

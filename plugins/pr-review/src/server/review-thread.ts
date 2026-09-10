@@ -51,6 +51,10 @@ export function reviewDraftHandlers(
       const ref = yield* sync("review URL", () => parsePrUrl(url));
       if (!request.input.some((entry) => entry.type !== "text" || entry.text.trim()))
         return yield* fail("Write a message before starting the conversation.");
+      const hostId = yield* primary();
+      const pr = yield* call("host.linkedSummary", (signal) =>
+        host.call("linkedSummary", { root: null, url: ref.url }, { hostId, signal }),
+      );
       // This handler is called only by the composer's explicit Send action.
       const context = [
         `Pull request: ${ref.url}`,
@@ -62,7 +66,7 @@ export function reviewDraftHandlers(
       const thread = yield* call("threads.spawn", () =>
         bb.sdk.threads.spawn({
           ...request,
-          title: `${ref.repository} #${ref.number}`,
+          title: pr.title,
           input: [{ type: "text", text: context, mentions: [] }, ...request.input],
         }),
       );

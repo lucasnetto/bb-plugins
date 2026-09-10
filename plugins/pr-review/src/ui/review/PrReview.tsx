@@ -16,18 +16,36 @@ import { useGuide } from "./useGuide";
 import { useReviewData } from "./useReviewData";
 import { useReviewDiff, type ReviewAnnotationRenderer } from "./useReviewDiff";
 import { useReviewComposer } from "./useReviewComposer";
+import { PullRequestDetail } from "../workspace/PullRequestDetail";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
-  return <PrReviewContent key={`${threadId}:${url}`} threadId={threadId} url={url} />;
+  return (
+    <PullRequestDetail
+      key={`${threadId}:${url}`}
+      threadId={threadId}
+      url={url}
+      code={<PrReviewContent threadId={threadId} url={url} />}
+    />
+  );
 }
 export function DraftPrReview({
   url,
   onComment,
+  active = true,
 }: {
   url: string;
   onComment: (comment: DraftComment) => void;
+  active?: boolean;
 }) {
-  return <PrReviewContent key={url} threadId={null} url={url} onDraftComment={onComment} />;
+  return (
+    <PullRequestDetail
+      key={url}
+      threadId={null}
+      url={url}
+      active={active}
+      code={<PrReviewContent threadId={null} url={url} onDraftComment={onComment} />}
+    />
+  );
 }
 function PrReviewContent({
   threadId,
@@ -134,30 +152,6 @@ function PrReviewContent({
         } as CSSProperties
       }
     >
-      <header
-        hidden={guideOpen && !!guide.data}
-        className="shrink-0 border-b border-border px-4 py-3"
-      >
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>
-            {detail?.pr.repository} #{detail?.pr.number}
-          </span>
-          <span>{detail?.pr.state.toLowerCase()}</span>
-          <span className="ml-auto">
-            <UrlLink href={url} data-pr-browser>
-              Open on GitHub ↗
-            </UrlLink>
-          </span>
-        </div>
-        <h2 className="mt-2 truncate text-sm font-semibold" title={detail?.pr.title}>
-          {detail?.pr.title ?? "Loading pull request…"}
-        </h2>
-        {detail ? (
-          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-            {detail.baseRefName} ← {detail.headRefName}
-          </p>
-        ) : null}
-      </header>
       <ReviewToolbar
         fileCount={detail?.files.length ?? 0}
         guideOpen={guideOpen}

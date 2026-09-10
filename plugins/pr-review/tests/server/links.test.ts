@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "../../server";
 import { parsePrUrl } from "../../src/shared/links-contract";
+import { overview, stack } from "../workspace-fixture";
 const url = "https://github.com/org/api/pull/42";
-function setup() {
+function setup(workspaceState: () => "OPEN" | "MERGED" = () => "OPEN") {
   return createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -23,6 +24,17 @@ function setup() {
       if (ref.number === 404) throw new Error("PR not found");
       const pr = { ...ref, title: "Fix validation", state: "OPEN", isDraft: false };
       if (method === "linkedSummary") return pr;
+      if (method === "prOverview")
+        return { ...overview, ...pr, state: workspaceState(), title: "Updated title" };
+      if (method === "prStack")
+        return {
+          ...stack,
+          layers: stack.layers.map((layer) => ({
+            ...layer,
+            url: `https://github.com/org/api/pull/${layer.number}`,
+            state: workspaceState(),
+          })),
+        };
       if (method === "linkedDetail")
         return {
           pr,
@@ -46,6 +58,61 @@ test("normalizes PR identity and rejects non-PR/foreign URLs", () => {
     "https://github.com/org/api/pull/9007199254740993",
   ])
     assert.throws(() => parsePrUrl(bad));
+});
+test("workspace metadata refreshes existing links across threads and preserves link provenance", async () => {
+  let state: "OPEN" | "MERGED" = "OPEN";
+  const { bb, harness } = setup(() => state);
+  try {
+    await plugin(bb);
+    const lowerUrl = "https://github.com/org/api/pull/41";
+    const unrelatedUrl = "https://github.com/org/api/pull/43";
+    await harness.behavior.callRpc("linkedLink", { threadId: "t1", url, reason: "created-here" });
+    await harness.behavior.callRpc("linkedLink", { threadId: "t2", url, reason: "manual" });
+    await harness.behavior.callRpc("linkedLink", { threadId: "t3", url, reason: "manual" });
+    await harness.behavior.callRpc("linkedUnlink", { threadId: "t3", url });
+    const before = await harness.behavior.callRpc("linkedList", { threadId: "t1" });
+    const otherBefore = await harness.behavior.callRpc("linkedList", { threadId: "t2" });
+    await harness.behavior.callRpc("linkedLink", {
+      threadId: "t1",
+      url: lowerUrl,
+      reason: "requested-work",
+    });
+    await harness.behavior.callRpc("linkedLink", {
+      threadId: "t1",
+      url: unrelatedUrl,
+      reason: "manual",
+    });
+    state = "MERGED";
+    await harness.behavior.callRpc("prOverview", { threadId: "t1", url });
+    const expected = (rows: unknown) =>
+      (rows as Record<string, unknown>[]).map((pr) => ({
+        ...pr,
+        title: "Updated title",
+        state: "MERGED",
+      }));
+    const refreshed = (await harness.behavior.callRpc("linkedList", {
+      threadId: "t1",
+    })) as Record<string, unknown>[];
+    assert.deepEqual(
+      refreshed.filter((pr) => pr.url === url),
+      expected(before),
+    );
+    assert.deepEqual(
+      await harness.behavior.callRpc("linkedList", { threadId: "t2" }),
+      expected(otherBefore),
+    );
+    assert.equal(refreshed.find((pr) => pr.url === lowerUrl)?.state, "OPEN");
+    await harness.behavior.callRpc("prStack", { threadId: "t1", url });
+    const stacked = (await harness.behavior.callRpc("linkedList", {
+      threadId: "t1",
+    })) as Record<string, unknown>[];
+    assert.equal(stacked.find((pr) => pr.url === lowerUrl)?.state, "MERGED");
+    assert.equal(stacked.find((pr) => pr.url === unrelatedUrl)?.state, "OPEN");
+    assert.deepEqual(await harness.behavior.callRpc("linkedList", { threadId: "t3" }), []);
+    await assert.rejects(() => harness.behavior.callRpc("prOverview", { threadId: "t3", url }));
+  } finally {
+    await harness.lifecycle.dispose();
+  }
 });
 test("agent tools append concurrently, deduplicate, persist on reload, and unlink only the current thread", async () => {
   const initial = setup();

@@ -105,6 +105,7 @@ test("direct guide generation preserves the draft; chapter cards show their diff
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
       expect(slot.getByTestId("diff-files").textContent).toBe("api.ts,api.test.ts"),
     );
@@ -156,6 +157,7 @@ test("a stale guide cannot present its chapters against a newer PR diff", async 
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
       expect(slot.getByTestId("diff-files").textContent).toBe("api.ts,api.test.ts"),
     );
@@ -202,6 +204,7 @@ test("guide diffs follow the chapter reading order rather than GitHub file order
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
       expect(slot.getByTestId("diff-files").textContent).toBe("api.ts,api.test.ts"),
     );
@@ -250,6 +253,7 @@ test("cancelling generation keeps chapter progress blocked until cancellation co
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await slot.findByTestId("diff-files");
     fireEvent.click(slot.getByRole("button", { name: "Guide" }));
     const cancel = await slot.findByRole("button", { name: "Cancel generation" });

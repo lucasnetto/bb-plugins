@@ -46,6 +46,10 @@ export function useList(view: View, state: PrState) {
     [rpc, view, state, read],
   );
   useRealtime(LIST_CHANGED, (payload) => {
+    if (typeof payload === "object" && payload !== null && "mutation" in payload) {
+      void refresh(true);
+      return;
+    }
     if (
       typeof payload === "object" &&
       payload !== null &&
@@ -69,6 +73,18 @@ export function useList(view: View, state: PrState) {
     void read();
     if (connection === "connected") void refresh();
   }, [read, refresh, connection]);
+  useEffect(() => {
+    if (connection !== "connected") return;
+    const background = () => {
+      if (document.visibilityState !== "hidden") void refresh();
+    };
+    window.addEventListener("focus", background);
+    const timer = window.setInterval(background, 60000);
+    return () => {
+      window.removeEventListener("focus", background);
+      window.clearInterval(timer);
+    };
+  }, [connection, refresh]);
   return {
     result: snapshot?.result ?? null,
     fetchedAt: snapshot?.fetchedAt,

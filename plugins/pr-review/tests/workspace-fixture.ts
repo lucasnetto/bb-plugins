@@ -1,0 +1,86 @@
+import type { Overview, PrStack } from "../src/shared/workspace-contract";
+export const overview: Overview = {
+  id: "PR_42",
+  url: "https://github.com/acme/api/pull/42",
+  repository: "acme/api",
+  number: 42,
+  title: "Fix API",
+  body: "A useful description.",
+  state: "OPEN",
+  isDraft: false,
+  author: { login: "lucas", avatarUrl: null },
+  updatedAt: "2026-09-10T00:00:00Z",
+  createdAt: "2026-09-09T00:00:00Z",
+  headRefName: "fix",
+  baseRefName: "main",
+  headRefOid: "b".repeat(40),
+  baseRefOid: "a".repeat(40),
+  additions: 12,
+  deletions: 3,
+  changedFiles: 2,
+  mergeable: "MERGEABLE",
+  mergeStateStatus: "CLEAN",
+  reviewDecision: null,
+  viewer: "lucas",
+  canEdit: true,
+  canMerge: true,
+  canUpdateBranch: true,
+  mergeMethods: ["merge", "squash", "rebase"],
+  autoMergeAllowed: true,
+  autoMerge: false,
+  labels: [],
+  reviewers: [],
+  checks: [],
+  checksTruncated: false,
+  commentCount: 0,
+  checkoutRoot: null,
+};
+export function rawOverview(overrides: Partial<Overview> = {}) {
+  const pr = { ...overview, ...overrides };
+  return {
+    data: {
+      viewer: { login: "lucas" },
+      repository: {
+        viewerPermission: pr.canMerge ? "WRITE" : "READ",
+        mergeCommitAllowed: true,
+        squashMergeAllowed: true,
+        rebaseMergeAllowed: true,
+        autoMergeAllowed: pr.autoMergeAllowed,
+        pullRequest: {
+          ...pr,
+          viewerCanUpdate: pr.canEdit,
+          viewerCanUpdateBranch: pr.canUpdateBranch,
+          autoMergeRequest: pr.autoMerge ? { enabledAt: pr.updatedAt } : null,
+          labels: { nodes: pr.labels },
+          comments: { totalCount: 0 },
+          reviewRequests: { nodes: [] },
+          commits: { nodes: [] },
+        },
+      },
+    },
+  };
+}
+export const stack: PrStack = {
+  number: 7,
+  base: "main",
+  layers: [
+    {
+      number: 41,
+      title: "Base layer",
+      url: "https://github.com/acme/api/pull/41",
+      headRefName: "base-layer",
+      headRefOid: "c".repeat(40),
+      state: "OPEN",
+      isDraft: false,
+    },
+    {
+      number: 42,
+      title: "Fix API",
+      url: overview.url,
+      headRefName: "fix",
+      headRefOid: overview.headRefOid,
+      state: "OPEN",
+      isDraft: false,
+    },
+  ],
+};

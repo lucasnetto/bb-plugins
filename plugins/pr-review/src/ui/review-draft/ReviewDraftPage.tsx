@@ -69,6 +69,16 @@ function ReviewConversation({ url }: { url: string }) {
   const [defaults, setDefaults] = useState<{ projectId: string; hostId: string } | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [initialPrompt] = useState(() => {
+    try {
+      const key = `pr-review:initial-prompt:${url}`;
+      const prompt = sessionStorage.getItem(key);
+      sessionStorage.removeItem(key);
+      return prompt ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
   const ref = parsePrUrl(url);
   useEffect(() => {
     panel.openFixedTab({ surface: { kind: "current" }, tab: reviewDraftTab });
@@ -176,7 +186,10 @@ function ReviewConversation({ url }: { url: string }) {
               workspace: { type: "personal" },
             }}
             draftKey={`pr-review:review:v1:${url}`}
-            initialPrompt={draft.comments.length ? "Discuss these review comments." : undefined}
+            initialPrompt={
+              initialPrompt ??
+              (draft.comments.length ? "Discuss these review comments." : undefined)
+            }
             placeholder="Ask about the PR or discuss your comments…"
             layout="document"
             className="mt-auto"

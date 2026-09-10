@@ -2,7 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const viewSchema = z.enum(["authored", "reviewing"]);
-export const stateSchema = z.enum(["ready", "all"]);
+export const stateSchema = z.enum(["ready", "all", "closed", "merged"]);
 const stateInput = stateSchema.optional();
 export type PrState = z.infer<typeof stateSchema>;
 export const listInput = z.object({
@@ -19,6 +19,20 @@ export const pullRequestSchema = z.object({
   author: z.string(),
   isDraft: z.boolean(),
   updatedAt: z.string(),
+  createdAt: z.string().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  labels: z.array(z.object({ name: z.string(), color: z.string() })).optional(),
+  additions: z.number().optional(),
+  deletions: z.number().optional(),
+  headRefName: z.string().optional(),
+  baseRefName: z.string().optional(),
+  mergeable: z.string().optional(),
+  reviewDecision: z.string().nullable().optional(),
+  checksState: z.string().nullable().optional(),
+  stack: z
+    .object({ number: z.number(), size: z.number(), position: z.number(), base: z.string() })
+    .nullable()
+    .optional(),
 });
 export const listOutput = z.object({
   viewer: z.string(),
@@ -26,6 +40,7 @@ export const listOutput = z.object({
   total: z.number().int().nonnegative(),
   nextPage: z.number().int().nullable(),
   incomplete: z.boolean(),
+  metadataError: z.string().optional(),
 });
 export const LIST_CHANGED = "pr-list-changed";
 export const snapshotSchema = z.object({

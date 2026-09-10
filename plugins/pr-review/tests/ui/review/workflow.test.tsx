@@ -121,6 +121,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });
     await waitFor(() => expect(select.hasAttribute("disabled")).toBe(false));
     await slot.behavior.setComposerText("Existing draft");
@@ -220,6 +221,7 @@ test("draft review attaches exact code context locally without calling thread or
     },
   );
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });
     await waitFor(() => expect(select.hasAttribute("disabled")).toBe(false));
     fireEvent.click(select);
@@ -237,7 +239,14 @@ test("draft review attaches exact code context locally without calling thread or
       slot.inspection.rpcCalls
         .map((call) => call.method)
         .every((method) =>
-          ["reviewDraftDetail", "reviewDraftContents", "githubReview"].includes(method),
+          [
+            "reviewDraftDetail",
+            "reviewDraftContents",
+            "githubReview",
+            "prOverview",
+            "prStack",
+            "prTimeline",
+          ].includes(method),
         ),
     ).toBe(true);
     expect(slot.queryByRole("button", { name: "Guide" })).toBeNull();
