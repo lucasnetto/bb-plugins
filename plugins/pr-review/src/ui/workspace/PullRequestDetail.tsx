@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Markdown, UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import { GithubMarkdown } from "../components/GithubMarkdown";
 import { toast } from "sonner";
 import type { Timeline, workspaceRpcContract } from "../../shared/workspace-contract";
 import { draftPath } from "../review-draft/navigation";
@@ -163,10 +164,7 @@ export function PullRequestDetail({
         </button>
       </div>
       {commentPreview ? (
-        <Markdown
-          content={comment || "Nothing to preview."}
-          className="pr-markdown pr-editor-preview"
-        />
+        <GithubMarkdown content={comment || "Nothing to preview."} className="pr-editor-preview" />
       ) : (
         <textarea
           className="pr-text-input"
@@ -568,9 +566,8 @@ export function PullRequestDetail({
                 )
               }
             >
-              <Markdown
+              <GithubMarkdown
                 content={detail.body.trim() ? detail.body : "_No description provided._"}
-                className="pr-markdown"
               />
             </Section>
             <div ref={checks}>
@@ -782,7 +779,7 @@ function ActivityList({
                   <time dateTime={entry.createdAt}>{relativeTime(entry.createdAt)}</time>
                 )}
               </div>
-              {entry.body && <Markdown className="pr-markdown" content={entry.body} />}
+              {entry.body && <GithubMarkdown content={entry.body} />}
             </div>
           </li>
         ))}

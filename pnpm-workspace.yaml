@@ -44,10 +44,14 @@ catalog:
   "jsdom": "^30.0.1"
   "react": "^19.2.8"
   "react-dom": "^19.2.8"
+  react-markdown: ^10.1.0
+  rehype-raw: ^7.0.0
+  rehype-sanitize: ^6.0.0
+  remark-gfm: ^4.0.1
   "sonner": "^1.7.4"
   "tailwind-merge": "^3.4.0"
   "vaul": "^1.1.2"
   vite-plus: 0.3.0
   "zod": "^4.3.6"
 patchedDependencies:
-  '@get-bb/plugin-sdk@0.4.47': patches/@get-bb__plugin-sdk@0.4.47.patch
+  "@get-bb/plugin-sdk@0.4.47": patches/@get-bb__plugin-sdk@0.4.47.patch

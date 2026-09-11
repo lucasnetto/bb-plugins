@@ -28,6 +28,9 @@ it("uses only public SDK imports", () => {
   const result = experimental_scanPublicSdkOnly(fileURLToPath(new URL("..", import.meta.url)), {
     allow: [
       /^react(?:-dom)?$/,
+      /^react-markdown$/,
+      /^rehype-(?:raw|sanitize)$/,
+      /^remark-gfm$/,
       /^effect$/,
       /^better-sqlite3$/,
       /^@pierre\//,

@@ -15,6 +15,10 @@
     "@radix-ui/react-slot": "catalog:",
     "@radix-ui/react-tabs": "catalog:",
     "effect": "catalog:",
+    "react-markdown": "catalog:",
+    "rehype-raw": "catalog:",
+    "rehype-sanitize": "catalog:",
+    "remark-gfm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

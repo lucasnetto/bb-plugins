@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Markdown, useRpc } from "@get-bb/plugin-sdk/app";
+import { useRpc } from "@get-bb/plugin-sdk/app";
+import { GithubMarkdown } from "../components/GithubMarkdown";
 import {
   Dialog,
   DialogContent,
@@ -273,7 +274,7 @@ export function ActionDialog({
                 </button>
               </div>
               {preview ? (
-                <Markdown content={body} className="pr-markdown pr-editor-preview" />
+                <GithubMarkdown content={body} className="pr-editor-preview" />
               ) : (
                 <textarea
                   className="pr-text-input pr-body-input"

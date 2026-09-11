@@ -69,3 +69,51 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
     slot.lifecycle.unmount();
   }
 });
+
+it("renders HTML and Markdown in the conversation, timeline, description and comment preview", async () => {
+  installTestPluginRuntime();
+  const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
+  const slot = renderSlot(
+    { component: PullRequestDetail },
+    { threadId: null, url: overview.url, code: null },
+    {
+      rpc: {
+        prOverview: () => ({ ...overview, body: "<sup>PR **description**</sup>" }),
+        prStack: () => stack,
+        prTimeline: () => ({
+          entries: [
+            {
+              id: "comment-1",
+              kind: "comment",
+              author: { login: "cursor[bot]", avatarUrl: "" },
+              title: "commented",
+              createdAt: overview.updatedAt,
+              url: overview.url,
+              body: "<!-- BUGBOT_REVIEW -->\n\n<sup>Review **comment**</sup>",
+            },
+          ],
+          nextPage: null,
+          truncated: false,
+        }),
+      },
+    },
+  );
+  try {
+    expect((await slot.findByText("description")).closest("sup")).toBeTruthy();
+    const summary = within(slot.getByRole("tabpanel", { name: "Summary" }));
+    expect(
+      (await summary.findByText("comment", { selector: "strong" })).closest("sup"),
+    ).toBeTruthy();
+    expect(slot.container.textContent).not.toContain("BUGBOT_REVIEW");
+    fireEvent.change(slot.getByRole("textbox", { name: "Write a comment" }), {
+      target: { value: "<sup>Preview **body**</sup>" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Preview" }));
+    expect(summary.getByText("body", { selector: "strong" }).closest("sup")).toBeTruthy();
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Timeline" }), { button: 0, ctrlKey: false });
+    const timeline = within(slot.getByRole("tabpanel", { name: "Timeline" }));
+    expect(timeline.getByText("comment", { selector: "strong" }).closest("sup")).toBeTruthy();
+  } finally {
+    slot.lifecycle.unmount();
+  }
+});

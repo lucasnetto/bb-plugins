@@ -1,0 +1,108 @@
+.pr-markdown {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.65;
+  color: color-mix(in srgb, var(--foreground) 86%, var(--muted-foreground));
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.pr-markdown :is(p, ul, ol, blockquote, pre, table, details) {
+  margin: 0 0 14px;
+}
+.pr-markdown > :first-child {
+  margin-top: 0;
+}
+.pr-markdown > :last-child,
+.pr-markdown :is(li, blockquote) > :last-child {
+  margin-bottom: 0;
+}
+.pr-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 20px 0 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.pr-markdown h1 {
+  font-size: 1.5em;
+}
+.pr-markdown h2 {
+  font-size: 1.3em;
+}
+.pr-markdown h3 {
+  font-size: 1.15em;
+}
+.pr-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pr-markdown :is(ul, ol) {
+  padding-left: 1.75em;
+}
+.pr-markdown ul {
+  list-style: disc;
+}
+.pr-markdown ol {
+  list-style: decimal;
+}
+.pr-markdown li > :is(ul, ol) {
+  margin-bottom: 0;
+}
+.pr-markdown .task-list-item {
+  list-style: none;
+}
+.pr-markdown input[type="checkbox"] {
+  margin-right: 0.4em;
+}
+.pr-markdown blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1em;
+  color: var(--muted-foreground);
+}
+.pr-markdown pre {
+  overflow: auto;
+  max-width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--muted);
+  font-size: 12px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.pr-markdown code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.88em;
+  padding: 0.15em 0.3em;
+  border-radius: 4px;
+  background: var(--muted);
+}
+.pr-markdown pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+}
+.pr-markdown img {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+.pr-markdown table {
+  border-collapse: collapse;
+}
+.pr-markdown :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+}
+.pr-markdown th {
+  font-weight: 600;
+}
+.pr-markdown summary {
+  cursor: pointer;
+}
+.pr-markdown hr {
+  margin: 16px 0;
+  border-color: var(--border);
+}
