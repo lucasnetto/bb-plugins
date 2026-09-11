@@ -11,6 +11,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 | cursor-account-labels | Distinguish work and personal Cursor providers.               |
 | bb-fonts           | Choose interface and code fonts with live previews.           |
 | hide-models           | Hide selected models from the model picker.                   |
+| model-thinking-level  | Keep the selected thinking level visible beside the model.    |
 | pr-review             | Find PRs, review code with agents, and settle completed work. |
 | t3-sidebar            | Display a T3-style thread sidebar.                            |
 | workers               | Inspect hidden child workers and chat in the parent panel.    |

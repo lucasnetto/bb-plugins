@@ -16,6 +16,10 @@
       "source": "./plugins/hide-models"
     },
     {
+      "name": "model-thinking-level",
+      "source": "./plugins/model-thinking-level"
+    },
+    {
       "name": "t3-sidebar",
       "source": "./plugins/t3-sidebar"
     },

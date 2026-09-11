@@ -1,0 +1,8 @@
+/* BB 0.42 hides this native label in compact composers. Keep the host's live
+   selection visible; no copied state or provider-specific label parsing. */
+@layer components {
+  button[aria-label^="Provider, model and reasoning"] [data-promptbox-hide-compact] {
+    /* Match the host's layer and outrank its compact !important selectors. */
+    display: inline !important;
+  }
+}
