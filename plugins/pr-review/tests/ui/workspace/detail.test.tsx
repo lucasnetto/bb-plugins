@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-import { expect, it } from "vite-plus/test";
+import { beforeEach, expect, it } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { overview, stack } from "../../workspace-fixture";
+import { invalidateWorkspace } from "../../../src/ui/workspace/workspace-cache";
+
+beforeEach(() => invalidateWorkspace());
 
 it("shows the exact native merge scope, waits for the result, and keeps the code view mounted across tabs", async () => {
   installTestPluginRuntime();

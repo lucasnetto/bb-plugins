@@ -14,10 +14,11 @@ import { Input } from "./components/ui/input";
 import type { rpcContract } from "../shared/contract";
 import type { LinkedPr } from "../shared/links-contract";
 import { LINKS_CHANGED } from "../shared/links-events";
+import { overviewCache, workspaceKey } from "./workspace/workspace-cache";
 
 function LinkedPrReview({ threadId, url }: { threadId: string; url: string }) {
   const rpc = useRpc<typeof rpcContract>();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => !!overviewCache.peek(workspaceKey(threadId, url)));
   const [error, setError] = useState("");
   useEffect(() => {
     let disposed = false;

@@ -18,6 +18,7 @@ import {
   relativeTime,
 } from "./presentation";
 import { useWorkspaceData } from "./useWorkspaceData";
+import { timelineCache, workspaceKey } from "./workspace-cache";
 import "./workspace.css";
 
 function Section({
@@ -69,10 +70,18 @@ export function PullRequestDetail({
   const [tab, setTab] = useState("summary");
   const [codeVisited, setCodeVisited] = useState(false);
   const [dialog, setDialog] = useState<DialogAction | null>(null);
-  const [timeline, setTimeline] = useState<Timeline | null>(null);
+  const [timelinePages, setTimelinePages] = useState(1);
+  const timelineKey = JSON.stringify([
+    workspaceKey(threadId, url),
+    detail?.updatedAt,
+    timelinePages,
+  ]);
+  const [timeline, setTimeline] = useState<Timeline | null>(
+    () => timelineCache.peek(timelineKey) ?? null,
+  );
   const [timelineError, setTimelineError] = useState("");
   const [timelineRetry, setTimelineRetry] = useState(0);
-  const [timelinePages, setTimelinePages] = useState(1);
+  const previousTimelineRetry = useRef(timelineRetry);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [newestFirst, setNewestFirst] = useState(false);
   const [comment, setComment] = useState("");
@@ -80,40 +89,61 @@ export function PullRequestDetail({
   const checks = useRef<HTMLDivElement>(null);
   const tabId = useId();
   useEffect(() => {
-    if (!active) return;
+    if (!active || !detail) return;
     let disposed = false;
     setTimelineLoading(true);
-    Promise.all(
-      Array.from({ length: timelinePages }, (_, index) =>
-        rpc.call("prTimeline", { threadId, url, page: index + 1 }),
-      ),
-    ).then(
-      (pages) => {
-        if (!disposed) {
+    const force = timelineRetry !== previousTimelineRetry.current;
+    previousTimelineRetry.current = timelineRetry;
+    timelineCache
+      .read(
+        timelineKey,
+        async () => {
+          const pages = await Promise.all(
+            Array.from({ length: timelinePages }, (_, index) =>
+              rpc.call("prTimeline", { threadId, url, page: index + 1 }),
+            ),
+          );
           const last = pages.at(-1)!;
-          setTimeline({
+          return {
             ...last,
             entries: [
               ...new Map(
                 pages.flatMap((page) => page.entries).map((entry) => [entry.id, entry]),
               ).values(),
             ],
-          });
-          setTimelineError("");
-          setTimelineLoading(false);
-        }
-      },
-      (reason) => {
-        if (!disposed) {
-          setTimelineError(String(reason));
-          setTimelineLoading(false);
-        }
-      },
-    );
+          };
+        },
+        force,
+      )
+      .then(
+        (value) => {
+          if (!disposed) {
+            setTimeline(value);
+            setTimelineError("");
+            setTimelineLoading(false);
+          }
+        },
+        (reason) => {
+          if (!disposed) {
+            setTimelineError(String(reason));
+            setTimelineLoading(false);
+          }
+        },
+      );
     return () => {
       disposed = true;
     };
-  }, [rpc, threadId, url, data.revision, detail?.updatedAt, active, timelineRetry, timelinePages]);
+  }, [
+    rpc,
+    threadId,
+    url,
+    data.revision,
+    !!detail,
+    timelineKey,
+    active,
+    timelineRetry,
+    timelinePages,
+  ]);
   const openThread = (prompt?: string) => {
     if (prompt) {
       try {

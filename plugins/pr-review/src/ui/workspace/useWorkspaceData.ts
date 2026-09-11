@@ -2,25 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRpc, useRealtime } from "@get-bb/plugin-sdk/app";
 import { LIST_CHANGED } from "../../../contract";
 import { toast } from "sonner";
-import type {
-  workspaceRpcContract,
-  Overview,
-  PrStack,
-  WorkspaceAction,
-} from "../../shared/workspace-contract";
+import { invalidateWorkspace, overviewCache, stackCache, workspaceKey } from "./workspace-cache";
+import type { workspaceRpcContract, WorkspaceAction } from "../../shared/workspace-contract";
 
 export function useWorkspaceData(threadId: string | null, url: string, active: boolean) {
   const rpc = useRpc<typeof workspaceRpcContract>();
-  const [detail, setDetail] = useState<Overview | null>(null);
-  const [stack, setStack] = useState<PrStack | null>(null);
-  const [stackLoaded, setStackLoaded] = useState(false);
+  const key = workspaceKey(threadId, url);
+  const [detail, setDetail] = useState(() => overviewCache.peek(key) ?? null);
+  const [stack, setStack] = useState(() => stackCache.peek(key) ?? null);
+  const [stackLoaded, setStackLoaded] = useState(() => stackCache.peek(key) !== undefined);
   const [stackError, setStackError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const mounted = useRef(false);
-  const refreshing = useRef(false);
+  const generation = useRef(0);
   const writing = useRef(false);
   const pendingKey = `pr-review:merge:v1:${url}`;
   const [pending, setPending] = useState<string | null>(() => {
@@ -30,52 +27,60 @@ export function useWorkspaceData(threadId: string | null, url: string, active: b
       return null;
     }
   });
-  const refresh = useCallback(async () => {
-    if (refreshing.current) return;
-    refreshing.current = true;
-    setLoading(true);
-    await Promise.allSettled([
-      rpc.call("prOverview", { threadId, url }).then(
-        (value) => {
-          if (mounted.current) {
-            setDetail(value);
-            setError("");
-          }
-        },
-        (reason) => {
-          if (mounted.current) setError(String(reason));
-        },
-      ),
-      rpc.call("prStack", { threadId, url }).then(
-        (value) => {
-          if (mounted.current) {
-            setStack(value);
-            setStackLoaded(true);
-            setStackError("");
-          }
-        },
-        (reason) => {
-          if (mounted.current) {
-            setStackLoaded(false);
-            setStackError(String(reason));
-          }
-        },
-      ),
-    ]);
-    refreshing.current = false;
-    if (mounted.current) setLoading(false);
-  }, [rpc, threadId, url]);
+  const load = useCallback(
+    async (force: boolean) => {
+      const current = ++generation.current;
+      const alive = () => mounted.current && current === generation.current;
+      setLoading(true);
+      await Promise.allSettled([
+        overviewCache
+          .read(key, () => rpc.call("prOverview", { threadId, url }), force)
+          .then(
+            (value) => {
+              if (alive()) {
+                setDetail(value);
+                setError("");
+              }
+            },
+            (reason) => {
+              if (alive()) setError(String(reason));
+            },
+          ),
+        stackCache
+          .read(key, () => rpc.call("prStack", { threadId, url }), force)
+          .then(
+            (value) => {
+              if (alive()) {
+                setStack(value);
+                setStackLoaded(true);
+                setStackError("");
+              }
+            },
+            (reason) => {
+              if (alive()) {
+                setStackLoaded(false);
+                setStackError(String(reason));
+              }
+            },
+          ),
+      ]);
+      if (alive()) setLoading(false);
+    },
+    [rpc, threadId, url, key],
+  );
+  const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
     mounted.current = true;
-    void refresh();
+    void load(false);
     return () => {
       mounted.current = false;
+      generation.current++;
     };
-  }, [refresh]);
+  }, [load]);
   useEffect(() => {
     if (!active) return;
     const background = () => {
-      if (document.visibilityState !== "hidden" && !writing.current) void refresh();
+      if (document.visibilityState !== "hidden" && !writing.current) void load(false);
     };
     background();
     window.addEventListener("focus", background);
@@ -84,16 +89,12 @@ export function useWorkspaceData(threadId: string | null, url: string, active: b
       window.removeEventListener("focus", background);
       window.clearInterval(timer);
     };
-  }, [active, refresh]);
+  }, [active, load]);
   useRealtime(LIST_CHANGED, (payload) => {
-    if (
-      active &&
-      !writing.current &&
-      payload &&
-      typeof payload === "object" &&
-      "mutation" in payload
-    )
-      void refresh();
+    if (payload && typeof payload === "object" && "mutation" in payload) {
+      invalidateWorkspace();
+      if (active && !writing.current) void refresh();
+    }
   });
   useEffect(() => {
     if (!pending || !active) return;
@@ -105,6 +106,7 @@ export function useWorkspaceData(threadId: string | null, url: string, active: b
         if (disposed) return;
         if (result.status === "pending") timer = setTimeout(() => void poll(), 5000);
         else {
+          invalidateWorkspace();
           setPending(null);
           try {
             sessionStorage.removeItem(pendingKey);
@@ -147,6 +149,7 @@ export function useWorkspaceData(threadId: string | null, url: string, active: b
         base: expected?.base ?? detail.baseRefName,
         action,
       });
+      invalidateWorkspace();
       if (result.pendingMergeId) {
         try {
           sessionStorage.setItem(pendingKey, result.pendingMergeId);
