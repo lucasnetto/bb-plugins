@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { skillArchiveFingerprint } from "./task-skills.ts";
+import { prunePreparedBases, type BaseReceipts, type CachedBase } from "./task-base-retention.ts";
+export type { BaseReceipts } from "./task-base-retention.ts";
 import { checked, command } from "./task-process.ts";
 
 // Increment when the reproducible base setup changes. Never snapshot task disks.
@@ -11,10 +14,6 @@ export function baseFingerprint(sourceId: string, artifact: string, codex: strin
     .update(JSON.stringify([RECIPE, sourceId, artifact, codex, skills]))
     .digest("hex")
     .slice(0, 16);
-}
-export interface BaseReceipts {
-  get(name: string): Promise<unknown>;
-  set(name: string, vmId: string): Promise<unknown>;
 }
 const readyBases = new Map<string, string>();
 let queue: Promise<unknown> = Promise.resolve();
@@ -58,13 +57,37 @@ export async function preparedBase(options: {
       }
     }
     let skills = Buffer.alloc(0);
+    let skillsDigest = hash(skills);
     if (roots.length) {
       const archive = join(staging, "skills.tar");
       await checked(["tar", "-chf", archive, "-C", homedir(), ...roots], { signal });
       skills = await readFile(archive);
+      skillsDigest = await skillArchiveFingerprint(archive, signal);
     }
-    const fingerprint = baseFingerprint(source.id, artifact, codex, hash(skills));
+    const fingerprint = baseFingerprint(source.id, artifact, codex, skillsDigest);
     const name = `orbisa-base-${owner}-${fingerprint}`;
+    const finish = async () => {
+      if (options.receipts) {
+        try {
+          await prunePreparedBases({
+            owner,
+            current: name,
+            receipts: options.receipts,
+            list: async () =>
+              JSON.parse(
+                await checked(["orbctl", "list", "--format", "json"], { signal }),
+              ) as CachedBase[],
+            remove: async (vm) => {
+              await checked(["orbctl", "delete", "-f", vm.name], { signal });
+            },
+          });
+        } catch {
+          signal.throwIfAborted();
+          report("Old base cache cleanup deferred until a later launch.");
+        }
+      }
+      return name;
+    };
     const inventory = JSON.parse(
       await checked(["orbctl", "list", "--format", "json"], { signal }),
     ) as {
@@ -82,7 +105,7 @@ export async function preparedBase(options: {
         throw new Error("Prepared base is no longer isolated.");
       if (((await options.receipts?.get(name)) ?? readyBases.get(name)) === existing.id) {
         report("Cloning prepared Orbisa base (BB, Codex and skills already installed).");
-        return name;
+        return await finish();
       }
       building = name;
       await checked(["orbctl", "start", name], { signal });
@@ -95,7 +118,7 @@ export async function preparedBase(options: {
         readyBases.set(name, existing.id);
         await options.receipts?.set(name, existing.id);
         report("Cloning prepared Orbisa base (BB, Codex and skills already installed).");
-        return name;
+        return await finish();
       }
       // An interrupted build contains no credentials or work; rebuild it.
       await checked(["orbctl", "delete", "-f", name], { signal });
@@ -157,7 +180,7 @@ export async function preparedBase(options: {
     if (!built) throw new Error("Prepared base disappeared before it was recorded.");
     readyBases.set(name, built.id);
     await options.receipts?.set(name, built.id);
-    return name;
+    return await finish();
   } finally {
     if (building)
       await checked(["orbctl", "stop", building], { timeoutMs: 30_000 }).catch(() => {});

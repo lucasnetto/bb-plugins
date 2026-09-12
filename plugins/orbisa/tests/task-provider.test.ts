@@ -74,6 +74,9 @@ void test("creation checkpoints allocation before clone and VM identity before b
     };
     const result = await provider.create(context);
     assert.equal(result.status, "created");
+    const timings = await bb.storage.kv.get<string[]>(`task-timings/${host.id}`);
+    assert.equal(timings?.length, 3);
+    assert.match(timings![2]!, /^Timing: Machine enrollment and connection: \d+ms \(completed\)$/);
     assert.deepEqual(events, [
       "checkpoint-intent",
       "allocate",

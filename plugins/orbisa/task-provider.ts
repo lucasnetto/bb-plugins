@@ -1,3 +1,4 @@
+import { timed } from "./task-timing.ts";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerTaskCheckout, CHECKOUT_PROVIDER } from "./task-checkout.ts";
 import { createTaskPolicy } from "./task-policy.ts";
@@ -22,6 +23,8 @@ export function registerTaskProvider(
     () => bb.server.loopbackBaseUrl,
     {
       get: (name) => bb.storage.kv.get(`task-base/${name}`),
+      lastUsed: (name) => bb.storage.kv.get(`task-base-used/${name}`),
+      touch: (name, at) => bb.storage.kv.set(`task-base-used/${name}`, at),
       set: (name, id) => bb.storage.kv.set(`task-base/${name}`, id),
     },
   ),
@@ -54,21 +57,31 @@ export function registerTaskProvider(
       // crash recovery to clean up even if clone completes after interruption.
       await context.checkpoint(resource);
       context.report.step("Creating isolated Orbisa task VM");
-      resource = await driver.allocate(
-        resource,
-        (await settings()).taskTemplate,
-        context.signal,
-        (text) => context.report.step(text),
+      const report = (text: string) => context.report.step(text);
+      const timings: string[] = [];
+      const timing = (text: string) => {
+        timings.push(text);
+        context.report.log(`${text}\n`);
+      };
+      resource = await timed(timing, "Base preparation and VM clone", async () =>
+        driver.allocate(resource, (await settings()).taskTemplate, context.signal, report),
       );
       await context.checkpoint(resource);
-      await driver.prepare(resource, context.signal, (text) => context.report.step(text));
-      const { hostId } = await bb.experimental_machines.bootstrap({
-        key: resource.key,
-        executor: driver.executor(resource),
-        report: context.report,
-        signal: context.signal,
-      });
+      await timed(timing, "VM start and credential setup", () =>
+        driver.prepare(resource, context.signal, report),
+      );
+      const { hostId } = await timed(timing, "Machine enrollment and connection", () =>
+        bb.experimental_machines.bootstrap({
+          key: resource.key,
+          executor: driver.executor(resource),
+          report: context.report,
+          signal: context.signal,
+        }),
+      );
       await bb.storage.kv.set(`task-resource/${hostId}`, resource);
+      // Bootstrap may finish its progress stream before our final measurement.
+      // Replay the bounded summary when workspace provisioning takes over.
+      await bb.storage.kv.set(`task-timings/${hostId}`, timings);
       await policy.bump(hostId);
       return { status: "created", name: resource.name, resource };
     },

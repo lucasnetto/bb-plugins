@@ -37,6 +37,8 @@ The plugin builds a separate `orbisa-base-<instance>-<fingerprint>` VM from
 `taskTemplate`. It preinstalls the exact server BB host artifact, the Mac's
 stable Codex version, and current user skills. Each launch checks these inputs;
 a change builds a new clean base once, and concurrent launches share that build.
+Skills are fingerprinted by archive paths, contents and permissions; timestamps,
+archive ordering and uid/gid metadata do not cause rebuilds.
 Verified base identities are persisted so normal launches do not boot the base
 to inspect it. Credential checks run concurrently, and each task moves its
 preinstalled BB directory into place without recopying it.
@@ -53,8 +55,11 @@ Only the reproducible setup recipe is cached. Never promote a task disk into
 a base: agent-installed packages, repository files and credentials must not
 leak between tasks. To add shared tooling, extend `task-base.ts` and increment
 its recipe revision. Replacing the source template also invalidates the cache;
-in-place edits to that source require a recipe revision. Previous base versions
-are retained as stopped caches; task settlement deletes task VMs only.
+in-place edits to that source require a recipe revision. Base cleanup runs while holding the build/clone lock on subsequent launches.
+It retains the selected base and one recent fallback; other verified, stopped
+bases expire after seven days without use. Running, replaced or unrecognized
+VMs are preserved. Existing bases get a full grace period on upgrade.
+Task settlement deletes task VMs only.
 
 ### Git checkout cache and 180seg
 
@@ -73,12 +78,39 @@ supported. Uncommitted changes and ignored files are not copied. New local
 commits refresh the corresponding bundle on the next task launch; upstream
 updates must first reach the local source repositories.
 
+Catalog discovery and preparation run with up to four concurrent repositories.
+Each slot covers cache refresh, transfer, and checkout; Git cache locks still
+serialize requests for the same repository across task launches. Failure or
+cancellation stops scheduling new repositories, cancels siblings, and waits for
+started operations to settle before returning to BB cleanup. Completed checkouts
+remain retryable without resetting edits. Provisioning logs include total catalog
+preparation time as well as per-repository timings.
+
+On this Mac, warm-bundle benchmarks of all 19 repositories took 11–14 seconds
+sequentially and about 3.5 seconds with four concurrent checkouts after warm-up.
+Eight and 19 concurrent checkouts took roughly 4 seconds. These are repository
+preparation measurements, excluding VM boot, enrollment and agent startup; results
+vary with disk cache and machine load.
+
 Checkouts live under `~/orbisa-workspaces/<environment-key>`. Choose branches
 inside individual repositories for a catalog; a single-repo project also accepts
 existing/new branch inputs. Repository dependencies and setup remain workspace
 specific. A catalog does not automatically run each child repository's BB setup
 hook. Git caches stay in the profile's plugin data directory when task VMs are
 deleted, separate from the clean tooling base and shared Cursor/T3 slots.
+Unused Git caches expire after 30 days. Cleanup runs after a successful checkout,
+at most once per hour per plugin load, and skips active transfers. Existing caches
+receive a full grace period on adoption. Retention is checked during launches,
+so expired caches can remain while no new tasks are started.
+
+### Provisioning timings
+
+The provisioning log records elapsed milliseconds and completion/failure for
+base preparation and VM cloning, VM start and credential setup, machine enrollment
+and connection, Git cache refresh, and Git transfer plus checkout. Catalog Git
+stages are labeled by repository. Timings contain no command output or credentials.
+These records expose where startup time is spent without changing the enrollment
+workflow.
 
 ### Requirements
 

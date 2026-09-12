@@ -1,3 +1,5 @@
+import { concurrently, CATALOG_CONCURRENCY } from "./task-concurrency.ts";
+import { timed } from "./task-timing.ts";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -107,6 +109,11 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
       if (!(await context.experimental_claimPath(path)))
         return { status: "failed", message: "Checkout path belongs to another environment." };
       const resource = await machine(context.host.id, context.signal);
+      const timings = z
+        .array(z.string().max(300))
+        .max(10)
+        .safeParse(await bb.storage.kv.get(`task-timings/${context.host.id}`));
+      if (timings.success) context.report.log(`${timings.data.join("\n")}\n`);
       if (context.project.gitRemoteUrl === null) {
         if (!(await isCatalog(context.project.id)))
           throw new Error("Unsupported repository workspace.");
@@ -117,30 +124,46 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
           };
         context.report.step("Discovering 180seg repository catalog");
         const repositories = await discoverCatalog(catalogRoot, context.signal);
-        for (const repository of repositories) {
-          context.report.step(`Seeding ${repository.relative} from committed local Git state`);
-          await withGitBundle(
-            cache,
-            repository.source,
-            context.signal,
-            async (bundle, defaultBranch) => {
-              await checked(
-                run(resource, [
-                  "python3",
-                  "-c",
-                  CHECKOUT_SCRIPT,
-                  JSON.stringify({
-                    path: `${path}/${repository.relative}`,
-                    remote: repository.remote,
-                    key: `${context.pathKey}/${repository.relative}`,
-                    defaultBranch,
-                  }),
-                ]),
-                { signal: context.signal, timeoutMs: 300_000, stdinFile: bundle },
-              );
-            },
-          );
-        }
+        context.report.step(
+          `Preparing ${repositories.length} repositories (${CATALOG_CONCURRENCY} at a time)`,
+        );
+        await timed(
+          (text) => context.report.log(`${text}\n`),
+          "180seg repository preparation",
+          () =>
+            concurrently(
+              repositories,
+              CATALOG_CONCURRENCY,
+              context.signal,
+              async (repository, signal) => {
+                context.report.log(
+                  `Seeding ${repository.relative} from committed local Git state\n`,
+                );
+                await withGitBundle(
+                  cache,
+                  repository.source,
+                  signal,
+                  async (bundle, defaultBranch) => {
+                    await checked(
+                      run(resource, [
+                        "python3",
+                        "-c",
+                        CHECKOUT_SCRIPT,
+                        JSON.stringify({
+                          path: `${path}/${repository.relative}`,
+                          remote: repository.remote,
+                          key: `${context.pathKey}/${repository.relative}`,
+                          defaultBranch,
+                        }),
+                      ]),
+                      { signal, timeoutMs: 300_000, stdinFile: bundle },
+                    );
+                  },
+                  (text) => context.report.log(`${repository.relative}: ${text}\n`),
+                );
+              },
+            ),
+        );
         const instructions = (await readFile(join(catalogRoot, "AGENTS.md"), "utf8")).replaceAll(
           catalogRoot,
           path,
@@ -163,25 +186,31 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
       }
       const remote = normalizeRemote(context.project.gitRemoteUrl);
       context.report.step("Refreshing project Git cache");
-      await withGitBundle(cache, remote, context.signal, async (bundle, defaultBranch) => {
-        context.report.step("Creating checkout directly in Orbisa VM");
-        await checked(
-          run(resource, [
-            "python3",
-            "-c",
-            CHECKOUT_SCRIPT,
-            JSON.stringify({
-              path,
-              remote,
-              key: context.pathKey,
-              defaultBranch,
-              branch: context.inputs.branch,
-              suggestedBranch: context.suggestedBranchName,
-            }),
-          ]),
-          { signal: context.signal, timeoutMs: 300_000, stdinFile: bundle },
-        );
-      });
+      await withGitBundle(
+        cache,
+        remote,
+        context.signal,
+        async (bundle, defaultBranch) => {
+          context.report.step("Creating checkout directly in Orbisa VM");
+          await checked(
+            run(resource, [
+              "python3",
+              "-c",
+              CHECKOUT_SCRIPT,
+              JSON.stringify({
+                path,
+                remote,
+                key: context.pathKey,
+                defaultBranch,
+                branch: context.inputs.branch,
+                suggestedBranch: context.suggestedBranchName,
+              }),
+            ]),
+            { signal: context.signal, timeoutMs: 300_000, stdinFile: bundle },
+          );
+        },
+        (text) => context.report.log(`${text}\n`),
+      );
       return {
         status: "created",
         path,
