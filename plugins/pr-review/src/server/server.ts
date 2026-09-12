@@ -1,6 +1,6 @@
 import { githubReviewHandlers } from "./github-review-server";
 import { registerWorkspace } from "./workspace-server";
-import { reviewDraftHandlers } from "./review-thread";
+import { reviewDraftHandlers } from "./standalone-review";
 import { registerGuideGeneration } from "./guide-generation";
 import { createRuntime, handler } from "./server-effects";
 import { registerLinks } from "./links-server";
@@ -18,7 +18,7 @@ export default function plugin(bb: BbPluginApi) {
   const github = githubReviewHandlers(bb, links);
   const operations = {
     ...links,
-    ...reviewDraftHandlers(bb, links),
+    ...reviewDraftHandlers(bb),
   };
   bb.rpc.register(rpcContract, {
     githubReview: handler(runtime, github.githubReview),
@@ -38,10 +38,8 @@ export default function plugin(bb: BbPluginApi) {
     linkedLink: handler(runtime, operations.linkedLink),
     linkedUnlink: handler(runtime, operations.linkedUnlink),
     linkedDetail: handler(runtime, operations.linkedDetail),
-    reviewDraftDefaults: handler(runtime, operations.reviewDraftDefaults),
     reviewDraftDetail: handler(runtime, operations.reviewDraftDetail),
     reviewDraftContents: handler(runtime, operations.reviewDraftContents),
-    startReview: handler(runtime, operations.startReview),
   });
   registerPrReviewCli(bb, runtime, links, guides);
 }

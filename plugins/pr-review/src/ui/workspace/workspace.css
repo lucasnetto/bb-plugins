@@ -742,16 +742,6 @@
   color: var(--muted-foreground);
   margin-left: auto;
 }
-.pr-check-fix {
-  opacity: 0;
-  font-size: 10px;
-  min-height: 22px;
-  padding: 1px 5px;
-}
-.pr-check-row:hover .pr-check-fix,
-.pr-check-fix:focus-visible {
-  opacity: 1;
-}
 .pr-section-actions {
   display: flex;
   gap: 8px;

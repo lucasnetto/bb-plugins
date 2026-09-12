@@ -10,9 +10,8 @@ import {
 import { useBbNavigate, type PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { useList } from "../../../use-list";
 import { stateSchema, type PrState } from "../../../contract";
-import { draftPath, draftUrl } from "../review-draft/navigation";
-import { DraftPrReview } from "../review/PrReview";
-import { useDraftComments } from "../review-draft/comments";
+import { draftPath, draftUrl } from "./navigation";
+import { StandalonePrReview } from "../review/PrReview";
 import { Icon } from "../components/ui/icon";
 import {
   Dialog,
@@ -252,8 +251,7 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
   );
 }
 function InboxDetail({ url, active }: { url: string; active: boolean }) {
-  const comments = useDraftComments(url);
-  return <DraftPrReview url={url} onComment={comments.add} active={active} />;
+  return <StandalonePrReview url={url} active={active} />;
 }
 function Inbox({
   preferences,

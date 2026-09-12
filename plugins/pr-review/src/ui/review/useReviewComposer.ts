@@ -1,4 +1,3 @@
-import type { DraftComment } from "../../shared/review-draft-contract";
 import { useState } from "react";
 import { useRpc, useComposer } from "@get-bb/plugin-sdk/app";
 import type { FileDiffMetadata } from "@pierre/diffs";
@@ -10,7 +9,6 @@ import { buildReviewDraftText, type ReviewAction } from "./reviewDraftText";
 
 export function useReviewComposer({
   threadId,
-  onDraftComment,
   url,
   detail,
   selectedPath,
@@ -21,7 +19,6 @@ export function useReviewComposer({
   setError,
 }: {
   threadId: string | null;
-  onDraftComment?: (comment: DraftComment) => void;
   url: string;
   detail: LinkedDetail | null;
   selectedPath: string | null;
@@ -36,7 +33,7 @@ export function useReviewComposer({
   const [comment, setComment] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   async function add(action: ReviewAction) {
-    if (!detail || addingComment) return;
+    if (!threadId || !detail || addingComment) return;
     setAddingComment(true);
     try {
       const targetPath = selectionPath ?? selectedPath;
@@ -62,9 +59,6 @@ export function useReviewComposer({
         composer.updateText((current) => (current ? `${current}\n\n${text} ` : `${text} `));
         composer.insertMention({ provider: "review-comment", id, label: targetLabel });
         composer.focus();
-      } else {
-        if (!onDraftComment) throw new Error("This review draft is not available.");
-        onDraftComment({ id: crypto.randomUUID(), label: targetLabel, text, context: prompt });
       }
       setComment("");
       setNotice("Added to your draft.");

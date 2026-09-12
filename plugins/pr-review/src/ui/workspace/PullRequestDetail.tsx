@@ -3,7 +3,7 @@ import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import { GithubMarkdown } from "../components/GithubMarkdown";
 import { toast } from "sonner";
 import type { Timeline, workspaceRpcContract } from "../../shared/workspace-contract";
-import { draftPath } from "../review-draft/navigation";
+import { draftPath } from "./navigation";
 import { Icon } from "../components/ui/icon";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ActionDialog, type DialogAction } from "./ActionDialog";
@@ -144,16 +144,6 @@ export function PullRequestDetail({
     timelineRetry,
     timelinePages,
   ]);
-  const openThread = (prompt?: string) => {
-    if (prompt) {
-      try {
-        sessionStorage.setItem(`pr-review:initial-prompt:${url}`, prompt);
-      } catch {
-        toast.error("Could not prepare the thread prompt.");
-      }
-    }
-    navigate.toPluginPanel("review", { subPath: draftPath(url) });
-  };
   const summary = checksSummary(detail?.checks ?? []);
   const changeTab = (value: string) => {
     if (value === "code") setCodeVisited(true);
@@ -245,10 +235,6 @@ export function PullRequestDetail({
               >
                 Check out in this environment
               </PrMenuItem>
-              <PrMenuSeparator />
-              <PrMenuItem icon="MessageSquare" onSelect={() => openThread()}>
-                Review in thread
-              </PrMenuItem>
             </PrMenu>
             {detail?.state !== "MERGED" && (
               <button
@@ -274,9 +260,6 @@ export function PullRequestDetail({
               </button>
             )}
             <PrMenu label="Pull request actions" icon="MoreHorizontal" compact disabled={!detail}>
-              <PrMenuItem icon="MessageSquare" onSelect={() => openThread()}>
-                Review in thread
-              </PrMenuItem>
               <PrMenuItem icon="ExternalLink" onSelect={() => navigate.openUrl(url)}>
                 Open on GitHub
               </PrMenuItem>
@@ -620,18 +603,6 @@ export function PullRequestDetail({
                               ? "Skipped"
                               : "Pending"}
                       </span>
-                      {check.state === "failure" && (
-                        <button
-                          className="pr-control pr-check-fix"
-                          onClick={() =>
-                            openThread(
-                              `Investigate and fix the failing check “${check.name}” on ${url}.${check.url ? ` Check: ${check.url}` : ""}`,
-                            )
-                          }
-                        >
-                          Fix
-                        </button>
-                      )}
                     </div>
                   ))
                 ) : (
@@ -657,14 +628,6 @@ export function PullRequestDetail({
                     : `This branch is behind ${detail.baseRefName}.`}
                 </p>
                 <div className="pr-section-actions">
-                  <button
-                    className="pr-control"
-                    onClick={() =>
-                      openThread(`Resolve the merge conflicts and update the branch for ${url}.`)
-                    }
-                  >
-                    Resolve in thread
-                  </button>
                   {detail.canUpdateBranch && !stack && (
                     <button
                       className="pr-control"

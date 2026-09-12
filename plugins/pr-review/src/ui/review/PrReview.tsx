@@ -1,7 +1,6 @@
 import { useGithubReview } from "./useGithubReview";
 import { GithubReviewPanel } from "./GithubReviewPanel";
 import { githubSelection } from "./githubSelection";
-import type { DraftComment } from "../../shared/review-draft-contract";
 // BB adapter for T3 Code's PR code tab. Ported components retain T3-LICENSE.
 import { useEffect, useState, type CSSProperties } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
@@ -28,34 +27,18 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
     />
   );
 }
-export function DraftPrReview({
-  url,
-  onComment,
-  active = true,
-}: {
-  url: string;
-  onComment: (comment: DraftComment) => void;
-  active?: boolean;
-}) {
+export function StandalonePrReview({ url, active = true }: { url: string; active?: boolean }) {
   return (
     <PullRequestDetail
       key={url}
       threadId={null}
       url={url}
       active={active}
-      code={<PrReviewContent threadId={null} url={url} onDraftComment={onComment} />}
+      code={<PrReviewContent threadId={null} url={url} />}
     />
   );
 }
-function PrReviewContent({
-  threadId,
-  url,
-  onDraftComment,
-}: {
-  threadId: string | null;
-  url: string;
-  onDraftComment?: (comment: DraftComment) => void;
-}) {
+function PrReviewContent({ threadId, url }: { threadId: string | null; url: string }) {
   const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
     useReviewData(threadId, url);
   const github = useGithubReview(threadId, url);
@@ -83,7 +66,6 @@ function PrReviewContent({
   });
   const draft = useReviewComposer({
     threadId,
-    onDraftComment,
     url,
     detail,
     selectedPath,
@@ -237,17 +219,18 @@ function PrReviewContent({
             ? `${diff.selection.path} · ${diff.selection.lines.range.start}–${diff.selection.lines.range.end}`
             : (selectedPath ?? "Select a file or lines")}
         </span>
-        {(["Ask", "Explain", "Fix"] as const).map((action) => (
-          <Button
-            key={action}
-            size="sm"
-            variant="ghost"
-            disabled={loading || draft.addingComment || !detail}
-            onClick={() => draft.add(action)}
-          >
-            {action}
-          </Button>
-        ))}
+        {threadId &&
+          (["Ask", "Explain", "Fix"] as const).map((action) => (
+            <Button
+              key={action}
+              size="sm"
+              variant="ghost"
+              disabled={loading || draft.addingComment || !detail}
+              onClick={() => draft.add(action)}
+            >
+              {action}
+            </Button>
+          ))}
         {diff.selection.lines ? (
           <Button size="sm" variant="ghost" onClick={diff.selection.clear}>
             Clear selection

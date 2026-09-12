@@ -8,13 +8,13 @@ Find pull requests, review code with an agent, and track the linked conversation
 
 Select a row to open a resizable detail pane with multiple PR tabs. **Summary** shows the description, reviewers, labels, checks, conversation, and native GitHub stack. **Timeline** shows paginated activity and Markdown comments. Descriptions, comments, and editor previews support GitHub-flavored Markdown and sanitized HTML, including bot badges and collapsible details; hidden HTML comments stay hidden. **Code** keeps the existing diff and review tools. Switching tabs or hiding the pane preserves unfinished reviews. Modified clicks keep the external GitHub link.
 
-The detail header supports merge, auto-merge, update by merge or rebase, ready/draft, close/reopen, title/description editing, labels, reviewer requests, and checkout in a matching thread environment. Standalone PRs can copy the checkout command or open a review thread. Checks and conflicts can prepare a focused agent prompt; sending it remains an explicit composer action.
+The detail header supports merge, auto-merge, update by merge or rebase, ready/draft, close/reopen, title/description editing, labels, reviewer requests, and checkout in a matching thread environment. Standalone PRs can copy the checkout command.
 
 Merge confirmation lists the exact affected stack layers. Native GitHub stacks merge through the asynchronous stack API, including every unmerged layer below the selected PR, and continue polling after a page reload. Stack rebase starts at the top PR and updates all open layers bottom to top. Branch heads, the target branch, and stack membership are rechecked before writing. Ordinary merges use GitHub CLI's matching-head guard and respect repository merge methods, rules, and queues. A partially completed stack rebase reports the layer where it stopped.
 
 Lists are saved in SQLite per primary machine, view, and PR state. Opening the page displays the saved list, then refreshes it when older than 60 seconds. Manual Refresh bypasses that window. Failed refreshes preserve the last successful list.
 
-**Review in thread** opens this plugin's PR review screen with BB's new-thread composer beside the PR details. You can also enter a GitHub PR URL directly on the review screen. Select code and collect comments before starting a conversation. Only **Send** creates a thread, with your selected project, environment, model, permissions, message, and code context. The PR is linked manually and its panel opens beside the conversation. Opening a PR starts no agent, and Send adds no automatic review instruction.
+Use **Open a pull request by URL** in Pull Requests to view any GitHub PR in the integrated detail pane.
 
 ## PRs linked to a conversation
 
@@ -24,7 +24,7 @@ The **Code** tab provides a file tree, split/unified diffs, wrapping, file colla
 
 Select lines to open a comment composer directly below the selection in Code or Guide view. It appears when the selection gesture finishes and preserves typed text when moved or closed. Choose **Add to chat**, **Ask**, **Explain**, or **Fix** to stage text and a code-context mention chip in the existing draft; these actions never send it. The saved snapshot includes the PR, file, revisions, selected lines, and code. Removing the chip removes that context from the draft. Command-Enter stages the comment.
 
-Linked reviews use the thread environment's machine and its `gh` authentication. Reviews opened before thread creation and PR lists use BB's primary machine. No workspace setting or local repository is required. If the thread's current Git checkout matches the PR, its root is included in code context; parent folders are never scanned.
+Linked reviews use the thread environment's machine and its `gh` authentication. Standalone PR details and PR lists use BB's primary machine. No workspace setting or local repository is required. If the thread's current Git checkout matches the PR, its root is included in code context; parent folders are never scanned.
 
 ## Guided reviews
 

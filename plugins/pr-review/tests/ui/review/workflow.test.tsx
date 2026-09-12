@@ -186,14 +186,13 @@ test("expanded context reaches the draft with exact revisions and refresh reload
   }
 });
 
-test("draft review attaches exact code context locally without calling thread or guide APIs", async () => {
+test("standalone review selects code without offering thread draft actions", async () => {
   installTestPluginRuntime();
-  const { DraftPrReview } = await import("../../../src/ui/review/PrReview");
-  const comments: unknown[] = [];
+  const { StandalonePrReview } = await import("../../../src/ui/review/PrReview");
   const url = "https://github.com/org/api/pull/789";
   const slot = renderSlot(
-    { component: DraftPrReview },
-    { url, onComment: (comment) => comments.push(comment) },
+    { component: StandalonePrReview },
+    { url },
     {
       rpc: {
         reviewDraftDetail: () => ({
@@ -228,13 +227,9 @@ test("draft review attaches exact code context locally without calling thread or
     fireEvent.change(await slot.findByLabelText("Comment on selected code"), {
       target: { value: "Why this branch?" },
     });
-    fireEvent.click(slot.getByRole("button", { name: "Add to chat ⌘↵" }));
-    await waitFor(() => expect(comments).toHaveLength(1));
-    expect(comments[0]).toMatchObject({
-      text: "Why this branch?",
-      label: "api.ts · 1–1",
-      context: expect.stringContaining("Head: " + "b".repeat(40)),
-    });
+    expect(slot.queryByRole("button", { name: "Add to chat ⌘↵" })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Ask" })).toBeNull();
+    expect(slot.getByRole("button", { name: "Add to review" })).toBeTruthy();
     expect(
       slot.inspection.rpcCalls
         .map((call) => call.method)

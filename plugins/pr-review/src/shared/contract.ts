@@ -4,7 +4,6 @@ import {
   githubReviewStateSchema,
   githubReviewAction,
 } from "./github-review-contract";
-import { startReviewInput } from "./review-draft-contract";
 import {
   guideStartInput,
   guideJobSchema,
@@ -75,10 +74,6 @@ export const rpcContract = defineRpcContract({
     input: standardSchema(githubReviewMutation),
     output: standardSchema(Schema.Struct({ url: Schema.String })),
   },
-  reviewDraftDefaults: {
-    input: standardSchema(Schema.Null),
-    output: standardSchema(Schema.Struct({ projectId: Schema.String, hostId: Schema.String })),
-  },
   reviewDraftDetail: {
     input: standardSchema(Schema.Struct({ url: Schema.String })),
     output: standardSchema(linkedDetailSchema),
@@ -86,12 +81,6 @@ export const rpcContract = defineRpcContract({
   reviewDraftContents: {
     input: standardSchema(linkedContentsInput),
     output: standardSchema(linkedContentsSchema),
-  },
-  startReview: {
-    input: standardSchema(startReviewInput),
-    output: standardSchema(
-      Schema.Struct({ threadId: Schema.String, warning: Schema.NullOr(Schema.String) }),
-    ),
   },
   guideStart: { input: standardSchema(guideStartInput), output: standardSchema(guideJobSchema) },
   guideJob: {

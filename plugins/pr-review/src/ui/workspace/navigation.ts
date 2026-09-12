@@ -1,6 +1,5 @@
 import { parsePrUrl } from "../../shared/links-contract";
 
-export const reviewDraftTab = { panelId: "review", id: "code" } as const;
 export function draftPath(url: string): string {
   const ref = parsePrUrl(url);
   return `${ref.repository}/${ref.number}`;

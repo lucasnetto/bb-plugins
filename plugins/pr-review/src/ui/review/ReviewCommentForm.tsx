@@ -27,7 +27,9 @@ export function ReviewCommentForm({
       onKeyDown={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
-        if (draft.comment.trim() && !loading && !draft.addingComment) void draft.add("Comment");
+        if (!draft.comment.trim() || loading || draft.addingComment) return;
+        if (threadId) void draft.add("Comment");
+        else if (!githubDisabled && hasDetail) void onAddToReview?.();
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -58,7 +60,9 @@ export function ReviewCommentForm({
       />
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-full text-xs text-muted-foreground">
-          Save a GitHub draft or add this code and comment to your chat.
+          {threadId
+            ? "Save a GitHub draft or add this code and comment to your chat."
+            : "Save a draft comment to your GitHub review."}
         </span>
         {onAddToReview && (
           <Button
@@ -70,13 +74,15 @@ export function ReviewCommentForm({
             Add to review
           </Button>
         )}
-        <Button
-          type="submit"
-          size="sm"
-          disabled={loading || draft.addingComment || !hasDetail || !draft.comment.trim()}
-        >
-          Add to chat ⌘↵
-        </Button>
+        {threadId && (
+          <Button
+            type="submit"
+            size="sm"
+            disabled={loading || draft.addingComment || !hasDetail || !draft.comment.trim()}
+          >
+            Add to chat ⌘↵
+          </Button>
+        )}
       </div>
     </form>
   );

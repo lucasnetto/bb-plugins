@@ -6,6 +6,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 it("groups authored and requested reviews, filters locally, and selects a PR without starting a thread", async () => {
   sessionStorage.clear();
   const app = await loadPluginApp(() => import("../app"));
+  expect(app.navPanels.map(({ path }) => path)).toEqual(["prs"]);
   const views: string[] = [];
   const url = "https://github.com/acme/api/pull/42";
   const slot = renderSlot(

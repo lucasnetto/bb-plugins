@@ -1,26 +1,8 @@
-import { ReviewDraftPage, ReviewDraftPanel } from "./review-draft/ReviewDraftPage";
-import { reviewDraftTab } from "./review-draft/navigation";
 import { type PluginAppBuilder } from "@get-bb/plugin-sdk/app";
 import { GuideModelSettings } from "./review/GuideGenerator";
 import { LinkedPrsPanel, LinkedPrHeader } from "./linked-prs";
 
 export function registerReviewApp(app: PluginAppBuilder) {
-  app.slots.navPanel({
-    id: "review",
-    title: "PR review",
-    icon: "GitPullRequest",
-    path: "review",
-    component: ReviewDraftPage,
-    fixedTabs: [
-      {
-        ...reviewDraftTab,
-        title: "Pull request",
-        icon: "GitPullRequest",
-        component: ReviewDraftPanel,
-        layout: "flush",
-      },
-    ],
-  });
   app.slots.settingsSection({
     id: "guide-model",
     title: "Guided review model",
