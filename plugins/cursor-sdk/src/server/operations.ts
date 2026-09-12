@@ -25,7 +25,10 @@ export function safeMessage(error: unknown): string {
 
 export const profileSchema = z.enum(["personal", "work"]);
 export type Profile = z.infer<typeof profileSchema>;
-export const optionsSchema = z.object({ profile: profileSchema });
+export const optionsSchema = z.object({
+  profile: profileSchema,
+  runtime: z.enum(["local", "cloud"]).default("local"),
+});
 const exec = promisify(execFile);
 
 const command = (file: string, args: string[], cwd?: string) =>

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   JsonlLocalAgentStore,
@@ -35,7 +38,17 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }]) {
+function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }], cloud = false) {
+  const dataDir = mkdtempSync(join(tmpdir(), "bb-cursor-sdk-unit-"));
+  const providerThreadId = cloud ? "bc-1" : "agent-1";
+  const executionOptions = {
+    ...options,
+    providerOptions: { profile: "personal", runtime: cloud ? "cloud" : "local" },
+  };
+  let remoteStatus: "running" | "finished" = "finished";
+  let remoteMissing = false;
+  let sourceCalls = 0;
+  let completeSend: (() => void) | undefined;
   const messages: unknown[] = [];
   const errors: unknown[] = [];
   const listeners = new Set<() => void>();
@@ -46,81 +59,104 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   let cancelled = 0;
   let disposed = 0;
   let sequence = 0;
-  const makeAgent = (agentId: string): SDKAgent => ({
-    agentId,
-    model: undefined,
-    async send(message, sendOptions) {
-      const text = typeof message === "string" ? message : message.text;
-      sent.push({ text, options: sendOptions });
-      if (text === "send-failure") throw new Error("Could not send");
-      const id = `run-${++sequence}`;
-      let interrupted = false;
-      let release: (() => void) | undefined;
-      const block = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const run: Run = {
-        id,
-        agentId,
-        get status() {
-          return interrupted ? "cancelled" : "finished";
-        },
-        supports: () => true,
-        unsupportedReason: () => undefined,
-        async *stream(): AsyncGenerator<SDKMessage, void> {
-          if (text === "stream-failure") throw new Error("Connection dropped");
-          if (text.includes("hold")) await block;
-          if (text.includes("call-tool"))
-            await sendOptions?.local?.customTools?.testTool?.execute({ value: "hello" }, {});
-          if (!interrupted && !text.includes("zero")) {
-            yield {
-              type: "assistant",
-              agent_id: agentId,
-              run_id: id,
-              message: { role: "assistant", content: [{ type: "text", text: "Hello" }] },
+  const makeAgent = (agentId: string): SDKAgent => {
+    const detach = new Set<() => void>();
+    return {
+      agentId,
+      model: undefined,
+      async send(message, sendOptions) {
+        const text = typeof message === "string" ? message : message.text;
+        sent.push({ text, options: sendOptions });
+        if (text === "send-failure") throw new Error("Could not send");
+        if (text.includes("slow-send"))
+          await new Promise<void>((resolve) => {
+            completeSend = resolve;
+          });
+        const id = `run-${++sequence}`;
+        let interrupted = false;
+        let release: (() => void) | undefined;
+        const block = new Promise<void>((resolve) => {
+          release = resolve;
+          detach.add(resolve);
+        });
+        const run: Run = {
+          id,
+          agentId,
+          get status() {
+            return interrupted ? "cancelled" : "finished";
+          },
+          supports: () => true,
+          unsupportedReason: () => undefined,
+          async *stream(): AsyncGenerator<SDKMessage, void> {
+            if (text === "stream-failure") throw new Error("Connection dropped");
+            if (text.includes("hold")) await block;
+            if (text.includes("call-tool"))
+              await sendOptions?.local?.customTools?.testTool?.execute({ value: "hello" }, {});
+            if (!interrupted && !text.includes("zero")) {
+              yield {
+                type: "assistant",
+                agent_id: agentId,
+                run_id: id,
+                message: { role: "assistant", content: [{ type: "text", text: "Hello" }] },
+              };
+            }
+          },
+          async wait() {
+            return {
+              id,
+              status: interrupted ? "cancelled" : "finished",
+              result: text.includes("zero") ? "" : "Hello",
             };
-          }
-        },
-        async wait() {
-          return {
-            id,
-            status: interrupted ? "cancelled" : "finished",
-            result: text.includes("zero") ? "" : "Hello",
-          };
-        },
-        async cancel() {
-          cancelled++;
-          interrupted = true;
-          release?.();
-        },
-        async conversation() {
-          return [];
-        },
-        onDidChangeStatus: () => () => {},
-      };
-      return run;
-    },
-    close() {},
-    async reload() {},
-    async [Symbol.asyncDispose]() {
-      disposed++;
-    },
-    async listArtifacts() {
-      return [];
-    },
-    async downloadArtifact() {
-      return Buffer.alloc(0);
-    },
-    async getUsage() {
-      throw new Error("unused");
-    },
-  });
+          },
+          async cancel() {
+            cancelled++;
+            interrupted = true;
+            release?.();
+          },
+          async conversation() {
+            return [];
+          },
+          onDidChangeStatus: () => () => {},
+        };
+        return run;
+      },
+      close() {},
+      async reload() {},
+      async [Symbol.asyncDispose]() {
+        disposed++;
+        for (const release of detach) release();
+        detach.clear();
+      },
+      async listArtifacts() {
+        return [];
+      },
+      async downloadArtifact() {
+        return Buffer.alloc(0);
+      },
+      async getUsage() {
+        throw new Error("unused");
+      },
+    };
+  };
   const sdk: SdkModule = {
     JsonlLocalAgentStore,
     Agent: {
+      async get(id) {
+        if (remoteMissing) throw Object.assign(new Error("Missing"), { code: "agent_not_found" });
+        return {
+          agentId: id,
+          name: "Test",
+          summary: "",
+          lastModified: 0,
+          runtime: "cloud" as const,
+          status: remoteStatus,
+        };
+      },
       async create(value) {
         created.push(value);
-        return makeAgent(`agent-${created.length}`);
+        return makeAgent(
+          value.agentId ?? (value.cloud ? `bc-${created.length}` : `agent-${created.length}`),
+        );
       },
       async resume(id, value) {
         resumed.push(id);
@@ -140,15 +176,28 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     },
   };
   const bridge = createSdkBridge(
-    { load: () => Effect.succeed(sdk), key: () => Effect.succeed("test-key") },
+    {
+      load: () => Effect.succeed(sdk),
+      key: () => Effect.succeed("test-key"),
+      source: () => {
+        sourceCalls++;
+        return Effect.succeed({
+          repository: "https://github.com/example/repo",
+          ref: "a".repeat(40),
+        });
+      },
+    },
     (line) => {
       messages.push(JSON.parse(line));
       if (JSON.parse(line).error) errors.push(JSON.parse(line));
       for (const listener of listeners) listener();
     },
   );
-  bridge.start?.({ pluginId: "cursor-sdk", dataDir: "/tmp/bb-cursor-sdk-unit", tempDir: "/tmp" });
-  cleanups.push(() => bridge.onClose?.());
+  bridge.start?.({ pluginId: "cursor-sdk", dataDir, tempDir: "/tmp" });
+  cleanups.push(() => {
+    bridge.onClose?.();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
   const messageSchema = z.object({
     id: z.union([z.string(), z.number()]).optional(),
     method: z.string().optional(),
@@ -193,16 +242,16 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       threadId: "thread",
       cwd: "/tmp",
       instructionMode: "append",
-      options,
+      options: executionOptions,
       ...extra,
     });
   const turn = (text: string, execution: Record<string, unknown> = {}) =>
     request("turn/start", {
       threadId: "thread",
-      providerThreadId: "agent-1",
+      providerThreadId,
       clientRequestId: "creq_abcdefghij",
       input: [{ type: "text", text, mentions: [] }],
-      options: { ...options, ...execution },
+      options: { ...executionOptions, ...execution },
     });
   const deltas = () =>
     messages.flatMap((raw) => {
@@ -214,6 +263,15 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const settled = () => waitFor(() => deltas().some((d) => d.kind === "turn.boundary"));
   return {
     bridge,
+    executionOptions,
+    sourceCalls: () => sourceCalls,
+    completeSend: () => completeSend?.(),
+    remoteStatus: (status: "running" | "finished") => {
+      remoteStatus = status;
+    },
+    remoteMissing: () => {
+      remoteMissing = true;
+    },
     messages,
     errors,
     created,
@@ -500,3 +558,206 @@ test("applies reasoning and speed on create, resume, and subsequent sends", asyn
     ],
   });
 });
+
+describe("cloud bridge", () => {
+  const stop = {
+    threadId: "thread",
+    providerThreadId: "bc-1",
+    activeTurnId: null,
+    intent: "release",
+  };
+  test("uses a pinned remote repository, preserves local secrets, and emits native run text", async () => {
+    const f = fixture(undefined, true);
+    const before = process.env.BB_CLOUD_TEST_SECRET;
+    await f.init();
+    expect(
+      (
+        await f.start({
+          options: { ...f.executionOptions, envVars: { BB_CLOUD_TEST_SECRET: "local-only" } },
+          dynamicTools: [
+            { name: "testTool", description: "local", inputSchema: { type: "object" } },
+          ],
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(process.env.BB_CLOUD_TEST_SECRET).toBe(before);
+    expect(f.created[0]).toMatchObject({
+      cloud: {
+        repos: [{ url: "https://github.com/example/repo", startingRef: "a".repeat(40) }],
+        autoCreatePR: false,
+        workOnCurrentBranch: false,
+      },
+    });
+    expect(f.created[0].local).toBeUndefined();
+    expect(f.created[0].cloud?.envVars).toBeUndefined();
+    await f.turn("hello");
+    await f.settled();
+    expect(f.sent[0].options?.local).toBeUndefined();
+    expect(f.sent[0].text).toContain("bb_cloud_runtime");
+    const assembled = experimental_assembleCapturedThreadEvents(
+      z.array(z.record(z.string(), z.unknown())).parse(f.messages),
+      "cursor-cloud",
+    );
+    expect(assembled).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({ type: "agentMessage", text: "Hello" }),
+      }),
+    );
+    expect(f.deltas()).toContainEqual(
+      expect.objectContaining({
+        kind: "item.textDelta",
+        providerTurnId: "run-1",
+        text: expect.stringContaining("https://cursor.com/agents/bc-1"),
+      }),
+    );
+    await f.request("thread/stop", stop);
+    expect(
+      (
+        await f.request("thread/resume", {
+          threadId: "thread",
+          providerThreadId: "bc-1",
+          cwd: "/changed-checkout",
+          instructionMode: "append",
+          options: f.executionOptions,
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(f.resumed).toEqual(["bc-1"]);
+    expect(f.sourceCalls()).toBe(1);
+    expect(f.resumedOptions[0].local).toBeUndefined();
+  });
+
+  test.each(["release", "shutdown"])("detaches a running cloud agent on %s", async (operation) => {
+    const f = fixture(undefined, true);
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.waitFor(() => f.deltas().some((d) => d.kind === "turn.open"));
+    if (operation === "release") await f.request("thread/stop", stop);
+    else f.bridge.onClose?.();
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(f.cancelled()).toBe(0);
+    expect(f.disposed()).toBe(1);
+  });
+
+  test("explicit stop cancels cloud work and releases the handle", async () => {
+    const f = fixture(undefined, true);
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.waitFor(() => f.deltas().some((d) => d.kind === "turn.open"));
+    await f.request("thread/stop", { ...stop, intent: "interrupt" });
+    await f.settled();
+    expect(f.cancelled()).toBe(1);
+    expect(f.disposed()).toBe(1);
+  });
+
+  test("refuses a duplicate follow-up when the remote run is active", async () => {
+    const f = fixture(undefined, true);
+    await f.init();
+    await f.start();
+    await f.turn("hello");
+    await f.settled();
+    await f.request("thread/stop", stop);
+    f.remoteStatus("running");
+    const result = await f.request("thread/resume", {
+      threadId: "thread",
+      providerThreadId: "bc-1",
+      cwd: "/tmp",
+      instructionMode: "append",
+      options: f.executionOptions,
+    });
+    expect(result.error?.message).toContain("still running");
+    expect(f.created).toHaveLength(1);
+    expect(f.resumed).toHaveLength(0);
+  });
+
+  test("retries a lazy launch with its original ID but never replaces established history", async () => {
+    const f = fixture(undefined, true);
+    await f.init();
+    await f.start();
+    await f.request("thread/stop", stop);
+    f.remoteMissing();
+    const resume = () =>
+      f.request("thread/resume", {
+        threadId: "thread",
+        providerThreadId: "bc-1",
+        cwd: "/tmp",
+        instructionMode: "append",
+        options: f.executionOptions,
+      });
+    expect((await resume()).error).toBeUndefined();
+    expect(f.created[1].agentId).toBe("bc-1");
+    expect(f.sourceCalls()).toBe(1);
+    await f.turn("hello");
+    await f.settled();
+    await f.request("thread/stop", stop);
+    expect((await resume()).error?.message).toContain("no longer available");
+    expect(f.created).toHaveLength(2);
+  });
+
+  test.each([{ disallowedTools: ["shell"] }, { instructionMode: "replace" }])(
+    "rejects unsupported cloud policies: %j",
+    async (extra) => {
+      const f = fixture(undefined, true);
+      await f.init();
+      expect((await f.start(extra)).error?.message).toContain("cannot enforce");
+      expect(f.created).toHaveLength(0);
+    },
+  );
+});
+
+test("stop during cloud launch cancels a run returned after the waiting fiber was released", async () => {
+  const f = fixture(undefined, true);
+  await f.init();
+  await f.start();
+  await f.turn("slow-send");
+  await f.request("thread/stop", {
+    threadId: "thread",
+    providerThreadId: "bc-1",
+    activeTurnId: null,
+    intent: "interrupt",
+  });
+  f.completeSend();
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(f.cancelled()).toBe(1);
+  expect(f.deltas().filter((delta) => delta.kind === "turn.boundary")).toHaveLength(1);
+});
+
+test.each([false, true])(
+  "resume retains its original runtime when the Cloud agents toggle changes (cloud=%s)",
+  async (cloud) => {
+    const f = fixture(undefined, cloud);
+    const providerThreadId = cloud ? "bc-1" : "agent-1";
+    await f.init();
+    await f.start();
+    await f.turn("hello");
+    await f.settled();
+    await f.request("thread/stop", {
+      threadId: "thread",
+      providerThreadId,
+      activeTurnId: null,
+      intent: "release",
+    });
+    const changedOptions = {
+      ...f.executionOptions,
+      providerOptions: { profile: "personal", runtime: cloud ? "local" : "cloud" },
+    };
+    const result = await f.request("thread/resume", {
+      threadId: "thread",
+      providerThreadId,
+      cwd: "/tmp",
+      instructionMode: "append",
+      options: changedOptions,
+    });
+    expect(result.error).toBeUndefined();
+    expect(f.resumed).toEqual([providerThreadId]);
+    expect(Boolean(f.resumedOptions[0].local)).toBe(!cloud);
+    f.messages.splice(0);
+    await f.turn("hello again", changedOptions);
+    await f.settled();
+    expect(Boolean(f.sent[1].options?.local)).toBe(!cloud);
+    expect(f.created).toHaveLength(1);
+  },
+);

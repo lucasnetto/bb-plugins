@@ -13,7 +13,7 @@ import { SdkError, foreign } from "./operations.js";
 
 export const SDK_VERSION = "1.0.31";
 export type SdkModule = {
-  Agent: Pick<typeof CursorSdk.Agent, "create" | "resume">;
+  Agent: Pick<typeof CursorSdk.Agent, "create" | "resume" | "get">;
   Cursor: Pick<typeof CursorSdk.Cursor, "me" | "models">;
   JsonlLocalAgentStore: typeof CursorSdk.JsonlLocalAgentStore;
 };

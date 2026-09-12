@@ -1,8 +1,9 @@
 # Cursor SDK
 
-A local Cursor provider for BB, offered alongside Cursor ACP as **Cursor SDK**.
-It runs against the selected environment's working directory and uses the
-profile's existing Cursor API key. Cloud agents are outside this version's scope.
+The **Cursor SDK** provider runs locally or on Cursor Cloud using the profile's
+existing Cursor API key. Choose the runtime with **Cloud agents** in the Cursor
+SDK plugin settings. The toggle defaults off and applies to new conversations;
+existing threads keep their original runtime, even after a restart.
 
 ## Install and use
 
@@ -24,6 +25,49 @@ Node.js 22.13+ and npm. Exactly `@cursor/sdk@1.0.31` is installed in the plugin'
 provider bridge data directory, including the platform package. The published SDK loads
 adjacent files and native helpers, so it stays intact rather than embedded in
 BB's single-file host artifact. No BB core changes or global npm installs.
+
+## Cursor Cloud
+
+Turn on **Cloud agents** in the Cursor SDK plugin settings, then select
+**Cursor SDK** in a new thread. You can also set it from the CLI:
+
+```sh
+bb plugin config cursor-sdk set cloudAgents true
+# Use local execution for subsequent new threads:
+bb plugin config cursor-sdk set cloudAgents false
+```
+
+This is an instance-wide default for new Cursor SDK conversations, not a
+per-message switch. A cloud conversation cannot be moved into a local SDK
+conversation, or vice versa. BB's current plugin API does not expose custom
+per-thread toggles beside the model picker.
+
+Start from a clean Git checkout with a
+GitHub `origin` and push the starting commit first. The provider pins that commit
+and asks Cursor to work on an isolated remote branch. Your Cursor account must
+have Cloud agents and access to that GitHub repository. Automatic PR creation is
+off; the agent can still create a PR when you request one.
+
+Cloud uses the same model, reasoning, speed, and plan controls. BB streams the
+remote replies and tools, and shows the agent link plus branch/PR links returned
+by Cursor. Changes stay in the remote branch; fetch and review them locally when
+ready. Local BB tools, CLI access, and environment variables are not forwarded.
+Configure remote credentials/MCP in Cursor. Images are supported; local file
+attachments must be pasted as text or committed to the repository.
+
+Stop cancels the remote run. Releasing the session or shutting down BB detaches
+and leaves cloud work running. Resume uses the same cloud agent and pinned
+repository, even if the local checkout has changed. If that agent is still
+running after reconnect, BB shows its Cursor link: wait for completion there,
+then retry the follow-up. This version does not replay output missed while BB
+was disconnected. A missing or archived agent produces an actionable error;
+it never silently replaces established conversation history.
+
+Cloud launch records under `cloud-sessions/<profile>` contain the BB thread ID,
+repository, commit, and launch state, with no credentials. Keep these records to
+recover a first launch interrupted before Cursor created the remote agent.
+Cloud cannot enforce BB tool denylists or replace Cursor's system prompt; those
+policies are rejected. Full access is required.
 
 ## Accounts and storage
 
@@ -66,11 +110,20 @@ bb plugin build plugins/cursor-sdk
 ```
 
 Tests cover the public bridge conformance suite, resume, cancellation, custom
-tool forwarding, model presets, and event translation.
+tool forwarding, model controls, event translation, Git source validation, cloud
+launch recovery, remote identity retention, and detach versus cancellation.
 
 The Personal installation was also exercised through BB with Composer 2.5:
 streamed replies, release/reload with conversation recall, a BB plugin tool call,
 and cancellation of a native shell command followed by a successful new turn.
+Cursor Cloud was exercised on Personal with a pinned pushed commit: streamed
+reply, release/resume with marker recall, remote shell tool streaming, and Stop
+confirmed as `cancelled` by Cursor's API, followed by a successful new turn.
+The unified provider toggle was also tested live: a new `cursor-sdk` thread
+launched on Cloud, then resumed with marker recall after the default was changed
+back to local. Tests did not modify files or create PRs.
+Native window capture was unavailable (`cgWindowNotFound`), so UI rendering was
+not visually verified.
 
 Design reference: [wyrd-company/ahp-cursor-sdk](https://github.com/wyrd-company/ahp-cursor-sdk).
 This implements BB's native bridge directly, without an AHP dependency or copied

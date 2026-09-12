@@ -20,7 +20,7 @@
   },
   "bb": {
     "name": "Cursor SDK",
-    "description": "Use the local Cursor SDK as a BB provider with persistent conversations and native BB tools.",
+    "description": "Use Cursor locally or in the cloud with persistent conversations and native model controls.",
     "branding": {
       "icon": "Terminal"
     },

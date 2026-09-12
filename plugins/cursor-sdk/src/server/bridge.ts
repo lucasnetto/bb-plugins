@@ -41,6 +41,14 @@ import {
 } from "./runtime.js";
 import { resolveModel, modelCatalog, legacyModelCatalog } from "./models.js";
 import { RunEvents } from "./events.js";
+import {
+  cloudRunSummary,
+  openCloudSession,
+  readCloudSource,
+  type CloudSession,
+  type CloudSource,
+} from "./cloud.js";
+import { randomUUID } from "node:crypto";
 
 type StartParams = z.infer<typeof threadStartParamsSchema>;
 type ResumeParams = z.infer<typeof threadResumeParamsSchema>;
@@ -52,10 +60,12 @@ type TurnState = {
   run?: Run;
   events: RunEvents;
   interrupted: boolean;
+  cancelRequested: boolean;
   ended: boolean;
   fiber?: Fiber.Fiber<void, never>;
 };
 type Session = {
+  cloud?: CloudSession;
   models: SDKModel[];
   threadId: string;
   agent: SDKAgent;
@@ -70,6 +80,7 @@ type Session = {
 export interface BridgeDependencies {
   load: (dataDir: string) => Effect.Effect<SdkModule, SdkError>;
   key: (profile: Profile) => Effect.Effect<string, SdkError>;
+  source: (cwd: string) => Effect.Effect<CloudSource, SdkError>;
 }
 
 export function createSdkBridge(
@@ -148,7 +159,7 @@ export function createSdkBridge(
       if (session.turn && !session.turn.ended) {
         session.turn.interrupted = true;
         const run = session.turn.run;
-        if (run) yield* foreign(() => run.cancel());
+        if (run && !session.cloud) yield* foreign(() => run.cancel());
       }
     }).pipe(
       Effect.ensuring(
@@ -179,7 +190,20 @@ export function createSdkBridge(
     }
     constructing.add(params.threadId);
     return yield* Effect.gen(function* () {
-      const { profile } = optionsSchema.parse(params.options.providerOptions);
+      const { profile, runtime } = optionsSchema.parse(params.options.providerOptions);
+      // A saved native identity owns its runtime. The setting only selects
+      // where a new conversation starts, including after a bridge restart.
+      const isCloud =
+        "providerThreadId" in params
+          ? String(params.providerThreadId).startsWith("bc-")
+          : runtime === "cloud";
+      if (isCloud && (params.disallowedTools?.length || params.instructionMode === "replace"))
+        return yield* Effect.fail(
+          new SdkError({
+            message:
+              "Cursor Cloud cannot enforce tool denylists or replace its system prompt. Use the local Cursor SDK provider for this policy.",
+          }),
+        );
       const sdk = yield* load(dataDir);
       const apiKey = yield* key(profile);
       const models = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
@@ -195,10 +219,11 @@ export function createSdkBridge(
         return yield* Effect.fail(
           new SdkError({ message: "Select a Cursor SDK model before starting a thread." }),
         );
-      const env = { ...params.options.envVars, CURSOR_API_KEY: apiKey };
+      const env = isCloud ? {} : { ...params.options.envVars, CURSOR_API_KEY: apiKey };
       if (
         [...sessions.values()].some(
-          (session) => JSON.stringify(session.env) !== JSON.stringify(env),
+          (session) =>
+            !isCloud && !session.cloud && JSON.stringify(session.env) !== JSON.stringify(env),
         )
       ) {
         return yield* Effect.fail(
@@ -208,7 +233,7 @@ export function createSdkBridge(
           }),
         );
       }
-      Object.assign(process.env, env);
+      if (!isCloud) Object.assign(process.env, env);
       const store = new sdk.JsonlLocalAgentStore(join(dataDir, "conversations", profile));
       const options = {
         apiKey,
@@ -220,11 +245,25 @@ export function createSdkBridge(
           ? { systemPrompt: params.options.instructions }
           : {}),
       };
-      const agent =
-        "providerThreadId" in params
+      const cloud = isCloud
+        ? yield* openCloudSession({
+            sdk,
+            dataDir,
+            profile,
+            threadId: params.threadId,
+            options: { apiKey, model, mode: options.mode },
+            source: () => (dependencies.source ?? readCloudSource)(params.cwd),
+            providerThreadId:
+              "providerThreadId" in params ? String(params.providerThreadId) : undefined,
+          })
+        : undefined;
+      const agent = cloud
+        ? cloud.agent
+        : "providerThreadId" in params
           ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
           : yield* foreign(() => sdk.Agent.create(options));
       const session: Session = {
+        cloud,
         models,
         threadId: params.threadId,
         agent,
@@ -234,7 +273,7 @@ export function createSdkBridge(
         env,
         released: false,
       };
-      session.customTools = customTools(params.dynamicTools ?? [], session);
+      if (!isCloud) session.customTools = customTools(params.dynamicTools ?? [], session);
       sessions.set(params.threadId, session);
       io.send({
         jsonrpc: "2.0",
@@ -264,11 +303,24 @@ export function createSdkBridge(
           mimeType: mimeTypeFromExtension(input.path),
         });
       } else if (input.type === "image") images.push({ url: input.url });
-      else if (input.type === "localFile") text.push(`Attached file: ${input.path}`);
+      else if (input.type === "localFile") {
+        if (session.cloud)
+          return yield* Effect.fail(
+            new SdkError({
+              message:
+                "Cursor Cloud cannot read local file attachments. Paste the relevant text, attach an image, or commit the file to the repository.",
+            }),
+          );
+        text.push(`Attached file: ${input.path}`);
+      }
     }
     if (images.length > 5)
       return yield* Effect.fail(
         new SdkError({ message: "Cursor SDK supports up to five images per message." }),
+      );
+    if (session.cloud)
+      text.push(
+        "<bb_cloud_runtime>Execution is on Cursor Cloud in the remote repository. Local BB host paths, environment variables, callback tools, and BB CLI access are unavailable. Use the cloud environment and its configured tools. Report remote branch or pull request links for any changes.</bb_cloud_runtime>",
       );
     return {
       message: { text: text.join("\n\n"), ...(images.length ? { images } : {}) },
@@ -318,31 +370,49 @@ export function createSdkBridge(
     if (session.released || turn.interrupted) return;
     const input = yield* prompt(params, session);
     const run = yield* foreign(() =>
-      session.agent.send(input.message, {
-        ...(params.options.model
-          ? {
-              model: resolveModel(
-                params.options.model,
-                session.models,
-                params.options.reasoningLevel,
-                params.options.serviceTier,
-              ),
-            }
-          : {}),
-        mode: params.options.promptMode === "plan" ? "plan" : "agent",
-        local: { customTools: session.customTools },
-        idempotencyKey: params.clientRequestId,
-      }),
+      session.agent
+        .send(input.message, {
+          ...(params.options.model
+            ? {
+                model: resolveModel(
+                  params.options.model,
+                  session.models,
+                  params.options.reasoningLevel,
+                  params.options.serviceTier,
+                ),
+              }
+            : {}),
+          mode: params.options.promptMode === "plan" ? "plan" : "agent",
+          ...(session.cloud ? {} : { local: { customTools: session.customTools } }),
+          idempotencyKey: params.clientRequestId,
+        })
+        .then(async (run) => {
+          // Stop can arrive while Cursor is still creating the run. Keep cleanup
+          // attached to the SDK promise even if BB interrupts the waiting fiber.
+          turn.run = run;
+          if (turn.cancelRequested || (session.released && !session.cloud)) await run.cancel();
+          if (session.released) await session.agent[Symbol.asyncDispose]();
+          return run;
+        }),
     );
     turn.run = run;
+    if (session.cloud) yield* session.cloud.markCreated();
     acceptInput(session, turn);
     session.lastInstructions = input.instructions;
     if (turn.interrupted || session.released) {
-      yield* foreign(() => run.cancel());
       finish(session, turn, "interrupted");
       return;
     }
     emit(session.threadId, [{ kind: "turn.open", providerTurnId: run.id }]);
+    const cloudNote = (text: string) => {
+      if (!text) return;
+      const key = { providerItemId: `cloud-${randomUUID()}` };
+      emit(session.threadId, [
+        { kind: "item.textDelta", key, channel: "agentMessage", text, providerTurnId: run.id },
+        { kind: "item.textClose", key, channel: "agentMessage", providerTurnId: run.id },
+      ]);
+    };
+    if (session.cloud) cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source));
     yield* Stream.fromAsyncIterable(
       run.stream(),
       (error) => new SdkError({ message: safeMessage(error) }),
@@ -354,7 +424,11 @@ export function createSdkBridge(
       ),
     );
     const result = yield* foreign(() => run.wait());
-    if (!turn.ended && !session.released) turn.events.finish(result);
+    if (!turn.ended && !session.released) {
+      turn.events.finish(result);
+      if (session.cloud && result.git?.branches.length)
+        cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source, result));
+    }
     finish(
       session,
       turn,
@@ -386,6 +460,7 @@ export function createSdkBridge(
             );
         }),
         interrupted: false,
+        cancelRequested: false,
         ended: false,
       };
       const previous = session.turn?.fiber;
@@ -396,7 +471,7 @@ export function createSdkBridge(
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
               const run = turn.run;
-              if (run && !turn.interrupted)
+              if (run && !turn.interrupted && !session.released)
                 yield* foreign(() => run.cancel()).pipe(Effect.catch(() => Effect.void));
               finish(
                 session,
@@ -454,11 +529,13 @@ export function createSdkBridge(
         else if (session.turn && !session.turn.ended) {
           const turn = session.turn;
           turn.interrupted = true;
+          turn.cancelRequested = true;
           tools.resolvePendingToolCalls(session, "The turn was interrupted.");
           const run = turn.run;
           if (run) yield* foreign(() => run.cancel());
           finish(session, turn, "interrupted");
         }
+        if (params.intent !== "release") yield* closeSession(session);
         return {};
       }
       case "thread/discard": {

@@ -6,6 +6,15 @@ export default function plugin(bb: BbPluginApi) {
   if (directory !== ".bb" && directory !== ".bb-work")
     throw new Error("Cursor SDK requires a configured Personal or Work profile.");
   const profile = directory === ".bb-work" ? "work" : "personal";
+  bb.settings.define({
+    cloudAgents: {
+      type: "boolean",
+      label: "Cloud agents",
+      description:
+        "Run new Cursor SDK threads on Cursor Cloud. Off runs locally. Existing conversations keep their original runtime. Cloud requires a clean, pushed GitHub commit.",
+      default: false,
+    },
+  });
   bb.providers.register({
     id: "cursor-sdk",
     displayName: "Cursor SDK",
@@ -16,6 +25,9 @@ export default function plugin(bb: BbPluginApi) {
       installUrl: "https://cursor.com/docs/sdk/typescript",
     },
     experimental_bridgeOptions: { profile },
+    deriveProviderOptions: ({ settings }) => ({
+      runtime: settings.cloudAgents === true ? "cloud" : "local",
+    }),
     capabilities: {
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
