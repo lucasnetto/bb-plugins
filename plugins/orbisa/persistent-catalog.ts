@@ -45,18 +45,23 @@ export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(functio
       ),
     );
   }
-  const instructions = yield* foreign("Could not read 180seg instructions.", () =>
-    readFile(join(root, "AGENTS.md"), "utf8"),
-  );
-  yield* foreign("Could not install 180seg instructions.", (signal) =>
-    checked(
-      run([
-        "python3",
-        "-c",
-        "import pathlib,sys; p=pathlib.Path(sys.argv[1]); p.write_text(sys.stdin.read())",
-        `${WORKSPACE}/AGENTS.md`,
-      ]),
-      { signal, stdin: instructions.replaceAll(root, WORKSPACE) },
-    ),
-  );
+  for (const [source, filename] of [
+    ["orbisa-agents.md", "AGENTS.md"],
+    ["orbisa-topology.md", "VM-TOPOLOGY.md"],
+  ]) {
+    const contents = yield* foreign("Could not read VM workspace instructions.", () =>
+      readFile(join(homedir(), ".local/libexec", source), "utf8"),
+    );
+    yield* foreign("Could not install VM workspace instructions.", (signal) =>
+      checked(
+        run([
+          "python3",
+          "-c",
+          "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.stdin.read())",
+          `${WORKSPACE}/${filename}`,
+        ]),
+        { signal, stdin: contents },
+      ),
+    );
+  }
 });

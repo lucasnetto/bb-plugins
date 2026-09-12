@@ -50,7 +50,12 @@ A new child does not automatically inherit this conversation. Include:
 - Objective and concrete acceptance criteria.
 - Relevant files, decisions, constraints, and any existing local changes.
 - File ownership and shared-workspace coordination rules.
-- Validation to perform and expected deliverable.
+- Ownership through implementation, relevant validation, fixes, and PR handoff.
+  State whether pushing/opening a PR is already authorized. If it is, the worker
+  opens and links the PR; otherwise it supplies the complete diff, PR title/body,
+  and validation evidence for the parent to review.
+- Validation to perform and expected deliverable. Use
+  [the assignment template](references/assignment.md) for substantial work.
 - A request to report changed files, checks, outcomes, and blockers.
 - Whether further delegation is authorized; default to doing the assigned task
   without creating more workers.
@@ -59,8 +64,11 @@ Quote shell arguments correctly. For a long handoff, use a local UTF-8 prompt
 file and pass `--prompt "$(cat /absolute/path/handoff.txt)"`. Do not interpolate
 untrusted text directly into shell code or include credentials in prompts.
 
-Capture the returned worker ID. Tell the user briefly what was delegated and
-which model is running. Keep it hidden and do not open split panes unless the
+Capture the returned worker ID. Inspect `bb thread show <worker-id> --json`
+and `bb thread log <worker-id>` to verify a turn actually started: a thread ID or
+queued prompt alone is not evidence of execution. If it is queued, report that
+state and continue independent work; check again at the next coordination point.
+Tell the user briefly what was delegated and which model was assigned. Keep it hidden and do not open split panes unless the
 user asks. The user can inspect it via **Workers** in the parent's right panel;
 archived and hidden children remain accessible there.
 
@@ -77,6 +85,13 @@ archived and hidden children remain accessible there.
 - Read `bb thread output <worker-id>` and inspect the actual diff and relevant
   validation. Use `bb thread log <worker-id>` for missing context or failures.
   An idle thread is not evidence that its assigned task succeeded.
+- Diagnose a stalled worker from its status/log and latest activity before
+  replacing it. Resolve a missing input or transient startup problem with the
+  same worker. Do not start a second writer while the first may still execute.
+  If ownership must move, stop the old worker, verify it is no longer active,
+  inspect and preserve its diff, then record the transfer (old/new owner, files,
+  completed work, remaining work, checks) in both handoffs. The parent follows
+  the same transfer procedure before taking over itself.
 - Send fixes back to the same worker when it owns implementation. If it used a
   separate environment, review that environment's diff and integrate explicitly.
   Do not claim a parent workspace has changes that exist only in a worktree.

@@ -1,3 +1,4 @@
+import { startupStep, retryConnection } from "./task-startup.ts";
 import { reconnectDaemon } from "./task-resume.ts";
 import { dirname, join } from "node:path";
 import { registerTaskMaintenance } from "./task-maintenance.ts";
@@ -78,12 +79,23 @@ export function registerTaskProvider(
         machineDriver.prepare(resource, context.signal, report),
       );
       const { hostId } = await timed(timing, "Machine enrollment and connection", () =>
-        bb.experimental_machines.bootstrap({
-          key: resource.key,
-          executor: machineDriver.executor(resource),
-          report: context.report,
-          signal: context.signal,
-        }),
+        startupStep(
+          "host-unavailable",
+          "Machine enrollment did not connect. Check BB Connect and the host daemon, then retry provisioning.",
+          context.signal,
+          () =>
+            retryConnection(
+              () =>
+                bb.experimental_machines.bootstrap({
+                  key: resource.key,
+                  executor: machineDriver.executor(resource),
+                  report: context.report,
+                  signal: context.signal,
+                }),
+              context.signal,
+              report,
+            ),
+        ),
       );
       await bb.storage.kv.set(`task-resource/${hostId}`, resource);
       // Bootstrap may finish its progress stream before our final measurement.
@@ -124,12 +136,23 @@ export function registerTaskProvider(
       if (connected) context.report.log("Resumed existing BB daemon without bootstrap.\n");
       else {
         context.report.step("Restoring BB daemon through bootstrap");
-        await bb.experimental_machines.bootstrap({
-          key: resource.key,
-          executor: machineDriver.executor(resource),
-          report: context.report,
-          signal: context.signal,
-        });
+        await startupStep(
+          "host-unavailable",
+          "Machine enrollment did not reconnect. Check BB Connect and the host daemon, then resume again.",
+          context.signal,
+          () =>
+            retryConnection(
+              () =>
+                bb.experimental_machines.bootstrap({
+                  key: resource.key,
+                  executor: machineDriver.executor(resource),
+                  report: context.report,
+                  signal: context.signal,
+                }),
+              context.signal,
+              (text) => context.report.step(text),
+            ),
+        );
       }
       // Removal may resume while our sweep awaits hosts.delete. Do not acquire
       // the policy lock in that path or extend activity on a retiring machine.

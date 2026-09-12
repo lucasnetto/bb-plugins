@@ -36,3 +36,10 @@ void test("concurrent base operations wait and a failed build does not block the
   assert.equal(await second, "ready");
   assert.deepEqual(events, ["first", "second"]);
 });
+
+void test("a base recipe change invalidates the cached setup", () => {
+  assert.notEqual(
+    baseFingerprint("source", "bb", "codex", "skills", 1),
+    baseFingerprint("source", "bb", "codex", "skills", 2),
+  );
+});

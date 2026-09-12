@@ -22,6 +22,7 @@ export function command(argv: string[], options: CommandOptions = {}) {
     const input = options.stdinFile ? createReadStream(options.stdinFile) : null;
     let stdout = "";
     let failed = false;
+    let failureCode = "EIO";
     const stop = () => {
       failed = true;
       if (child.pid) {
@@ -32,7 +33,10 @@ export function command(argv: string[], options: CommandOptions = {}) {
         }
       }
     };
-    const timer = setTimeout(stop, options.timeoutMs ?? 120_000);
+    const timer = setTimeout(() => {
+      failureCode = "ETIMEDOUT";
+      stop();
+    }, options.timeoutMs ?? 120_000);
     options.signal?.addEventListener("abort", stop, { once: true });
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -43,16 +47,20 @@ export function command(argv: string[], options: CommandOptions = {}) {
     child.stdin.on("error", () => {
       /* Exit status reports closed stdin. */
     });
-    child.once("error", () => {
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      failureCode = error.code ?? "EIO";
       failed = true;
     });
     child.once("close", (code) => {
       input?.destroy();
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", stop);
-      if (failed)
+      if (options.signal?.aborted) reject(options.signal.reason);
+      else if (failed)
         reject(
-          new Error("Orbisa command could not complete (cancelled, timed out, or unavailable)."),
+          Object.assign(new Error(`Orbisa command could not complete (${failureCode}).`), {
+            code: failureCode,
+          }),
         );
       else resolve({ exitCode: code ?? 1, stdout });
     });

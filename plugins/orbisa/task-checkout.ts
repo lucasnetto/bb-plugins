@@ -1,3 +1,5 @@
+import { taskReadiness } from "./task-readiness.ts";
+import { StartupFailure } from "./task-startup.ts";
 import { concurrently, CATALOG_CONCURRENCY } from "./task-concurrency.ts";
 import { timed } from "./task-timing.ts";
 import { createHash } from "node:crypto";
@@ -92,7 +94,8 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
           if (await isCatalog(project.id)) return { action: "accept" };
           return {
             action: "refuse",
-            message: "This project needs a Git remote or the configured 180seg workspace.",
+            message:
+              "[unsupported-workspace] Choose a project with a Git remote or the configured 180seg workspace.",
           };
         }
         normalizeRemote(project.gitRemoteUrl);
@@ -114,9 +117,34 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
         .max(10)
         .safeParse(await bb.storage.kv.get(`task-timings/${context.host.id}`));
       if (timings.success) context.report.log(`${timings.data.join("\n")}\n`);
+      const readiness = async (catalog: boolean) => {
+        const checks = await timed(
+          (text) => context.report.log(`${text}\n`),
+          "Task readiness",
+          () =>
+            taskReadiness({
+              name: resource.name,
+              user,
+              path,
+              catalog,
+              signal: context.signal,
+              report: (text) => context.report.log(`${text}\n`),
+              hostConnected: async () =>
+                (await bb.sdk.hosts.get({ hostId: context.host.id })).status === "connected",
+            }),
+        );
+        await bb.storage.kv.set(`task-readiness/${context.host.id}`, {
+          at: Date.now(),
+          path,
+          checks,
+        });
+      };
       if (context.project.gitRemoteUrl === null) {
         if (!(await isCatalog(context.project.id)))
-          throw new Error("Unsupported repository workspace.");
+          throw new StartupFailure(
+            "unsupported-workspace",
+            "Choose a project with a Git remote or the configured 180seg workspace.",
+          );
         if (context.inputs.branch)
           return {
             status: "failed",
@@ -164,10 +192,9 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
               },
             ),
         );
-        const instructions = (await readFile(join(catalogRoot, "AGENTS.md"), "utf8")).replaceAll(
-          catalogRoot,
-          path,
-        );
+        const instructions = (
+          await readFile(join(homedir(), ".local/libexec/orbisa-agents.md"), "utf8")
+        ).replaceAll("/workspace/180seg", path);
         await checked(
           run(resource, [
             "python3",
@@ -177,6 +204,24 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
           ]),
           { signal: context.signal, stdin: instructions },
         );
+        const topology = await readFile(
+          join(homedir(), ".local/libexec/orbisa-topology.md"),
+          "utf8",
+        ).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+          return null;
+        });
+        if (topology)
+          await checked(
+            run(resource, [
+              "python3",
+              "-c",
+              "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.stdin.read())",
+              `${path}/VM-TOPOLOGY.md`,
+            ]),
+            { signal: context.signal, stdin: topology },
+          );
+        await readiness(true);
         return {
           status: "created",
           path,
@@ -211,6 +256,7 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
         },
         (text) => context.report.log(`${text}\n`),
       );
+      await readiness(false);
       return {
         status: "created",
         path,

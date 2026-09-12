@@ -21,3 +21,23 @@ Choose Profiles under Settings → Appearance → Navigation if another navigati
 Switching profiles restores the last thread visited in that profile on this browser. Each profile stores its own last thread locally. If no thread has been remembered, the profile opens New thread; opening New thread directly never restores an old thread.
 
 Restoring the last thread uses BB’s client-side navigation, avoiding a second full page load after the destination instance opens. Switching between instances still loads the destination app once.
+
+## Refresh local plugins across profiles
+
+Use `bb profiles refresh <plugin-id> ...` after validating a change in the
+permanent `~/Developer/lucasnetto/bb-plugins` checkout. With no IDs it refreshes
+installed local bb-plugins plugins. `--check` only reports installation path,
+package version, content-derived build ID, app bundle hash, enabled state,
+and health for each profile. It reports an unreachable profile as a failure.
+
+The command builds each plugin once, reloads both installations, repairs stale
+local source paths, preserves disabled state, and verifies the result. A failed
+build is never loaded. It does not pull Git, discard local changes, update
+managed third-party plugins, or install missing plugins. Publish source changes
+through the normal repository workflow.
+
+Profile isolation still applies to threads and provider accounts. The bounded
+refresh helper addresses the two local servers only for plugin administration;
+it never changes the calling thread environment or account credentials. Do not
+copy its internal server selection into agent commands. The former shell
+`bb-reload-all` function can be replaced by `bb profiles refresh "$@"`.

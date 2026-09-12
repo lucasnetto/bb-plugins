@@ -1,3 +1,4 @@
+import { StartupFailure, startupStep, retryConnection } from "./task-startup.ts";
 import { overlap } from "./task-concurrency.ts";
 import { createHash } from "node:crypto";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -150,16 +151,42 @@ export function createTaskDriver(
     },
     async prepare(resource, signal, report, forRemoval = false) {
       const vm = await lookup(resource, signal);
-      if (!vm || !isolated(vm)) throw new Error("Task VM is missing or no longer isolated.");
+      if (!vm || !isolated(vm))
+        throw new StartupFailure(
+          "host-unavailable",
+          "Task VM is missing or no longer isolated. Check its identity and isolation in OrbStack.",
+        );
       const boot = async (signal: AbortSignal) => {
-        await checked(["orbctl", "start", resource.name], { signal });
-        await checked(
-          run(resource.name, [
-            "sh",
-            "-c",
-            "test ! -e /mnt/mac && command -v node >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null",
-          ]),
-          { signal },
+        await startupStep(
+          "host-unavailable",
+          "Start OrbStack and check the task VM, then retry provisioning.",
+          signal,
+          () => checked(["orbctl", "start", resource.name], { signal }),
+        );
+        await startupStep(
+          "host-unavailable",
+          "The VM did not respond. Check OrbStack and retry provisioning.",
+          signal,
+          () =>
+            retryConnection(
+              () => checked(run(resource.name, ["true"]), { signal, timeoutMs: 15_000 }),
+              signal,
+              report,
+            ),
+        );
+        await startupStep(
+          "incompatible-runtime",
+          "The template needs Node, curl and Python, with no Mac mounts. Repair the template and recreate the task.",
+          signal,
+          () =>
+            checked(
+              run(resource.name, [
+                "sh",
+                "-c",
+                "test ! -e /mnt/mac && command -v node >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null",
+              ]),
+              { signal },
+            ),
         );
       };
       // BB may briefly resume a persistent machine to finish workspace teardown.
@@ -178,7 +205,12 @@ export function createTaskDriver(
         async (signal) =>
           Promise.all([
             command(["codex", "--version"], { signal }).catch(() => null),
-            checked(["gh", "auth", "token"], { signal }),
+            startupStep(
+              "authentication-failed",
+              "GitHub account unavailable. Run gh auth login on the Mac, then retry provisioning.",
+              signal,
+              () => checked(["gh", "auth", "token"], { signal }),
+            ),
             command(["aws", "configure", "export-credentials", "--format", "process"], {
               signal,
             }).catch(() => null),
@@ -340,7 +372,11 @@ export function createTaskDriver(
     async startDaemon(resource, hostId, signal) {
       if (!/^host_[a-z0-9]+$/.test(hostId)) return false;
       const vm = await lookup(resource, signal);
-      if (!vm || !isolated(vm)) throw new Error("Task VM is missing or no longer isolated.");
+      if (!vm || !isolated(vm))
+        throw new StartupFailure(
+          "host-unavailable",
+          "Task VM is missing or no longer isolated. Check its identity and isolation in OrbStack.",
+        );
       const result = await command(
         run(resource.name, ["python3", "-c", START_DAEMON_SCRIPT, hostId]),
         { signal, timeoutMs: 10_000 },

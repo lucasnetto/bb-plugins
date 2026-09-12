@@ -222,3 +222,27 @@ Run `node --experimental-strip-types --test plugins/orbisa/tests/*.test.ts`,
 `bb plugin build plugins/orbisa` from the repository root. Refresh both profiles
 after changes. The backend uses the public plugin SDK. BB owns cancellation of machine
 operations. Disabling the plugin pauses its idle/deletion policy until reload.
+
+## Provisioning readiness and failures
+
+After checkout creation, one readiness stage checks the writable workspace,
+resolved executable paths and CLI capabilities, GitHub token availability,
+optional Codex/Cursor account material, and the host's connection to this
+profile. It reports every check and persists the latest result per task host.
+Missing optional provider accounts are warnings because another provider may
+be used; local account material does not prove an unexpired remote session.
+No credential values or provider output are included in the report.
+
+Failures identify `host-unavailable`, `unsupported-workspace`,
+`authentication-failed`, or `incompatible-runtime` and a corrective action.
+Connection probes and enrollment retry identified transient transport errors
+at most twice; configuration failures and full provisioning are not retried.
+Readiness has its own elapsed-time stage alongside existing preparation and
+checkout timings.
+
+Prepared-base receipts bind the content fingerprint to the OrbStack VM ID. A
+receipt hit does not wake the base. Recovery without a valid receipt checks
+the marker's fingerprint, rather than just its existence; interrupted or stale
+builds are rebuilt. Recipe 2 also pins the Clojure helpers to the template's
+Babashka interpreter so BB's launcher cannot capture their `bb` shebang.
+Keep `BASE_RECIPE` current when base installation steps change.
