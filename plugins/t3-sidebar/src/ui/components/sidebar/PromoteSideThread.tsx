@@ -11,6 +11,12 @@ import type { rpcContract } from "@/shared/rpc-contract";
 import { SIDE_THREAD_CHANGED } from "@/shared/side-thread-contract";
 import { Button } from "@/ui/components/ui/button";
 import { Icon } from "@/ui/components/ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/ui/components/ui/tooltip";
 
 export function PromoteSideThread() {
   const { scope } = useComposerView();
@@ -77,17 +83,30 @@ function PromoteButton({ threadId }: { threadId: string }) {
   }
 
   if (!canPromote) return null;
+  const label = pending ? "Promoting…" : "Promote to sidebar";
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="h-7 gap-1.5 px-2 text-muted-foreground"
-      disabled={pending}
-      onClick={() => void promote()}
-    >
-      <Icon name="ArrowUpRight" aria-hidden="true" />
-      {pending ? "Promoting…" : "Promote to sidebar"}
-    </Button>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground"
+            aria-label={label}
+            aria-busy={pending}
+            disabled={pending}
+            onClick={() => void promote()}
+          >
+            {pending ? (
+              <Icon name="Spinner" className="motion-safe:animate-spin" aria-hidden="true" />
+            ) : (
+              <Icon name="ArrowUpRight" aria-hidden="true" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
