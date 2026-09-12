@@ -26,3 +26,33 @@ test("one provider derives its runtime from the Cloud agents toggle", async () =
     await harness.lifecycle.dispose();
   }
 });
+
+test("composer RPC persists the same setting and publishes cross-window changes", async () => {
+  const { bb, harness } = createFakePluginHost({ pluginId: "cursor-sdk", dataDir: "/tmp/.bb" });
+  try {
+    plugin(bb);
+    expect(await harness.behavior.callRpc("runtimeGet", {})).toEqual({ cloudAgents: false });
+    expect(await harness.behavior.callRpc("runtimeSet", { cloudAgents: true })).toEqual({
+      cloudAgents: true,
+    });
+    expect(harness.inspection.realtimeSignals).toContainEqual(
+      expect.objectContaining({
+        channel: "runtime-default-changed",
+        payload: { cloudAgents: true },
+      }),
+    );
+    const reloaded = await harness.lifecycle.reload(plugin);
+    expect(await reloaded.harness.behavior.callRpc("runtimeGet", {})).toEqual({
+      cloudAgents: true,
+    });
+    await reloaded.harness.behavior.setSettings({ cloudAgents: false });
+    expect(await reloaded.harness.behavior.callRpc("runtimeGet", {})).toEqual({
+      cloudAgents: false,
+    });
+    await expect(
+      reloaded.harness.behavior.callRpc("runtimeSet", { cloudAgents: "yes" }),
+    ).rejects.toThrow();
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});

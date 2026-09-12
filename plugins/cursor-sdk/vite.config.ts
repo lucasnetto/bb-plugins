@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   test: {
     name: "cursor-sdk",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     environment: "node",
     setupFiles: ["tests/setup.ts"],
   },

@@ -1,8 +1,10 @@
 # Cursor SDK
 
 The **Cursor SDK** provider runs locally or on Cursor Cloud using the profile's
-existing Cursor API key. Choose the runtime with **Cloud agents** in the Cursor
-SDK plugin settings. The toggle defaults off and applies to new conversations;
+existing Cursor API key. Use the **cloud** switch in the New thread composer with Cursor SDK selected,
+or use **Cloud agents** in the
+plugin settings. Both update the same persisted setting for this BB instance.
+The switch defaults to off (local) and applies to new conversations;
 existing threads keep their original runtime, even after a restart.
 
 ## Install and use
@@ -28,8 +30,7 @@ BB's single-file host artifact. No BB core changes or global npm installs.
 
 ## Cursor Cloud
 
-Turn on **Cloud agents** in the Cursor SDK plugin settings, then select
-**Cursor SDK** in a new thread. You can also set it from the CLI:
+Select **Cursor SDK** in a new thread, then turn on **cloud** in the composer. You can also set it from the CLI:
 
 ```sh
 bb plugin config cursor-sdk set cloudAgents true
@@ -38,7 +39,15 @@ bb plugin config cursor-sdk set cloudAgents false
 ```
 
 This is an instance-wide default for new Cursor SDK conversations, not a
-per-message switch. A cloud conversation cannot be moved into a local SDK
+per-message switch. Open windows receive changes immediately and reload the
+setting after reconnecting. The control appears beside Send in expanded
+composers and above the input in compact layout, only with Cursor SDK selected.
+The SDK does not expose the selected provider, so plugin CSS checks the native
+model-picker title within the composer. If BB changes that markup, the control
+stays hidden; settings and CLI remain available. Sending is locked while this
+control saves.
+
+A cloud conversation cannot be moved into a local SDK
 conversation, or vice versa. BB's current plugin API does not expose custom
 per-thread toggles beside the model picker.
 
@@ -122,8 +131,9 @@ confirmed as `cancelled` by Cursor's API, followed by a successful new turn.
 The unified provider toggle was also tested live: a new `cursor-sdk` thread
 launched on Cloud, then resumed with marker recall after the default was changed
 back to local. Tests did not modify files or create PRs.
-Native window capture was unavailable (`cgWindowNotFound`), so UI rendering was
-not visually verified.
+The composer switch was visually checked on Personal and toggled both ways;
+CLI readback confirmed the saved default. Component tests cover cross-window
+updates, reconnect reconciliation, and failed saves without changing the draft.
 
 Design reference: [wyrd-company/ahp-cursor-sdk](https://github.com/wyrd-company/ahp-cursor-sdk).
 This implements BB's native bridge directly, without an AHP dependency or copied

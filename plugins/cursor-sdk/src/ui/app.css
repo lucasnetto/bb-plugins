@@ -1,0 +1,68 @@
+.cursor-runtime-default {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+/* The SDK has no selected-provider hook. Read BB's own picker title through
+   CSS, scoped to this composer. Unknown markup/provider stays hidden. */
+[data-app-composer]:has(
+    button[aria-label^="Provider, model and reasoning"] > [title^="Cursor SDK:"]
+  )
+  .cursor-runtime-default {
+  display: flex;
+}
+.cursor-runtime-default > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 0.5rem;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.cursor-runtime-default > button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.cursor-runtime-default button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.cursor-runtime-default button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cursor-runtime-track {
+  width: 1.5rem;
+  height: 0.875rem;
+  border-radius: 1rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 1px;
+}
+.cursor-runtime-track > span {
+  display: block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.cursor-runtime-default [aria-checked="true"] .cursor-runtime-track {
+  background: var(--primary);
+}
+.cursor-runtime-default [aria-checked="true"] .cursor-runtime-track > span {
+  transform: translateX(0.625rem);
+  background: var(--primary-foreground);
+}
+.cursor-runtime-default [role="alert"] {
+  color: var(--destructive);
+}
+.cursor-runtime-default [role="alert"] button {
+  text-decoration: underline;
+  cursor: pointer;
+}

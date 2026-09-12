@@ -11,8 +11,10 @@ Personal and Work use their existing dedicated Cursor credentials. The pinned
 SDK runtime and conversation checkpoints stay in plugin host storage. Install
 from Settings → Providers or `bb machine provider-cli install <host-id> cursor-sdk`.
 
-Enable **Cloud agents** in the Cursor SDK plugin settings to start new
-conversations on Cursor Cloud. Turn it off for local execution. Existing threads
+Use the **cloud** switch in the New thread
+composer with Cursor SDK selected to choose where new conversations run. It updates the same shared
+profile default as **Cloud agents** in plugin settings. Open windows stay in sync.
+Existing threads
 keep their original runtime. Cloud starts from a clean, pushed GitHub commit.
 It shares the model controls, streams replies into BB, and links to the remote
 agent and branches. Stop cancels cloud work; closing BB leaves it running.
