@@ -38,3 +38,36 @@ export async function concurrently<T, R>(
   signal.throwIfAborted();
   return results;
 }
+
+export async function overlap<A, B>(
+  signal: AbortSignal,
+  left: (signal: AbortSignal) => Promise<A>,
+  right: (signal: AbortSignal) => Promise<B>,
+): Promise<[A, B]> {
+  signal.throwIfAborted();
+  const controller = new AbortController();
+  const combined = AbortSignal.any([signal, controller.signal]);
+  let failed = false,
+    failure: unknown;
+  const cancel = (error: unknown): never => {
+    if (!failed) {
+      failed = true;
+      failure = error;
+      controller.abort(error);
+    }
+    throw error;
+  };
+  const results = await Promise.allSettled([
+    Promise.resolve()
+      .then(() => left(combined))
+      .catch(cancel),
+    Promise.resolve()
+      .then(() => right(combined))
+      .catch(cancel),
+  ]);
+  if (failed) throw failure;
+  signal.throwIfAborted();
+  if (results[0].status !== "fulfilled" || results[1].status !== "fulfilled")
+    throw new Error("Parallel preparation failed.");
+  return [results[0].value, results[1].value];
+}

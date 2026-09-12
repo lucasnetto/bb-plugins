@@ -1,4 +1,6 @@
 export interface BaseReceipts {
+  cacheDir?: string;
+  select?(name: string): Promise<unknown>;
   get(name: string): Promise<unknown>;
   set(name: string, vmId: string): Promise<unknown>;
   lastUsed?(name: string): Promise<unknown>;

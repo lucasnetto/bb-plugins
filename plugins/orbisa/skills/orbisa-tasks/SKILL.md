@@ -24,7 +24,8 @@ Inspect with `bb orbisa tasks`. Output includes machine IDs, lifecycle phase,
 last activity and `deleteAt` (epoch milliseconds or null), capped at 100 rows.
 Use `bb machine show <id>` for BB's progress/errors, `bb machine suspend <id>`
 or `bb machine resume <id>` for explicit lifecycle actions. BB handles queued
-work during suspension/resumption.
+work during suspension/resumption. Resume tries the existing host-specific daemon
+service first, confirms the connection, and falls back to BB bootstrap if needed.
 
 Task VMs suspend after 15 idle minutes by default. Setting
 `bb plugin config orbisa set taskIdleMinutes 0` disables idle suspension.
@@ -36,10 +37,13 @@ installed. The first creation after a BB artifact, Codex, skills or recipe
 change refreshes that base. Task-specific package installs and repository setup
 are not promoted back to the base. Add reusable tooling to `task-base.ts` and
 bump its recipe revision. Skill fingerprints ignore timestamps and archive
-ordering but include content and permissions. Launch-time cleanup retains the
+ordering but include content and permissions. Background cleanup retains the
 selected base and one fallback; other verified stopped bases expire after seven
 days without use. Git caches expire after 30 days without use; active transfers
-are preserved. Existing caches receive a full grace period on upgrade.
+are preserved. Existing caches receive a full grace period on upgrade. Cleanup runs
+at plugin startup and hourly, independently of task launches. Skill archives are
+reused when a source metadata scan is unchanged; content hashes remain authoritative
+for base versions. Credential reads overlap VM boot.
 
 Each task gets independent Git checkouts from profile-local cached bundles.
 Single-repo projects refresh from their Git remote. The Work 180seg catalog

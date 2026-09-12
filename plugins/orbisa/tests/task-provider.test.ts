@@ -91,6 +91,13 @@ void test("creation checkpoints allocation before clone and VM identity before b
     events.length = 0;
     await provider.resume!({ ...context, hostId: host.id, resource: result.resource });
     assert.deepEqual(events, ["prepare", "checkpoint-vm", "bootstrap"]);
+    driver.startDaemon = async () => {
+      events.push("start-daemon");
+      return true;
+    };
+    events.length = 0;
+    await provider.resume!({ ...context, hostId: host.id, resource: result.resource });
+    assert.deepEqual(events, ["prepare", "checkpoint-vm", "start-daemon"]);
     events.length = 0;
     await provider.remove({ ...context, hostId: host.id, resource: result.resource });
     assert.deepEqual(events, ["remove"]);

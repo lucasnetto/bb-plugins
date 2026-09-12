@@ -1,3 +1,6 @@
+import { reconnectDaemon } from "./task-resume.ts";
+import { dirname, join } from "node:path";
+import { registerTaskMaintenance } from "./task-maintenance.ts";
 import { timed } from "./task-timing.ts";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerTaskCheckout, CHECKOUT_PROVIDER } from "./task-checkout.ts";
@@ -18,19 +21,23 @@ export interface TaskSettings {
 export function registerTaskProvider(
   bb: BbPluginApi,
   settings: () => Promise<TaskSettings>,
-  driver: TaskDriver = createTaskDriver(
-    bb.server.experimental_dataDir,
-    () => bb.server.loopbackBaseUrl,
-    {
-      get: (name) => bb.storage.kv.get(`task-base/${name}`),
-      lastUsed: (name) => bb.storage.kv.get(`task-base-used/${name}`),
-      touch: (name, at) => bb.storage.kv.set(`task-base-used/${name}`, at),
-      set: (name, id) => bb.storage.kv.set(`task-base/${name}`, id),
-    },
-  ),
+  driver?: TaskDriver,
   now = Date.now,
 ) {
   const owner = taskOwner(bb.server.experimental_dataDir);
+  const receipts = {
+    cacheDir: join(dirname(bb.storage.database().name), "skills-cache"),
+    get: (name: string) => bb.storage.kv.get(`task-base/${name}`),
+    lastUsed: (name: string) => bb.storage.kv.get(`task-base-used/${name}`),
+    touch: (name: string, at: number) => bb.storage.kv.set(`task-base-used/${name}`, at),
+    set: (name: string, id: string) => bb.storage.kv.set(`task-base/${name}`, id),
+    select: (name: string) => bb.storage.kv.set("task-base-current", name),
+  };
+  const machineDriver =
+    driver ??
+    createTaskDriver(bb.server.experimental_dataDir, () => bb.server.loopbackBaseUrl, receipts);
+  registerTaskMaintenance(bb, owner, receipts);
+
   const policy = createTaskPolicy(bb, owner, async () => (await settings()).taskIdleMinutes, now);
   registerTaskCheckout(bb, owner);
   bb.experimental_machines.register({
@@ -43,7 +50,7 @@ export function registerTaskProvider(
     // provider removal only once the ten-minute undo window has elapsed.
     ephemeral: false,
     async availability() {
-      return (await driver.available((await settings()).taskTemplate))
+      return (await machineDriver.available((await settings()).taskTemplate))
         ? { status: "available" }
         : {
             status: "setup-required",
@@ -64,16 +71,16 @@ export function registerTaskProvider(
         context.report.log(`${text}\n`);
       };
       resource = await timed(timing, "Base preparation and VM clone", async () =>
-        driver.allocate(resource, (await settings()).taskTemplate, context.signal, report),
+        machineDriver.allocate(resource, (await settings()).taskTemplate, context.signal, report),
       );
       await context.checkpoint(resource);
       await timed(timing, "VM start and credential setup", () =>
-        driver.prepare(resource, context.signal, report),
+        machineDriver.prepare(resource, context.signal, report),
       );
       const { hostId } = await timed(timing, "Machine enrollment and connection", () =>
         bb.experimental_machines.bootstrap({
           key: resource.key,
-          executor: driver.executor(resource),
+          executor: machineDriver.executor(resource),
           report: context.report,
           signal: context.signal,
         }),
@@ -86,34 +93,51 @@ export function registerTaskProvider(
       return { status: "created", name: resource.name, resource };
     },
     async reconcileCleanup(context) {
-      await driver.remove(taskResource(owner, context.key), context.signal);
+      await machineDriver.remove(taskResource(owner, context.key), context.signal);
       return { status: "removed" };
     },
     async suspend(context) {
       const resource = ownedResource(owner, context.resource);
       await context.checkpoint(resource);
-      await driver.stop(resource, context.signal);
+      await machineDriver.stop(resource, context.signal);
       return { resource };
     },
     async resume(context) {
       const resource = ownedResource(owner, context.resource);
       const removing =
         (await bb.sdk.hosts.get({ hostId: context.hostId })).lifecycle.phase === "removing";
-      await driver.prepare(resource, context.signal, (text) => context.report.step(text), removing);
+      await machineDriver.prepare(
+        resource,
+        context.signal,
+        (text) => context.report.step(text),
+        removing,
+      );
       await context.checkpoint(resource);
-      await bb.experimental_machines.bootstrap({
-        key: resource.key,
-        executor: driver.executor(resource),
-        report: context.report,
-        signal: context.signal,
-      });
+      const connected =
+        machineDriver.startDaemon &&
+        (await reconnectDaemon({
+          signal: context.signal,
+          start: () => machineDriver.startDaemon!(resource, context.hostId, context.signal),
+          connected: async () =>
+            (await bb.sdk.hosts.get({ hostId: context.hostId })).status === "connected",
+        }));
+      if (connected) context.report.log("Resumed existing BB daemon without bootstrap.\n");
+      else {
+        context.report.step("Restoring BB daemon through bootstrap");
+        await bb.experimental_machines.bootstrap({
+          key: resource.key,
+          executor: machineDriver.executor(resource),
+          report: context.report,
+          signal: context.signal,
+        });
+      }
       // Removal may resume while our sweep awaits hosts.delete. Do not acquire
       // the policy lock in that path or extend activity on a retiring machine.
       if (!removing) await policy.bump(context.hostId);
       return { resource };
     },
     async remove(context) {
-      await driver.remove(ownedResource(owner, context.resource), context.signal);
+      await machineDriver.remove(ownedResource(owner, context.resource), context.signal);
       return { status: "removed" };
     },
   });

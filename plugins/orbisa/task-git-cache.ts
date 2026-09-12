@@ -27,7 +27,6 @@ async function locked<T>(cache: string, work: () => Promise<T>): Promise<T> {
     if (queues.get(cache) === next) queues.delete(cache);
   }
 }
-const prunedAt = new Map<string, number>();
 export async function pruneGitCaches(root: string, signal: AbortSignal, now = Date.now()) {
   let entries;
   try {
@@ -110,6 +109,7 @@ export async function withGitBundle<T>(
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
       if (!fresh) {
+        let cloned = false;
         try {
           await stat(mirror);
         } catch (error) {
@@ -118,16 +118,18 @@ export async function withGitBundle<T>(
           await rm(staging, { recursive: true, force: true });
           await git("clone", "--mirror", "--", remote, staging);
           await rename(staging, mirror);
+          cloned = true;
         }
-        await git(
-          "--git-dir",
-          mirror,
-          "fetch",
-          "--prune",
-          "origin",
-          "+refs/heads/*:refs/heads/*",
-          "+refs/tags/*:refs/tags/*",
-        );
+        if (!cloned)
+          await git(
+            "--git-dir",
+            mirror,
+            "fetch",
+            "--prune",
+            "origin",
+            "+refs/heads/*:refs/heads/*",
+            "+refs/tags/*:refs/tags/*",
+          );
         await git("--git-dir", mirror, "symbolic-ref", "HEAD", `refs/heads/${defaultBranch}`);
         const pending = join(cache, "repository.pending.bundle");
         await rm(pending, { force: true });
@@ -142,15 +144,5 @@ export async function withGitBundle<T>(
       use(join(cache, "repository.bundle"), defaultBranch),
     );
   });
-  const now = Date.now();
-  if (now - (prunedAt.get(root) ?? 0) >= 60 * 60_000) {
-    prunedAt.set(root, now);
-    try {
-      await pruneGitCaches(root, signal, now);
-    } catch {
-      signal.throwIfAborted();
-      report("Old Git cache cleanup deferred until a later launch.");
-    }
-  }
   return result;
 }

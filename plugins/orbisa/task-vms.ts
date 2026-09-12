@@ -1,3 +1,4 @@
+import { overlap } from "./task-concurrency.ts";
 import { createHash } from "node:crypto";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -67,6 +68,7 @@ export interface TaskDriver {
     forRemoval?: boolean,
   ): Promise<void>;
   executor(resource: TaskResource): MachineExecutor;
+  startDaemon?(resource: TaskResource, hostId: string, signal: AbortSignal): Promise<boolean>;
   stop(resource: TaskResource, signal: AbortSignal): Promise<void>;
   remove(resource: TaskResource, signal: AbortSignal): Promise<void>;
 }
@@ -144,43 +146,57 @@ export function createTaskDriver(
     async prepare(resource, signal, report, forRemoval = false) {
       const vm = await lookup(resource, signal);
       if (!vm || !isolated(vm)) throw new Error("Task VM is missing or no longer isolated.");
-      await checked(["orbctl", "start", resource.name], { signal });
-      await checked(
-        run(resource.name, [
-          "sh",
-          "-c",
-          "test ! -e /mnt/mac && command -v node >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null",
-        ]),
-        { signal },
-      );
+      const boot = async (signal: AbortSignal) => {
+        await checked(["orbctl", "start", resource.name], { signal });
+        await checked(
+          run(resource.name, [
+            "sh",
+            "-c",
+            "test ! -e /mnt/mac && command -v node >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null",
+          ]),
+          { signal },
+        );
+      };
       // BB may briefly resume a persistent machine to finish workspace teardown.
       // Expired user credentials must not prevent disposal of a finished task.
-      if (forRemoval) return;
+      if (forRemoval) {
+        await boot(signal);
+        return;
+      }
       // Read independent local credentials and tool versions concurrently.
-      const [localCodex, guestCodex, githubToken, aws, cursor, codex, signing] = await Promise.all([
-        command(["codex", "--version"], { signal }).catch(() => null),
-        command(run(resource.name, ["codex", "--version"]), { signal }).catch(() => null),
-        checked(["gh", "auth", "token"], { signal }),
-        command(["aws", "configure", "export-credentials", "--format", "process"], {
-          signal,
-        }).catch(() => null),
-        command(
-          [
-            "/usr/bin/security",
-            "find-generic-password",
-            "-s",
-            `bb.cursor.${profile}.api-key`,
-            "-a",
-            profile === "work" ? "lucas-work" : "lucas-personal",
-            "-w",
-          ],
-          { signal },
-        ),
-        optionalRead(join(homedir(), profile === "work" ? ".codex_work" : ".codex", "auth.json")),
-        optionalRead(
-          process.env.ORBISA_SIGNING_KEY ?? join(homedir(), ".config/orbisa/signing_key"),
-        ),
-      ]);
+      const [guestCodex, [localCodex, githubToken, aws, cursor, codex, signing]] = await overlap(
+        signal,
+        async (signal) => {
+          await boot(signal);
+          return command(run(resource.name, ["codex", "--version"]), { signal }).catch(() => null);
+        },
+        async (signal) =>
+          Promise.all([
+            command(["codex", "--version"], { signal }).catch(() => null),
+            checked(["gh", "auth", "token"], { signal }),
+            command(["aws", "configure", "export-credentials", "--format", "process"], {
+              signal,
+            }).catch(() => null),
+            command(
+              [
+                "/usr/bin/security",
+                "find-generic-password",
+                "-s",
+                `bb.cursor.${profile}.api-key`,
+                "-a",
+                profile === "work" ? "lucas-work" : "lucas-personal",
+                "-w",
+              ],
+              { signal },
+            ),
+            optionalRead(
+              join(homedir(), profile === "work" ? ".codex_work" : ".codex", "auth.json"),
+            ),
+            optionalRead(
+              process.env.ORBISA_SIGNING_KEY ?? join(homedir(), ".config/orbisa/signing_key"),
+            ),
+          ]),
+      );
       const codexVersion = localCodex?.stdout.trim().match(/^codex-cli (\d+\.\d+\.\d+)$/)?.[1];
       if (codexVersion && guestCodex?.stdout.trim() !== `codex-cli ${codexVersion}`) {
         report(`Installing Codex ${codexVersion} to match this server.`);
@@ -315,6 +331,16 @@ export function createTaskDriver(
         },
       };
     },
+    async startDaemon(resource, hostId, signal) {
+      if (!/^host_[a-z0-9]+$/.test(hostId)) return false;
+      const vm = await lookup(resource, signal);
+      if (!vm || !isolated(vm)) throw new Error("Task VM is missing or no longer isolated.");
+      const result = await command(
+        run(resource.name, ["python3", "-c", START_DAEMON_SCRIPT, hostId]),
+        { signal, timeoutMs: 10_000 },
+      );
+      return result.exitCode === 0;
+    },
     async stop(resource, signal) {
       if (await lookup(resource, signal))
         await checked(["orbctl", "stop", resource.name], { signal });
@@ -373,4 +399,19 @@ if p['cursor']:
     write(home/'.local/bin/bb-cursor-work-acp', launcher, 0o700)
     write(home/'.local/bin/cursor-agent-personal-acp', launcher, 0o700)
 write(marker, p['owner'])
+`;
+
+export const START_DAEMON_SCRIPT = String.raw`
+import pathlib,subprocess,sys
+units=list((pathlib.Path.home()/'.config/systemd/user').glob('bb-host-daemon-*-'+sys.argv[1]+'.service'))
+if len(units)!=1 or units[0].is_symlink(): sys.exit(1)
+data=pathlib.Path.home()/'.bb-machines/orbisa'
+if data.resolve()!=data or (data/'host-id').read_text().strip()!=sys.argv[1]: sys.exit(1)
+if 'Environment="BB_DATA_DIR='+str(data)+'"' not in units[0].read_text(): sys.exit(1)
+# Match BB's enrolled-machine --start lifecycle: release its suspension marker.
+marker=data/'machine-suspended'
+if marker.is_symlink(): sys.exit(1)
+marker.unlink(missing_ok=True)
+subprocess.run(['systemctl','--user','reset-failed',units[0].name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
+sys.exit(subprocess.run(['systemctl','--user','start',units[0].name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode)
 `;

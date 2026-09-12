@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
-import { skillArchiveFingerprint } from "./task-skills.ts";
-import { prunePreparedBases, type BaseReceipts, type CachedBase } from "./task-base-retention.ts";
+import { homedir } from "node:os";
+import { cachedSkillArchive } from "./task-skills.ts";
+import type { BaseReceipts } from "./task-base-retention.ts";
 export type { BaseReceipts } from "./task-base-retention.ts";
 import { checked, command } from "./task-process.ts";
 
@@ -45,47 +43,14 @@ export async function preparedBase(options: {
     .match(/^codex-cli (\d+\.\d+\.\d+)$/)?.[1];
   if (!codex) throw new Error("Could not determine the server's stable Codex version.");
   let building: string | null = null;
-  const staging = await mkdtemp(join(tmpdir(), "orbisa-base-"));
   try {
-    const roots: string[] = [];
-    for (const root of [".cursor/skills", ".agents/skills", ".claude/skills", ".codex/skills"]) {
-      try {
-        await access(join(homedir(), root));
-        roots.push(root);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-    }
-    let skills = Buffer.alloc(0);
-    let skillsDigest = hash(skills);
-    if (roots.length) {
-      const archive = join(staging, "skills.tar");
-      await checked(["tar", "-chf", archive, "-C", homedir(), ...roots], { signal });
-      skills = await readFile(archive);
-      skillsDigest = await skillArchiveFingerprint(archive, signal);
-    }
+    const skills = await cachedSkillArchive(homedir(), signal, options.receipts?.cacheDir);
+    const skillsDigest = skills.digest;
     const fingerprint = baseFingerprint(source.id, artifact, codex, skillsDigest);
     const name = `orbisa-base-${owner}-${fingerprint}`;
     const finish = async () => {
-      if (options.receipts) {
-        try {
-          await prunePreparedBases({
-            owner,
-            current: name,
-            receipts: options.receipts,
-            list: async () =>
-              JSON.parse(
-                await checked(["orbctl", "list", "--format", "json"], { signal }),
-              ) as CachedBase[],
-            remove: async (vm) => {
-              await checked(["orbctl", "delete", "-f", vm.name], { signal });
-            },
-          });
-        } catch {
-          signal.throwIfAborted();
-          report("Old base cache cleanup deferred until a later launch.");
-        }
-      }
+      await options.receipts?.touch?.(name, Date.now());
+      await options.receipts?.select?.(name);
       return name;
     };
     const inventory = JSON.parse(
@@ -160,8 +125,11 @@ export async function preparedBase(options: {
       ["orbctl", "run", "-m", name, "-u", "root", "npm", "install", "-g", `@openai/codex@${codex}`],
       { signal, timeoutMs: 300_000 },
     );
-    if (skills.length)
-      await checked(run(name, ["sh", "-c", 'tar -xf - -C "$HOME"']), { signal, stdin: skills });
+    if (skills.archive)
+      await checked(run(name, ["sh", "-c", 'tar -xf - -C "$HOME"']), {
+        signal,
+        stdinFile: skills.archive,
+      });
     await checked(
       run(name, [
         "sh",
@@ -184,6 +152,5 @@ export async function preparedBase(options: {
   } finally {
     if (building)
       await checked(["orbctl", "stop", building], { timeoutMs: 30_000 }).catch(() => {});
-    await rm(staging, { recursive: true, force: true });
   }
 }

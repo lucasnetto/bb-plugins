@@ -38,9 +38,13 @@ The plugin builds a separate `orbisa-base-<instance>-<fingerprint>` VM from
 stable Codex version, and current user skills. Each launch checks these inputs;
 a change builds a new clean base once, and concurrent launches share that build.
 Skills are fingerprinted by archive paths, contents and permissions; timestamps,
-archive ordering and uid/gid metadata do not cause rebuilds.
+archive ordering and uid/gid metadata do not cause rebuilds. The archive itself
+is cached in profile-local plugin storage. A scan of paths, targets, permissions,
+inodes, sizes, modification times and change times detects source changes before
+reuse; archive content still determines the base fingerprint. Changed sources are
+checked again after packing so an interrupted or changing archive is not accepted.
 Verified base identities are persisted so normal launches do not boot the base
-to inspect it. Credential checks run concurrently, and each task moves its
+to inspect it. Credential checks overlap VM boot, and each task moves its
 preinstalled BB directory into place without recopying it.
 The first launch after an update pays the installation cost. Existing task VMs
 keep their disks. Base VMs remain stopped between launches.
@@ -55,7 +59,7 @@ Only the reproducible setup recipe is cached. Never promote a task disk into
 a base: agent-installed packages, repository files and credentials must not
 leak between tasks. To add shared tooling, extend `task-base.ts` and increment
 its recipe revision. Replacing the source template also invalidates the cache;
-in-place edits to that source require a recipe revision. Base cleanup runs while holding the build/clone lock on subsequent launches.
+in-place edits to that source require a recipe revision. Base cleanup runs in a background job while holding the build/clone lock.
 It retains the selected base and one recent fallback; other verified, stopped
 bases expire after seven days without use. Running, replaced or unrecognized
 VMs are preserved. Existing bases get a full grace period on upgrade.
@@ -98,10 +102,11 @@ existing/new branch inputs. Repository dependencies and setup remain workspace
 specific. A catalog does not automatically run each child repository's BB setup
 hook. Git caches stay in the profile's plugin data directory when task VMs are
 deleted, separate from the clean tooling base and shared Cursor/T3 slots.
-Unused Git caches expire after 30 days. Cleanup runs after a successful checkout,
-at most once per hour per plugin load, and skips active transfers. Existing caches
-receive a full grace period on adoption. Retention is checked during launches,
-so expired caches can remain while no new tasks are started.
+Unused Git caches expire after 30 days. A background job runs at plugin startup
+and hourly (at minute 17), including when no new tasks are launched. It skips active
+transfers and cancels on plugin unload. Provisioning no longer awaits cache deletion.
+Existing caches receive a full grace period on adoption. New Git mirrors do not
+perform a redundant fetch immediately after cloning; existing mirrors still refresh.
 
 ### Provisioning timings
 
@@ -132,6 +137,12 @@ The first wake also copies the server's user skill directories into the guest,
 following symlinks so Mac paths do not break inside Linux. Subsequent resumes
 preserve those task-local files. Task wakes also match the guest Codex CLI to
 the server's installed stable version.
+On resume, the plugin verifies the installation's host ID and service data directory,
+clears BB's suspension marker, resets systemd's failed-service state, and starts
+the host-specific installed systemd user service. It
+waits up to five seconds for BB to confirm its connection. A missing, broken or
+nonconnecting service falls back to BB's enrolled-machine bootstrap. Credentials
+are refreshed before the resume completes. Fresh VMs still use normal enrollment.
 For retirement, BB may briefly wake a suspended VM to run native workspace
 teardown. That wake does not depend on refreshing provider credentials.
 
