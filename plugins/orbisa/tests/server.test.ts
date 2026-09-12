@@ -9,7 +9,7 @@ import {
 import plugin from "../server.ts";
 
 void test("central server registers the wake admission hook", async () => {
-  const { bb, harness } = createFakePluginHost({ pluginId: "orbisa" });
+  const { bb, harness } = createFakePluginHost({ pluginId: "orbisa", dataDir: "/tmp/orbisa-test/.bb" });
   plugin(bb);
   try {
     assert.notEqual(harness.inspection.registrations.hooks["message.dispatch"], null);
@@ -25,14 +25,14 @@ void test("central server registers the wake admission hook", async () => {
 
 void test("plugin uses public SDK APIs", () => {
   const result = experimental_scanPublicSdkOnly(fileURLToPath(new URL("..", import.meta.url)), {
-    allow: [/^react(?:\/|$)/],
+    allow: [/^react(?:\/|$)/, /^effect(?:\/|$)/],
   });
   assert.deepEqual(result.violations, []);
   assert.deepEqual(result.privateDependencies, []);
 });
 
 void test("unbound and connected machines proceed without a wake", async () => {
-  const { bb, harness } = createFakePluginHost({ pluginId: "orbisa" });
+  const { bb, harness } = createFakePluginHost({ pluginId: "orbisa", dataDir: "/tmp/orbisa-test/.bb" });
   plugin(bb);
   try {
     await bb.storage.kv.set("bindings", { host_vm: "180seg-orbisa-01" });

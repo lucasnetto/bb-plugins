@@ -1,0 +1,45 @@
+#!/bin/zsh
+# Build a clean BB-only template. Never clone an active worker or enroll this VM.
+set -euo pipefail
+
+machine=180seg-orbisa-base
+remote_user=${ORBISA_REMOTE_USER:-lucas_netto}
+tools_root=${ORBISA_TOOLS_ROOT:-$HOME/Developer/lucasnetto/orbisa}
+[[ "$remote_user" =~ '^[a-z_][a-z0-9_-]*$' ]] || { print -u2 'Invalid remote user'; exit 1; }
+[[ -x "$tools_root/scripts/bootstrap-base" && -x "$tools_root/scripts/install-machine-hooks" ]] || {
+    print -u2 'Set ORBISA_TOOLS_ROOT to the Orbisa tooling checkout.'; exit 1
+}
+
+# The Orbisa installer supplies development tools only, not Cursor or T3 Code.
+# This separate template must never be handed to its worker/SSH registration flow.
+if orbctl info "$machine" >/dev/null 2>&1; then
+    print -u2 "Template $machine already exists; inspect it before rebuilding."
+    exit 1
+fi
+ORBISA_BASE_MACHINE=$machine "$tools_root/scripts/bootstrap-base"
+"$tools_root/scripts/install-machine-hooks" "$machine"
+orbctl start "$machine"
+trap 'orbctl stop "$machine"' EXIT
+orbctl run -m "$machine" -u "$remote_user" sh -s <<'GUEST'
+set -eu
+# The shared tools installer writes editor metadata and a project instruction file.
+# Neither belongs in the BB image; project setup supplies instructions per VM.
+rm -rf "$HOME/.cursor"
+rm -f /workspace/180seg/AGENTS.md
+for executable in cursor cursor-agent t3 t3code; do
+    if command -v "$executable" >/dev/null 2>&1; then
+        echo "Unexpected editor executable in clean BB base: $executable" >&2
+        exit 1
+    fi
+done
+test ! -e /mnt/mac
+test ! -d "$HOME/.bb-machines"
+test ! -e "$HOME/.codex/auth.json"
+test ! -e "$HOME/.codex_work/auth.json"
+test ! -f /dev/shm/orbisa/github-token
+test ! -f /dev/shm/orbisa/signing_key
+mkdir -p "$HOME/.local/state/orbisa"
+printf '%s\n' 'bb-base-v1' > "$HOME/.local/state/orbisa/base-recipe"
+GUEST
+print "Prepared clean BB template: $machine"
+print 'BB host software and agent runtimes are installed before cloning/enrollment.'

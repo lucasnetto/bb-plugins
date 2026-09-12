@@ -546,6 +546,9 @@ importers:
 
   plugins/orbisa:
     dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.112
       zod:
         specifier: 'catalog:'
         version: 4.5.4
