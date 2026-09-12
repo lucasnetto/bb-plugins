@@ -1,5 +1,133 @@
 # Orbisa for bb
 
+## Disposable task VMs
+
+Choose **Orbisa task VM** from the new-thread environment picker, or use:
+
+```sh
+bb thread spawn --project <project-id> --environment-provider orbisa-task --prompt '<task>'
+bb orbisa tasks
+```
+
+BB creates a new machine and prepares the project's Git checkout. Reuse that
+environment ID for workers that should share it. Each BB instance has its own
+`bb-task-<instance hash>-<task hash>` namespace. The three shared Orbisa slots,
+Cursor registration, T3 Code access, and their SSH configuration are unchanged.
+
+- Idle task VMs stop after **15 minutes** by default, retaining their disks.
+  BB coordinates suspension and resumes before queued work runs. Set
+  `taskIdleMinutes` to `0` to disable idle suspension.
+- Settling uses BB's archive lifecycle. Once no live threads need a task VM,
+  the plugin persists a **10-minute deletion deadline**. Un-settle before that
+  deadline to cancel deletion. Settling again starts a new full window.
+- A live worker or another thread on the VM retains it. BB's parent archive
+  operation also archives children. Pending starts defer cleanup.
+- Deadlines survive server/plugin restarts and are checked at startup, on
+  archive/unarchive/delete events, and every minute. Deletion may therefore
+  occur up to roughly one minute after the deadline.
+- Settling authorizes discarding every remaining file, including uncommitted
+  changes, unpushed commits, ignored files, and local stashes. There are no Git
+  preservation checks, automatic commits, pushes, or snapshots.
+- Once deleted, the conversation remains but un-settling does not recreate its
+  machine. Start a fresh task environment from the published repository.
+
+### Prepared base cache
+
+The plugin builds a separate `orbisa-base-<instance>-<fingerprint>` VM from
+`taskTemplate`. It preinstalls the exact server BB host artifact, the Mac's
+stable Codex version, and current user skills. Each launch checks these inputs;
+a change builds a new clean base once, and concurrent launches share that build.
+Verified base identities are persisted so normal launches do not boot the base
+to inspect it. Credential checks run concurrently, and each task moves its
+preinstalled BB directory into place without recopying it.
+The first launch after an update pays the installation cost. Existing task VMs
+keep their disks. Base VMs remain stopped between launches.
+
+BB verifies the cached artifact with its SHA-256/ETag and skips reinstalling an
+identical package. Its progress may still say “Downloading” before reporting
+“The identical server host artifact is already installed”; that is a conditional
+update check. Each task still needs fresh credentials, enrollment, a service,
+and its own project checkout and project-specific setup hooks.
+
+Only the reproducible setup recipe is cached. Never promote a task disk into
+a base: agent-installed packages, repository files and credentials must not
+leak between tasks. To add shared tooling, extend `task-base.ts` and increment
+its recipe revision. Replacing the source template also invalidates the cache;
+in-place edits to that source require a recipe revision. Previous base versions
+are retained as stopped caches; task settlement deletes task VMs only.
+
+### Git checkout cache and 180seg
+
+Each new task gets an independent Git checkout from a cached bundle. For a
+single-repository project, the Mac checks upstream refs and refreshes the cache
+when they change. The guest clones the bundle locally and restores the real
+origin. No shared Git object directory ties task disks to the cache.
+
+The Work `180seg` project is a repository catalog, not a single Git repository.
+When its source is `~/Developer/180seg`, the plugin discovers repositories under
+that folder, preserves relative paths, and seeds each current committed local
+branch, including unpushed commits. It copies the parent `AGENTS.md` and rewrites
+its workspace path for Linux. Linked worktrees, duplicate origins, hidden
+folders, and symlink directories are excluded. Originless repositories are
+supported. Uncommitted changes and ignored files are not copied. New local
+commits refresh the corresponding bundle on the next task launch; upstream
+updates must first reach the local source repositories.
+
+Checkouts live under `~/orbisa-workspaces/<environment-key>`. Choose branches
+inside individual repositories for a catalog; a single-repo project also accepts
+existing/new branch inputs. Repository dependencies and setup remain workspace
+specific. A catalog does not automatically run each child repository's BB setup
+hook. Git caches stay in the profile's plugin data directory when task VMs are
+deleted, separate from the clean tooling base and shared Cursor/T3 slots.
+
+### Requirements
+
+The **running server**, not just the desktop app/CLI, must be BB 0.43.0 or newer
+with SDK 0.4.84. The macOS server
+needs OrbStack, `gh`, and the existing Orbisa template (`cursor-base` by
+default). The template must have Node/npm/curl/Python, Git and the agent CLIs;
+keep it free of BB daemon enrollments, provider logins and task checkouts.
+It must have both isolation flags enabled, no Mac mounts and no SSH forwarding.
+BB Connect (or another configured server-access provider) must be reachable
+from the VM for enrollment. Core owns daemon bootstrap; the plugin prepares independent Git checkouts.
+
+The adapter refreshes GitHub credentials, optional AWS credentials and the
+Orbisa signing key into volatile guest storage. It copies only the active
+profile's existing Codex login and Cursor key, also into volatile storage.
+Missing AWS credentials do not block development. Missing Codex login is
+reported; sign in before using Codex. No credentials enter VM metadata or logs.
+The first wake also copies the server's user skill directories into the guest,
+following symlinks so Mac paths do not break inside Linux. Subsequent resumes
+preserve those task-local files. Task wakes also match the guest Codex CLI to
+the server's installed stable version.
+For retirement, BB may briefly wake a suspended VM to run native workspace
+teardown. That wake does not depend on refreshing provider credentials.
+
+```sh
+bb plugin config orbisa set taskTemplate cursor-base
+bb plugin config orbisa set taskIdleMinutes 15
+bb machine show <machine-id>
+bb machine suspend <machine-id>
+bb machine resume <machine-id>
+```
+
+`bb orbisa tasks` returns at most 100 machines and their total count, BB phase,
+connection status, `lastActivity`, and `deleteAt` (epoch milliseconds or null).
+
+### Implementation
+
+`task-vms.ts` implements VM operations through OrbStack with deterministic
+allocation names and VM-ID checks. `task-provider.ts` registers the public BB
+machine provider and a composition with `orbisa-checkout`.
+`task-checkout.ts` creates workspaces through OrbStack, `task-git-cache.ts`
+maintains profile-local Git bundles, and `task-catalog.ts` discovers 180seg repos.
+`task-policy.ts` owns durable idle/retirement deadlines. Machines intentionally
+use `ephemeral: false`: BB's ephemeral path deletes immediately. At the deadline
+the policy requests BB's normal machine removal, which owns cleanup and retries.
+The adapter operates only on this instance's dedicated task namespace.
+
+## Shared Orbisa slots
+
 One bb server runs on the Mac. The Mac and three isolated Orbisa VMs are execution machines in that server. Select the `180seg` project, open **Environment**, and choose **Work in checkout** under the desired VM (or **Work locally** under the Mac). Each VM uses `/workspace/180seg`.
 
 When a VM is stopped, bb disables its Environment choices. The plugin shows a **Wake 180seg-orbisa-0N** button above the new-thread composer. Click it, wait for the VM to connect, then select it from Environment. The button disappears once connected.
@@ -29,4 +157,9 @@ This replaces the earlier standalone bb instances and localhost gateways. Ports 
 
 ## Development
 
-Run `npm test`, the workspace TypeScript check, `bb plugin build orbisa`, and `bb plugin reload orbisa` after changes. The backend and frontend use the public plugin SDK. Disabling or reloading it aborts pending wake operations.
+Run `node --experimental-strip-types --test plugins/orbisa/tests/*.test.ts`,
+`node_modules/.bin/tsc -p plugins/orbisa/tsconfig.json`, and
+`bb plugin build plugins/orbisa` from the repository root. Refresh both profiles
+after changes. The backend and frontend use the public plugin SDK. Disabling or
+reloading aborts pending shared-slot wakes; BB owns cancellation of task-machine
+operations. Disabling the plugin pauses its idle/deletion policy until reload.

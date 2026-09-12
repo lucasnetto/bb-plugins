@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-orbisa",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "build": "bb plugin build",
@@ -10,23 +10,25 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "catalog:",
+    "@get-bb/plugin-sdk": "catalog:machines",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "react": "catalog:"
   },
   "engines": {
-    "bb": ">=0.42.1",
-    "bbPluginSdk": ">=0.4.47"
+    "bb": ">=0.43.0",
+    "bbPluginSdk": ">=0.4.84"
   },
   "bb": {
     "name": "Orbisa",
-    "description": "Wake isolated Orbisa execution machines on demand from one Mac bb server.",
+    "description": "Run tasks in isolated Orbisa VMs, suspend them when idle, and delete them 10 minutes after settling.",
     "branding": {
       "icon": "Zap"
     },
     "server": "./server.ts",
-    "skills": [],
+    "skills": [
+      "./skills/orbisa-tasks"
+    ],
     "app": "./app.tsx"
   }
 }

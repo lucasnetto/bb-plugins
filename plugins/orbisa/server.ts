@@ -5,10 +5,26 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 import { WakeJobs, slots, validateSlot, type Slot } from "./wake.ts";
+import { registerTaskProvider } from "./task-provider.ts";
 
 const exec = promisify(execFile);
 export default function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
+    taskTemplate: {
+      type: "string",
+      label: "Task VM template",
+      description: "Clean isolated OrbStack template for dedicated BB task VMs.",
+      default: "cursor-base",
+      experimental_schema: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+    },
+    taskIdleMinutes: {
+      type: "number",
+      label: "Suspend task VMs after idle (minutes)",
+      description:
+        "Preserve the disk while idle. Set 0 to disable idle suspension. Settling still deletes after 10 minutes.",
+      default: 15,
+      experimental_schema: z.number().int().min(0).max(1440),
+    },
     daemonService: {
       type: "string",
       label: "VM daemon service",
@@ -17,6 +33,7 @@ export default function plugin(bb: BbPluginApi) {
       experimental_schema: z.string().regex(/^bb-host-daemon-[a-z0-9-]+\.service$/),
     },
   });
+  const taskPolicy = registerTaskProvider(bb, () => settings.get());
   const controller = new AbortController();
   const bindings = () => bb.storage.kv.get<Record<string, Slot>>("bindings");
   const jobs = new WakeJobs(async (hostId, slot) => {
@@ -101,6 +118,11 @@ export default function plugin(bb: BbPluginApi) {
     summary: "Wake isolated Orbisa execution machines for this bb server",
     commands: [
       {
+        name: "tasks",
+        summary: "Show task VM lifecycle and deletion deadlines",
+        usage: "bb orbisa tasks",
+      },
+      {
         name: "status",
         summary: "Show bindings and connection state without waking VMs",
         usage: "bb orbisa status",
@@ -118,6 +140,30 @@ export default function plugin(bb: BbPluginApi) {
     ],
     async run(argv) {
       try {
+        if (argv[0] === "tasks" && argv.length === 1) {
+          const hosts = (await bb.sdk.hosts.list({ includeCreating: true })).filter(
+            (host) => host.machineProviderId === "orbisa-task",
+          );
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify(
+              {
+                total: hosts.length,
+                machines: await Promise.all(
+                  hosts.slice(0, 100).map(async (host) => ({
+                    id: host.id,
+                    name: host.name,
+                    phase: host.lifecycle.phase,
+                    status: host.status,
+                    ...(await taskPolicy.read(host.id)),
+                  })),
+                ),
+              },
+              null,
+              2,
+            ),
+          };
+        }
         const saved = (await bindings()) ?? {};
         if (argv[0] === "status" && argv.length === 1) {
           const hosts = await bb.sdk.hosts.list();
@@ -155,7 +201,7 @@ export default function plugin(bb: BbPluginApi) {
             throw new Error(`Could not wake ${slot}; check orbisa start and the VM daemon service`);
           return { exitCode: 0, stdout: `${slot} connected` };
         }
-        throw new Error("Usage: bb orbisa status | bind <slot> <host-id> | wake <slot>");
+        throw new Error("Usage: bb orbisa tasks | status | bind <slot> <host-id> | wake <slot>");
       } catch (error) {
         return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
       }

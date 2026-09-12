@@ -8,6 +8,11 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - "@get-bb/plugin-sdk@0.4.47"
+  - "@get-bb/plugin-sdk@0.4.84"
+
+catalogs:
+  machines:
+    "@get-bb/plugin-sdk": "0.4.84"
 
 # Keep dependency versions shared across all plugins.
 catalogMode: strict
