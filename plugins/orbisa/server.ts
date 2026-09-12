@@ -5,11 +5,19 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 import { WakeJobs, slots, validateSlot, type Slot } from "./wake.ts";
+import { registerPersistentProvider } from "./persistent-provider.ts";
 import { registerTaskProvider } from "./task-provider.ts";
 
 const exec = promisify(execFile);
 export default function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
+    persistentIdleMinutes: {
+      type: "number",
+      label: "Suspend persistent VMs after idle (minutes)",
+      description: "Keep their files and resume automatically. Set 0 to disable idle suspension.",
+      default: 15,
+      experimental_schema: z.number().int().min(0).max(1440),
+    },
     taskTemplate: {
       type: "string",
       label: "Task VM template",
@@ -34,6 +42,7 @@ export default function plugin(bb: BbPluginApi) {
     },
   });
   const taskPolicy = registerTaskProvider(bb, () => settings.get());
+  registerPersistentProvider(bb, () => settings.get());
   const controller = new AbortController();
   const bindings = () => bb.storage.kv.get<Record<string, Slot>>("bindings");
   const jobs = new WakeJobs(async (hostId, slot) => {

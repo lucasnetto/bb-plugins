@@ -1,5 +1,57 @@
 # Orbisa for bb
 
+## Persistent BB machines
+
+The `orbisa-persistent` machine provider manages BB-only machines separately
+from both disposable task VMs and the original Cursor/T3 Code VMs:
+
+- Personal (`~/.bb`): `ln-orbisa-01`.
+- Work (`~/.bb-work`): `180seg-orbisa-01` and `180seg-orbisa-02`.
+
+Each profile owns its own physical machines and credentials. Machines suspend
+after 15 idle minutes by default and BB resumes them before work runs. Set
+`persistentIdleMinutes` to `0` to disable idle suspension. Settling threads never
+deletes these VMs or their files. Only explicit machine removal deletes a VM.
+Running or starting threads (including hidden workers) defer suspension; BB also
+refuses suspension while terminals are open.
+
+Build the common development template on the Mac with
+`scripts/bootstrap-bb-base` (inside this plugin). It starts from clean Ubuntu and
+uses the sibling Orbisa checkout's development-tool installer. It installs no
+Cursor desktop app, `cursor-agent`, or T3 Code. No repositories, BB enrollment,
+or persistent account credentials belong in this template. The provider prepares
+BB and Codex before cloning and refreshes the owning profile's credentials into
+volatile guest storage on each wake. Cursor SDK uses the profile's API key;
+install its runtime through BB after creating each machine.
+
+Run these commands from the matching profile, without changing an active
+thread's server URL or credentials:
+
+```sh
+# Personal
+bb machine create --provider orbisa-persistent --inputs '{"slot":"01"}' --key ln-orbisa-01
+bb machine provider-cli install ln-orbisa-01 cursor-sdk
+
+# Work
+bb machine create --provider orbisa-persistent --inputs '{"slot":"01"}' --key 180seg-orbisa-01
+bb machine create --provider orbisa-persistent --inputs '{"slot":"02"}' --key 180seg-orbisa-02
+bb machine provider-cli install 180seg-orbisa-01 cursor-sdk
+bb machine provider-cli install 180seg-orbisa-02 cursor-sdk
+```
+
+Work creation seeds committed local repositories from `~/Developer/180seg` into
+`/workspace/180seg`. It includes unpushed commits, excludes uncommitted/ignored
+files, and preserves existing seeded repositories on retry. Resume never reseeds
+or resets repositories. Add this path as a source of Work's existing `180seg`
+project on each new machine. Personal machines are general-purpose: use BB's
+project setup on the new machine for the repositories needed there.
+
+After verifying the new Work machines, inspect threads using the original
+`180seg-orbisa-01..03` registrations before removing those registrations through
+BB. Preserve any needed thread/environment access. They are manually enrolled
+hosts, so removing their BB registrations must not call OrbStack VM deletion or
+modify Cursor/T3 Code registrations. The original disks belong to those tools.
+
 ## Disposable task VMs
 
 Choose **Orbisa task VM** from the new-thread environment picker, or use:

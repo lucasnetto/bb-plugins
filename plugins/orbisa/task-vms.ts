@@ -77,10 +77,15 @@ export function createTaskDriver(
   dataDir: string,
   serverUrl?: () => string,
   receipts?: BaseReceipts,
+  options: {
+    validateResource?: (value: unknown) => TaskResource;
+    sdkOnly?: boolean;
+  } = {},
 ): TaskDriver {
   const owner = taskOwner(dataDir);
   const profile = basename(dataDir) === ".bb-work" ? "work" : "personal";
   const user = process.env.ORBISA_REMOTE_USER ?? "lucas_netto";
+  const validate = options.validateResource ?? ((value: unknown) => ownedResource(owner, value));
   if (!/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid Orbisa remote user.");
   const run = (name: string, argv: string[]) => ["orbctl", "run", "-m", name, "-u", user, ...argv];
   const list = async (signal?: AbortSignal) =>
@@ -88,7 +93,7 @@ export function createTaskDriver(
       JSON.parse(await checked(["orbctl", "list", "--format", "json"], { signal })),
     );
   async function lookup(value: TaskResource, signal: AbortSignal) {
-    const resource = ownedResource(owner, value);
+    const resource = validate(value);
     const vm = (await list(signal)).find((item) => item.name === resource.name);
     if (vm && resource.vmId !== null && vm.id !== resource.vmId)
       throw new Error("Task VM identity changed; refusing to touch its replacement.");
@@ -112,7 +117,7 @@ export function createTaskDriver(
       }
     },
     async allocate(value, template, signal, report = () => {}) {
-      const resource = ownedResource(owner, value);
+      const resource = validate(value);
       let vm = await lookup(resource, signal);
       if (!vm) {
         const base = (await list(signal)).find((item) => item.name === template);
@@ -209,6 +214,7 @@ export function createTaskDriver(
         codex,
         signing,
         profile,
+        sdkOnly: options.sdkOnly === true,
         region: process.env.ORBISA_AWS_REGION ?? "us-east-2",
       };
       await checked(
@@ -260,7 +266,7 @@ export function createTaskDriver(
           await rm(staging, { recursive: true, force: true });
         }
       }
-      if (payload.cursor && profile === "personal") {
+      if (payload.cursor && profile === "personal" && !options.sdkOnly) {
         const path = join(homedir(), ".local/bin/cursor-agent-personal-acp");
         await checked(
           [
@@ -287,7 +293,7 @@ export function createTaskDriver(
       report("Task VM credentials refreshed.");
     },
     executor(value) {
-      const resource = ownedResource(owner, value);
+      const resource = validate(value);
       return {
         exec: async (request) => {
           // Seed software only. Each clone enrolls independently into this directory.
@@ -369,8 +375,9 @@ if p['codex']:
 if p['cursor']:
     write(root/'cursor-api-key', p['cursor'])
     link(home/('.config/orbisa/cursor-'+p['profile']+'-api-key'), root/'cursor-api-key')
-    launcher = '#!/usr/bin/env python3\nimport os,sys,pathlib\nk=pathlib.Path("/dev/shm/orbisa/cursor-api-key").read_text().strip()\nif not k: raise SystemExit("Cursor key unavailable")\nos.environ["CURSOR_API_KEY"]=k\na=["--list-models"] if "--list-models" in sys.argv[1:] else ["acp"]\nos.execvp("cursor-agent",["cursor-agent",*a])\n'
-    write(home/'.local/bin/bb-cursor-work-acp', launcher, 0o700)
-    write(home/'.local/bin/cursor-agent-personal-acp', launcher, 0o700)
+    if not p.get('sdkOnly'):
+        launcher = '#!/usr/bin/env python3\nimport os,sys,pathlib\nk=pathlib.Path("/dev/shm/orbisa/cursor-api-key").read_text().strip()\nif not k: raise SystemExit("Cursor key unavailable")\nos.environ["CURSOR_API_KEY"]=k\na=["--list-models"] if "--list-models" in sys.argv[1:] else ["acp"]\nos.execvp("cursor-agent",["cursor-agent",*a])\n'
+        write(home/'.local/bin/bb-cursor-work-acp', launcher, 0o700)
+        write(home/'.local/bin/cursor-agent-personal-acp', launcher, 0o700)
 write(marker, p['owner'])
 `;
