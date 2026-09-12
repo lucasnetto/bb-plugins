@@ -46,12 +46,6 @@ or resets repositories. Add this path as a source of Work's existing `180seg`
 project on each new machine. Personal machines are general-purpose: use BB's
 project setup on the new machine for the repositories needed there.
 
-After verifying the new Work machines, inspect threads using the original
-`180seg-orbisa-01..03` registrations before removing those registrations through
-BB. Preserve any needed thread/environment access. They are manually enrolled
-hosts, so removing their BB registrations must not call OrbStack VM deletion or
-modify Cursor/T3 Code registrations. The original disks belong to those tools.
-
 ## Disposable task VMs
 
 Choose **Orbisa task VM** from the new-thread environment picker, or use:
@@ -221,40 +215,10 @@ use `ephemeral: false`: BB's ephemeral path deletes immediately. At the deadline
 the policy requests BB's normal machine removal, which owns cleanup and retries.
 The adapter operates only on this instance's dedicated task namespace.
 
-## Shared Orbisa slots
-
-One bb server runs on the Mac. The Mac and three isolated Orbisa VMs are execution machines in that server. Select the `180seg` project, open **Environment**, and choose **Work in checkout** under the desired VM (or **Work locally** under the Mac). Each VM uses `/workspace/180seg`.
-
-When a VM is stopped, bb disables its Environment choices. The plugin shows a **Wake 180seg-orbisa-0N** button above the new-thread composer. Click it, wait for the VM to connect, then select it from Environment. The button disappears once connected.
-
-The plugin holds messages targeting a disconnected, bound VM while the existing Orbisa SSH ProxyCommand starts it and refreshes its volatile credentials. It starts the enrolled bb daemon, waits for it to connect, then releases queued messages. Simultaneous messages share one wake operation. A failed wake stays queued until `bb orbisa wake <slot>` retries it. Other machines are unaffected.
-
-## Setup
-
-1. Pair the Mac using `bb connect` and the getbb.app dashboard.
-2. In Settings → Machines, generate the official remote-machine installer for the reachable bb connect URL, and run it inside each VM. It installs a host daemon under `~/.bb-machines/<server-host>` and a systemd user service with automatic updates. Existing Babashka `bb` is preserved.
-3. Add each VM's `/workspace/180seg` as a source of the existing Mac `180seg` project:
-   `bb project source add <project-id> --machine <host-id> --path /workspace/180seg`
-4. Install this plugin on the Mac and bind each enrollment:
-   `bb orbisa bind 180seg-orbisa-01 <host-id>` (repeat for 02 and 03).
-
-The Work setup uses `https://work.example.com`. Set its service with `bb plugin config orbisa set daemonService bb-host-daemon-bb-plugins-work-getbb-app.service`. The setting accepts a systemd bb host-daemon service name; the default preserves the previous Personal enrollment during migration.
-
-## Commands
-
-- `bb orbisa status`: inspect bindings without waking anything.
-- `bb orbisa wake 180seg-orbisa-01`: wake or explicitly retry a failed wake.
-- `bb orbisa bind <slot> <host-id>`: bind an enrolled machine whose name matches the slot.
-
-Both Orbisa isolation flags remain enabled. VM-to-Mac bb traffic travels through authenticated bb connect; no Mac directories or SSH server are exposed. The Mac server and its internet connection must remain available. AWS SSO expiry is handled by the existing Orbisa refresh flow.
-
-This replaces the earlier standalone bb instances and localhost gateways. Ports 38901–38903, `orbisa-bb.service`, `bb-orbisa`, and `~/.bb-orbisa` are obsolete and are not used by this plugin. T3, Cursor, repositories, and their credentials are independent.
-
 ## Development
 
 Run `node --experimental-strip-types --test plugins/orbisa/tests/*.test.ts`,
 `node_modules/.bin/tsc -p plugins/orbisa/tsconfig.json`, and
 `bb plugin build plugins/orbisa` from the repository root. Refresh both profiles
-after changes. The backend and frontend use the public plugin SDK. Disabling or
-reloading aborts pending shared-slot wakes; BB owns cancellation of task-machine
+after changes. The backend uses the public plugin SDK. BB owns cancellation of machine
 operations. Disabling the plugin pauses its idle/deletion policy until reload.

@@ -11,12 +11,6 @@ work runs. Settling the last thread starts a ten-minute deletion countdown.
 Un-settle during that window to keep the disk. Once deleted, all remaining
 files are discarded and the conversation stays available as history.
 
-## Existing Orbisa slots
-
-Your shared Cursor and T3 Code machines keep their stable identities and
-existing wake behavior. Task machines use a separate namespace for each BB
-instance. The plugin does not register task VMs in Cursor or alter shared slots.
-
 ## Requirements and controls
 
 Requires BB 0.43.0, a macOS server with OrbStack, an isolated clean Orbisa

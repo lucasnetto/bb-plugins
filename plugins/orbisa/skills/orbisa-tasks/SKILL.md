@@ -18,7 +18,7 @@ bb thread spawn --project <project-id> --environment-provider orbisa-task \
 
 Apply the session's execution/model preferences. Use the existing environment
 ID when related workers should share the task VM. Creating a new composition
-creates a separate VM; shared Cursor/T3 Code Orbisa slots are unaffected.
+creates a separate VM.
 
 Inspect with `bb orbisa tasks`. Output includes machine IDs, lifecycle phase,
 last activity and `deleteAt` (epoch milliseconds or null), capped at 100 rows.
@@ -69,6 +69,4 @@ automatic commits, pushes, or backups. Publish anything worth keeping before
 settling. After deletion the conversation remains, but un-settling does not
 recreate the VM; start a fresh task environment from the published repository.
 
-The existing `bb orbisa status`, `bind`, and `wake` commands apply only to the
-three shared Orbisa slots, independently of task VMs. Follow the active BB
-profile; never substitute another profile's provider credentials.
+Follow the active BB profile; never substitute another profile's provider credentials.

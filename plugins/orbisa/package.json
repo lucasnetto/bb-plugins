@@ -12,9 +12,7 @@
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "catalog:machines",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "react": "catalog:"
+    "@types/node": "catalog:"
   },
   "engines": {
     "bb": ">=0.43.0",
@@ -29,7 +27,6 @@
     "server": "./server.ts",
     "skills": [
       "./skills/orbisa-tasks"
-    ],
-    "app": "./app.tsx"
+    ]
   }
 }
