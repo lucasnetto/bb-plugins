@@ -1,4 +1,3 @@
-import { mergeSettledHistory } from "@/ui/lib/settled-history";
 import { ProjectScopePicker } from "./ProjectScopePicker";
 import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
 import { useSidebarClock } from "@/ui/hooks/useSidebarClock";
@@ -74,13 +73,9 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const { status, threads: liveThreads, projects } = experimental_useSidebarThreads();
   const hostActions = experimental_useSidebarThreadActions();
   const { providers } = experimental_useProviders();
-  const { archivedThreads, set: setSettled, refetch } = useSettledThreads();
+  const { archivedThreads, threads, set: setSettled, refetch } = useSettledThreads(liveThreads);
   // Native unarchive/rename actions also invalidate the host sidebar query.
   useEffect(refetch, [liveThreads, refetch]);
-  const threads = useMemo(
-    () => mergeSettledHistory(liveThreads, archivedThreads),
-    [liveThreads, archivedThreads],
-  );
   const archivedIds = useMemo(
     () => new Set(archivedThreads.map((thread) => thread.id)),
     [archivedThreads],

@@ -1,14 +1,47 @@
-import { useCallback, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type PluginSidebarThread, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "@/shared/rpc-contract";
 import type { SettledThread } from "@/shared/settled-contract";
 import { SETTLED_CHANGED } from "@/shared/contract";
 
-export function useSettledThreads() {
+import { mergeSettledHistory } from "@/ui/lib/settled-history";
+
+type OptimisticSettlement = {
+  thread: PluginSidebarThread & { archivedAt?: number };
+  confirmed: boolean;
+};
+
+export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
   const rpc = useRpc<typeof rpcContract>();
   const [archivedThreads, setArchivedThreads] = useState<SettledThread[]>([]);
   const revision = useRef(0);
+  const [optimistic, setOptimistic] = useState<Record<string, OptimisticSettlement>>({});
+  const requests = useRef(new Map<string, Promise<unknown>>());
+  const authoritative = useMemo(
+    () => mergeSettledHistory(liveThreads, archivedThreads),
+    [liveThreads, archivedThreads],
+  );
+  const threads = useMemo(() => {
+    const rows = new Map(authoritative.map((thread) => [thread.id, thread]));
+    for (const [id, update] of Object.entries(optimistic)) rows.set(id, update.thread);
+    return [...rows.values()];
+  }, [authoritative, optimistic]);
+  useEffect(() => {
+    setOptimistic((current) => {
+      const next = { ...current };
+      for (const [id, update] of Object.entries(current)) {
+        if (
+          update.confirmed &&
+          authoritative.some(
+            (thread) => thread.id === id && thread.isArchived === update.thread.isArchived,
+          )
+        )
+          delete next[id];
+      }
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [authoritative, optimistic]);
   const refetch = useCallback(() => {
     const request = ++revision.current;
     rpc.call("settled_list").then(
@@ -24,13 +57,50 @@ export function useSettledThreads() {
   useRealtime(SETTLED_CHANGED, refetch);
   const set = useCallback(
     (threadId: string, settled: boolean) => {
-      rpc.call("settled_set", { threadId, settled }).then(refetch, (cause: unknown) => {
-        toast.error(settled ? "Could not settle thread" : "Could not un-settle thread");
-        console.warn("[t3-sidebar] settled_set failed", cause);
-        refetch();
-      });
+      const thread = threads.find((row) => row.id === threadId);
+      const update = thread
+        ? {
+            thread: {
+              ...thread,
+              isArchived: settled,
+              archivedAt: settled ? Date.now() : undefined,
+            },
+            confirmed: false,
+          }
+        : undefined;
+      if (update) setOptimistic((current) => ({ ...current, [threadId]: update }));
+      // Serialize rapid Settle / Un-settle clicks so the server ends in the same state.
+      const previous = requests.current.get(threadId) ?? Promise.resolve();
+      const request = previous
+        .catch(() => {})
+        .then(() => rpc.call("settled_set", { threadId, settled }));
+      requests.current.set(threadId, request);
+      void request.then(
+        () => {
+          if (requests.current.get(threadId) !== request) return;
+          requests.current.delete(threadId);
+          setOptimistic((current) =>
+            current[threadId] === update && update
+              ? { ...current, [threadId]: { ...update, confirmed: true } }
+              : current,
+          );
+          refetch();
+        },
+        (cause: unknown) => {
+          if (requests.current.get(threadId) !== request) return;
+          requests.current.delete(threadId);
+          setOptimistic((current) => {
+            const next = { ...current };
+            delete next[threadId];
+            return next;
+          });
+          toast.error(settled ? "Could not settle thread" : "Could not un-settle thread");
+          console.warn("[t3-sidebar] settled_set failed", cause);
+          refetch();
+        },
+      );
     },
-    [rpc, refetch],
+    [rpc, refetch, threads],
   );
-  return { archivedThreads, set, refetch };
+  return { archivedThreads, threads, set, refetch };
 }
