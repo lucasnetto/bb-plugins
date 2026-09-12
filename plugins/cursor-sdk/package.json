@@ -1,0 +1,31 @@
+{
+  "name": "bb-plugin-cursor-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build"
+  },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "effect": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cursor/sdk": "catalog:",
+    "@types/node": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.42.1",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "Cursor SDK",
+    "description": "Use the local Cursor SDK as a BB provider with persistent conversations and native BB tools.",
+    "branding": {
+      "icon": "Terminal"
+    },
+    "server": "./src/server/server.ts",
+    "host": "./src/server/host.ts",
+    "skills": []
+  }
+}

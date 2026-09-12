@@ -34,6 +34,7 @@ for (const profile of ["personal", "work"] as const) {
       assert.deepEqual(ids, profile === "work" ? ["acp-cursor"] : ["acp-cursor", "acp-cursor-personal"]);
       const hook = registrations.hooks["message.dispatch"]!;
       assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor" } }))).action, "proceed");
+      assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "cursor-sdk" } }))).action, "proceed");
       assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor-work" } }))).action, "reject");
       if (profile === "work") {
         assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor-personal" } }))).action, "reject");

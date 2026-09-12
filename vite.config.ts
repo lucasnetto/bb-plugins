@@ -13,6 +13,7 @@ export default defineConfig({
       "plugins/pr-review",
       "plugins/workers",
       "plugins/fonts",
+      "plugins/cursor-sdk",
     ],
   },
 });

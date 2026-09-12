@@ -10,6 +10,6 @@ export function resolveProfile(dataDir: string): Profile {
 
 export function profileProviderIds(profile: Profile): string[] {
   return profile === "personal"
-    ? ["codex", "acp-cursor", "acp-cursor-personal"]
-    : ["codex", "acp-cursor"];
+    ? ["codex", "acp-cursor", "acp-cursor-personal", "cursor-sdk"]
+    : ["codex", "acp-cursor", "cursor-sdk"];
 }
