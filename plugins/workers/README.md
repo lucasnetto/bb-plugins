@@ -40,7 +40,9 @@ bb plugin reload workers
 
 The plugin bundles the [bb-workers skill](skills/bb-workers/SKILL.md). Ask an
 agent to “use bb workers,” “delegate to Fable,” or invoke `$bb-workers` to use
-hidden child threads, keep discussion in the parent, and review worker results.
+hidden child threads as persistent, messageable subagents. The skill explains
+spawning and communication without prescribing how agents divide or manage work.
 It does not turn on delegation for ordinary coding requests. Model preferences
-come from your request or project instructions, not a fixed model in the skill.
+come from your request, project instructions, or BB defaults, not a fixed model
+in the skill.
 New agent sessions discover the skill after the plugin is refreshed.
