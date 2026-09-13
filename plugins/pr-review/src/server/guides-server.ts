@@ -129,8 +129,6 @@ export function registerGuides(
     name: "get_review_guide_context",
     description:
       "Get the exact linked PR diff, revisions, and Plannotator methodology for writing a guided review.",
-    instructions:
-      "When asked for a guided review, get_review_guide_context supplies the diff and guide instructions. Organize the changes into chapters, then call save_review_guide. This is a walkthrough, not a findings report. CLI fallback: bb pr-review guide-context <url> and bb pr-review guide-save <url> <base> <head> '<JSON>'.",
     parameters: z.object({ url: z.string() }),
     execute: (input, ctx) =>
       runtime.runPromise(guideContext({ ...input, threadId: ctx.threadId }), {
@@ -140,7 +138,7 @@ export function registerGuides(
   bb.agents.registerTool({
     name: "save_review_guide",
     description:
-      "Save a chaptered guided review into the thread's PR panel. guideJson is JSON with title, intent, sections (title, overview, diffs with file and summary), and unplacedFiles. Every changed file must occur exactly once. Use base and head from get_review_guide_context.",
+      "Save a chaptered guided review into the thread's PR panel.",
     parameters: z.object({
       url: z.string(),
       base: z.string(),

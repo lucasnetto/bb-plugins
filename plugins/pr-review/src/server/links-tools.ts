@@ -23,9 +23,7 @@ export function registerLinkTools(
   bb.agents.registerTool({
     name: "link_pull_request",
     description:
-      "Link a GitHub pull request to the current BB thread. Supports several repositories and PRs. Does not post to GitHub.",
-    instructions:
-      "Call link_pull_request after successfully creating a PR, when the user asks you to review or work on a PR, or explicitly asks to link one. Use created-here, requested-review, requested-work, or manual as the reason. Do not link PRs mentioned only as examples or background. Preserve existing links. Use unlink_pull_request when asked to remove a link; list_linked_pull_requests shows current links. If these tools are unavailable in an existing session, use bb pr-review link <url> <reason>, unlink <url>, or links in the current thread.",
+      "Use every time you successfully create a PR to link it to the current BB thread.",
     parameters: z.object({ url: z.string(), reason: z.enum(reasonSchema.literals) }),
     execute: (input, ctx) =>
       runtime.runPromise(
