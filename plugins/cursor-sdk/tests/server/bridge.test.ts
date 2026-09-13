@@ -17,7 +17,7 @@ import {
   experimental_assembleCapturedThreadEvents,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { threadDeltaSchema } from "@get-bb/plugin-sdk/provider-bridge";
-import { Effect } from "effect";
+import { Deferred, Effect } from "effect";
 import { z } from "zod";
 import { createSdkBridge } from "../../src/server/bridge.js";
 import { RunEvents } from "../../src/server/events.js";
@@ -58,6 +58,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const sent: Array<{ text: string; options?: SendOptions }> = [];
   let cancelled = 0;
   let disposed = 0;
+  const disposal = Deferred.makeUnsafe<void>();
+  const cancellation = Deferred.makeUnsafe<void>();
   let sequence = 0;
   const makeAgent = (agentId: string): SDKAgent => {
     const detach = new Set<() => void>();
@@ -112,6 +114,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
             cancelled++;
             interrupted = true;
             release?.();
+            await Effect.runPromise(Deferred.succeed(cancellation, undefined));
           },
           async conversation() {
             return [];
@@ -126,6 +129,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
         disposed++;
         for (const release of detach) release();
         detach.clear();
+        await Effect.runPromise(Deferred.succeed(disposal, undefined));
       },
       async listArtifacts() {
         return [];
@@ -287,6 +291,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     deltas,
     cancelled: () => cancelled,
     disposed: () => disposed,
+    waitForDisposal: () => Effect.runPromise(Deferred.await(disposal)),
+    waitForCancellation: () => Effect.runPromise(Deferred.await(cancellation)),
   };
 }
 
@@ -636,9 +642,24 @@ describe("cloud bridge", () => {
     await f.waitFor(() => f.deltas().some((d) => d.kind === "turn.open"));
     if (operation === "release") await f.request("thread/stop", stop);
     else f.bridge.onClose?.();
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    await f.waitForDisposal();
     expect(f.cancelled()).toBe(0);
     expect(f.disposed()).toBe(1);
+  });
+
+  test("rejects an invalid cloud agent ID before contacting the SDK", async () => {
+    const f = fixture(undefined, true);
+    await f.init();
+    const response = await f.request("thread/resume", {
+      threadId: "thread",
+      providerThreadId: "bc-../invalid",
+      cwd: "/tmp",
+      instructionMode: "append",
+      options: f.executionOptions,
+    });
+    expect(response.error?.message).toBe("Invalid Cursor Cloud agent ID.");
+    expect(f.created).toHaveLength(0);
+    expect(f.resumed).toHaveLength(0);
   });
 
   test("explicit stop cancels cloud work and releases the handle", async () => {
@@ -720,7 +741,8 @@ test("stop during cloud launch cancels a run returned after the waiting fiber wa
     intent: "interrupt",
   });
   f.completeSend();
-  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  await f.waitForCancellation();
+  await f.settled();
   expect(f.cancelled()).toBe(1);
   expect(f.deltas().filter((delta) => delta.kind === "turn.boundary")).toHaveLength(1);
 });

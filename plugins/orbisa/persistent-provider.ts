@@ -1,5 +1,5 @@
 import type { BbPluginApi, PluginMachineProviderDeclaration } from "@get-bb/plugin-sdk";
-import { Effect, Layer, ManagedRuntime, Semaphore } from "effect";
+import { ConfigProvider, Effect, ManagedRuntime, Semaphore } from "effect";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { createTaskDriver, type TaskDriver } from "./task-vms.ts";
@@ -61,7 +61,10 @@ export function registerPersistentProvider(
           )
         : Effect.void,
   };
-  const runtime = ManagedRuntime.make(Layer.empty);
+  // Preserve explicit empty values so validation rejects them rather than defaulting.
+  const runtime = ManagedRuntime.make(
+    ConfigProvider.layer(ConfigProvider.fromEnv({ preserveEmptyStrings: true })),
+  );
   const lock = Semaphore.makeUnsafe(1);
   const policy = createPersistentPolicy(bb, async () => (await settings()).persistentIdleMinutes);
   bb.onDispose(() => runtime.dispose());

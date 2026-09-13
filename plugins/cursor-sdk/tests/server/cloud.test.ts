@@ -44,6 +44,22 @@ describe("cloud repository source", () => {
       ref,
     });
   });
+  test.each<Record<string, string>>([
+    { "remote get-url origin": "https://secret@github.com/example/repo" },
+    {
+      "rev-parse HEAD": "invalid-sha",
+      "ls-remote --heads origin": `${tip}\trefs/heads/main`,
+      [`merge-base --is-ancestor invalid-sha ${tip}`]: "",
+    },
+  ])("keeps invalid Git output in the typed error channel", async (overrides) => {
+    const result = await Effect.runPromise(
+      readCloudSource("/checkout", checkout(overrides)).pipe(
+        Effect.catchTag("SdkError", (error) => Effect.succeed(error)),
+      ),
+    );
+    expect(result).toBeInstanceOf(SdkError);
+    expect(JSON.stringify(result)).not.toContain("secret@");
+  });
   test("accepts an ancestor already reachable from an origin branch", async () => {
     const git = checkout({
       "ls-remote --heads origin": `${tip}\trefs/heads/main`,

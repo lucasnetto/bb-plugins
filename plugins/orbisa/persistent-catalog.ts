@@ -1,24 +1,29 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Config, Effect, Schema } from "effect";
 import { discoverCatalog } from "./task-catalog.ts";
 import { withGitBundle } from "./task-git-cache.ts";
 import { CHECKOUT_SCRIPT } from "./task-checkout.ts";
 import { checked } from "./task-process.ts";
-import { foreign, parse } from "./persistent-effects.ts";
+import { foreign, PersistentError } from "./persistent-effects.ts";
 import type { PersistentResource } from "./persistent-resource.ts";
 
 export const WORKSPACE = "/workspace/180seg";
+export const remoteUserConfig = Config.schema(
+  Schema.String.check(Schema.isPattern(/^[a-z_][a-z0-9_-]*$/)),
+  "ORBISA_REMOTE_USER",
+).pipe(Config.withDefault("lucas_netto"));
 export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(function* (
   resource: PersistentResource,
   cache: string,
   report: (message: string) => void,
 ) {
-  const user = process.env.ORBISA_REMOTE_USER ?? "lucas_netto";
-  yield* parse(() => {
-    if (!/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error();
-  });
+  const user = yield* remoteUserConfig.pipe(
+    Effect.mapError(
+      () => new PersistentError({ message: "Invalid ORBISA_REMOTE_USER configuration." }),
+    ),
+  );
   const root = join(homedir(), "Developer/180seg");
   const run = (args: string[]) => ["orbctl", "run", "-m", resource.name, "-u", user, ...args];
   const repositories = yield* foreign("Could not discover the 180seg repositories.", (signal) =>

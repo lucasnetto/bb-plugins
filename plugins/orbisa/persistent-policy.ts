@@ -68,7 +68,11 @@ export function createPersistentPolicy(
           bb.sdk.hosts.experimental_suspend({ hostId: host.id }),
         ).pipe(
           Effect.catch(() =>
-            Effect.sync(() => bb.log.info(`Persistent machine ${host.id} remains in use.`)),
+            Effect.sync(() =>
+              bb.log.warn(
+                `Could not suspend persistent machine ${host.id}; suspension may have been refused or failed. Will retry next sweep.`,
+              ),
+            ),
           ),
         );
       }

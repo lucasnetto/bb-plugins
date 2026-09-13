@@ -79,7 +79,14 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
           "Cursor Cloud starts from committed code. Commit or stash local changes, then push the starting commit before launching.",
       }),
     );
-  const repository = githubRepository(yield* runGit(cwd, ["remote", "get-url", "origin"]));
+  const origin = yield* runGit(cwd, ["remote", "get-url", "origin"]);
+  const repository = yield* Effect.try({
+    try: () => githubRepository(origin),
+    catch: () =>
+      new SdkError({
+        message: "Cursor Cloud requires a valid GitHub origin without embedded credentials.",
+      }),
+  });
   const ref = yield* runGit(cwd, ["rev-parse", "HEAD"]);
   const remote = yield* runGit(cwd, ["ls-remote", "--heads", "origin"]);
   const tips = [
@@ -105,7 +112,11 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
           "Cursor Cloud cannot verify HEAD on origin. Push this commit, or fetch origin if it was pushed from another checkout, then retry.",
       }),
     );
-  return cloudSourceSchema.parse({ repository, ref });
+  return yield* Effect.try({
+    try: () => cloudSourceSchema.parse({ repository, ref }),
+    catch: () =>
+      new SdkError({ message: "Cursor Cloud requires a valid repository and commit SHA." }),
+  });
 });
 
 export const cloudAgentUrl = (agentId: string) =>
@@ -131,7 +142,10 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
   let record: z.infer<typeof recordSchema> | undefined;
   let remote: SDKAgentInfo | undefined;
   if (args.providerThreadId) {
-    const id = agentIdSchema.parse(args.providerThreadId);
+    const id = yield* Effect.try({
+      try: () => agentIdSchema.parse(args.providerThreadId),
+      catch: () => new SdkError({ message: "Invalid Cursor Cloud agent ID." }),
+    });
     record = yield* foreign(async () => {
       try {
         return recordSchema.parse(JSON.parse(await readFile(recordPath(id), "utf8")));
