@@ -24,6 +24,41 @@ Restoring the last thread uses BB’s client-side navigation, avoiding a second 
 
 ## Refresh local plugins across profiles
 
+### Desktop updates
+
+After a desktop update finishes installing, run:
+
+```sh
+bb-restart           # restart Personal and Work
+bb-restart personal  # restart only Personal
+bb-restart work      # restart only Work
+```
+
+The command immediately asks each existing profile launch service to shut down
+cleanly. launchd restarts it with its existing account configuration. The command
+waits for a new launcher process and an HTTP response reporting the installed bb
+version, then prints `ready` for each profile. Reopen bb or reload an already-open
+error page afterward. Running sessions may reconnect or be interrupted.
+
+This is a standalone CLI so it works even when bb's UI or plugin server cannot
+load. There is no automatic update watcher or fixed 30-second delay. Readiness
+has a 60-second timeout per profile; failures return a nonzero exit status and
+point to the service logs. Stopped or unloaded services are reported as errors.
+If the app bundle changes during the command, rerun it after installation finishes.
+
+Install from the permanent bb-plugins checkout:
+
+```sh
+python3 plugins/profiles/restart.py --install
+```
+
+This links `~/.local/bin/bb-restart` to the Profiles helper in the permanent
+checkout. Keep that checkout available and `~/.local/bin` on PATH. The command
+uses the existing account-aware profile services and never switches provider
+credentials or the calling shell's server URL.
+
+### Local plugin builds
+
 Use `bb profiles refresh <plugin-id> ...` after validating a change in the
 permanent `~/Developer/lucasnetto/bb-plugins` checkout. With no IDs it refreshes
 installed local bb-plugins plugins. `--check` only reports installation path,
