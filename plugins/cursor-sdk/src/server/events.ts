@@ -1,20 +1,36 @@
 import type { SDKMessage, SDKToolUseMessage, TokenUsage, RunResult } from "@cursor/sdk";
-import type { ThreadDelta, DeltaItemShape } from "@get-bb/plugin-sdk/provider-bridge";
+import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
+import { Match } from "effect";
+import { z } from "zod";
 import { experimental_toolPresentation } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
 
-export function boundedValue(value: unknown): unknown {
+export const runStatus = (status: RunResult["status"]) =>
+  Match.value(status).pipe(
+    Match.when("cancelled", () => "interrupted" as const),
+    Match.when("error", () => "failed" as const),
+    Match.orElse(() => "completed" as const),
+  );
+
+type ToolItem = Extract<ThreadDelta, { kind: "item.open" }>["item"];
+
+const toolValueSchema = z.json().optional();
+
+type ToolValue = z.infer<typeof toolValueSchema>;
+
+export function boundedValue(value: ToolValue): ToolValue {
   if (value === undefined) return undefined;
   const text = JSON.stringify(value);
+
   return text.length > 48_000 ? `${text.slice(0, 48_000)}… [truncated]` : value;
 }
 
-function toolShape(event: SDKToolUseMessage): DeltaItemShape {
+function toolItem(event: SDKToolUseMessage): ToolItem {
   return {
     type: "tool",
     tool: event.name,
-    args: boundedValue(event.args),
-    result: boundedValue(event.result),
+    args: boundedValue(toolValueSchema.parse(event.args)),
+    result: boundedValue(toolValueSchema.parse(event.result)),
   };
 }
 
@@ -24,7 +40,7 @@ export class RunEvents {
   private readonly id = randomUUID();
   private sequence = 0;
   private text: { id: string; channel: "agentMessage" | "reasoningText" } | undefined;
-  private tools = new Map<string, DeltaItemShape>();
+  private tools = new Map<string, ToolItem>();
   private assistantSeen = false;
   private usageSeen = false;
   private total = {
@@ -47,9 +63,12 @@ export class RunEvents {
 
   append(text: string, channel: "agentMessage" | "reasoningText") {
     if (!text) return;
+
     if (this.text?.channel !== channel) this.closeText();
     this.text ??= { id: `${this.id}-text-${++this.sequence}`, channel };
+
     if (channel === "agentMessage") this.assistantSeen = true;
+
     // Bound every notification even when the SDK emits a large text block.
     for (let offset = 0; offset < text.length; offset += 16_000) {
       this.emit([
@@ -71,6 +90,7 @@ export class RunEvents {
       reasoningOutputTokens: usage.reasoningTokens ?? 0,
       totalTokens: usage.totalTokens,
     };
+
     this.total = {
       cachedInputTokens: this.total.cachedInputTokens + last.cachedInputTokens,
       inputTokens: this.total.inputTokens + last.inputTokens,
@@ -93,11 +113,13 @@ export class RunEvents {
       case "tool_call": {
         this.closeText();
         const key = { providerItemId: event.call_id };
-        const item = toolShape(event);
+        const item = toolItem(event);
         const presentation = experimental_toolPresentation(event.name);
+
         if (!this.tools.has(event.call_id))
           this.emit([{ kind: "item.open", key, item, presentation }]);
         this.tools.set(event.call_id, item);
+
         if (event.status !== "running") {
           this.emit([
             {
@@ -110,8 +132,10 @@ export class RunEvents {
           ]);
           this.tools.delete(event.call_id);
         }
+
         break;
       }
+
       case "usage":
         this.usageSeen = true;
         this.usage(event.usage);
@@ -133,18 +157,14 @@ export class RunEvents {
 
   finish(result: RunResult) {
     if (!this.assistantSeen && result.result) this.append(result.result, "agentMessage");
+
     if (!this.usageSeen && result.usage) this.usage(result.usage);
-    this.close(
-      result.status === "cancelled"
-        ? "interrupted"
-        : result.status === "error"
-          ? "failed"
-          : "completed",
-    );
+    this.close(runStatus(result.status));
   }
 
   close(status: "completed" | "failed" | "interrupted") {
     this.closeText();
+
     for (const [id, item] of this.tools)
       this.emit([{ kind: "item.close", key: { providerItemId: id }, item, status }]);
     this.tools.clear();

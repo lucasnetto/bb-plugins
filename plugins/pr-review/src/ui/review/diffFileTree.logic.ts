@@ -39,14 +39,17 @@ export function diffFileTreeEntries(
  */
 export function collectDirectoryPaths(paths: ReadonlyArray<string>): ReadonlyArray<string> {
   const directories = new Set<string>();
+
   for (const path of paths) {
     const segments = path.split("/");
     let directory = "";
+
     for (const segment of segments.slice(0, -1)) {
       directory += `${segment}/`;
       directories.add(directory);
     }
   }
+
   return [...directories];
 }
 
@@ -75,10 +78,12 @@ export function buildDiffFileTreeUpdates(
   for (const path of previousPaths) {
     if (!next.has(path)) updates.push({ type: "remove", path });
   }
+
   // Deepest first: a directory can only go once everything under it has.
   const removedDirectories = [...previousDirectories]
     .filter((directory) => !nextDirectories.has(directory))
     .sort((left, right) => pathDepth(right) - pathDepth(left));
+
   for (const directory of removedDirectories) {
     updates.push({ type: "remove", path: directory, recursive: true });
   }
@@ -87,7 +92,9 @@ export function buildDiffFileTreeUpdates(
   const addedDirectories = [...nextDirectories]
     .filter((directory) => !previousDirectories.has(directory))
     .sort((left, right) => pathDepth(left) - pathDepth(right));
+
   for (const directory of addedDirectories) updates.push({ type: "add", path: directory });
+
   for (const path of nextPaths) {
     if (!previous.has(path)) updates.push({ type: "add", path });
   }

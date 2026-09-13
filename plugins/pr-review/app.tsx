@@ -3,6 +3,7 @@ import { registerReviewApp } from "./src/ui/app";
 import { PullRequestsPage } from "./src/ui/workspace/PullRequestsPage";
 
 export { PullRequestsPage };
+
 export default definePluginApp((app) => {
   registerReviewApp(app);
   app.slots.navPanel({

@@ -4,14 +4,21 @@ import type { Actor, Check } from "../../shared/workspace-contract";
 
 export function relativeTime(value: string, now = Date.now()) {
   const seconds = Math.max(0, (now - Date.parse(value)) / 1000);
+
   if (!Number.isFinite(seconds)) return "";
+
   if (seconds < 60) return "just now";
+
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+
   return `${Math.floor(seconds / 86400)}d ago`;
 }
+
 export function Avatar({ actor }: { actor: Actor | null }) {
   const [failed, setFailed] = useState(false);
+
   return actor?.avatarUrl && !failed ? (
     <img
       className="pr-avatar"
@@ -27,6 +34,7 @@ export function Avatar({ actor }: { actor: Actor | null }) {
     </span>
   );
 }
+
 export function PrGlyph({
   draft,
   state = "OPEN",
@@ -71,11 +79,13 @@ export function PrGlyph({
     </span>
   );
 }
+
 export function CheckGlyph({ state }: { state?: string | null }) {
   if (!state) return null;
   const success = ["success", "SUCCESS"].includes(state);
   const failure = ["failure", "FAILURE", "ERROR"].includes(state);
   const skipped = state === "skipped";
+
   const label = success
     ? "Checks passing"
     : failure
@@ -83,6 +93,7 @@ export function CheckGlyph({ state }: { state?: string | null }) {
       : skipped
         ? "Skipped"
         : "Checks pending";
+
   return (
     <span
       className={
@@ -98,8 +109,10 @@ export function CheckGlyph({ state }: { state?: string | null }) {
     </span>
   );
 }
+
 export function DiffStat({ additions, deletions }: { additions?: number; deletions?: number }) {
   if (additions === undefined || deletions === undefined) return null;
+
   return (
     <span className="pr-diff-stat">
       <span className="pr-success">+{additions.toLocaleString()}</span>
@@ -107,6 +120,7 @@ export function DiffStat({ additions, deletions }: { additions?: number; deletio
     </span>
   );
 }
+
 export function Label({ name, color }: { name: string; color: string }) {
   return (
     <span className="pr-label" title={name}>
@@ -119,10 +133,12 @@ export function Label({ name, color }: { name: string; color: string }) {
     </span>
   );
 }
+
 export function checksSummary(checks: Check[]) {
   const passing = checks.filter(
     (check) => check.state === "success" || check.state === "skipped",
   ).length;
+
   return {
     state: checks.some((check) => check.state === "failure")
       ? "failure"

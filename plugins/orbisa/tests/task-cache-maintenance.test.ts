@@ -8,10 +8,12 @@ import { checked } from "../task-process.ts";
 import { prunePreparedBases, type CachedBase } from "../task-base-retention.ts";
 import { pruneGitCaches, withGitBundle } from "../task-git-cache.ts";
 import { timed } from "../task-timing.ts";
+
 const signal = new AbortController().signal;
 
 void test("skill content hash ignores metadata and order, resolves hardlinks, and tracks content and permissions", async () => {
   const root = await mkdtemp(join(tmpdir(), "orbisa-skills-test-"));
+
   try {
     async function fingerprint(version: number) {
       const path = join(root, `${version}.tar`);
@@ -38,8 +40,10 @@ with tarfile.open(sys.argv[1],'w') as tar:
         ],
         { signal },
       );
+
       return skillArchiveFingerprint(path, signal);
     }
+
     const original = await fingerprint(0);
     assert.equal(await fingerprint(1), original);
     assert.equal(await fingerprint(4), original);
@@ -53,12 +57,14 @@ with tarfile.open(sys.argv[1],'w') as tar:
 void test("base retention preserves current, fallback, running, replaced and foreign machines", async () => {
   const owner = "a".repeat(10);
   const now = 100 * 24 * 60 * 60_000;
+
   const make = (i: number): CachedBase => ({
     name: `orbisa-base-${owner}-${String(i).padStart(16, "0")}`,
     id: `vm${i}`,
     state: "stopped",
     config: { isolated: true, isolate_network: true, forward_ssh_agent: false, mounts: [] },
   });
+
   const vms = Array.from({ length: 8 }, (_, i) => make(i));
   vms[3]!.state = "running";
   vms[5]!.name = "cursor-base";
@@ -81,6 +87,7 @@ void test("base retention preserves current, fallback, running, replaced and for
     },
     list: async () => {
       reads++;
+
       return vms.map((v) => (v.id === "vm4" && reads > 1 ? { ...v, id: "replacement" } : v));
     },
     remove: async (vm) => {
@@ -95,8 +102,10 @@ void test("Git retention skips active transfers, recent caches, symlinks and unk
   const root = await mkdtemp(join(tmpdir(), "orbisa-retention-test-"));
   const cache = join(root, "cache");
   const now = Date.now();
+
   try {
     await mkdir(cache);
+
     for (const [name, used] of [
       ["a".repeat(64), 1],
       ["b".repeat(64), now],
@@ -105,8 +114,10 @@ void test("Git retention skips active transfers, recent caches, symlinks and unk
       await mkdir(join(cache, name));
       await writeFile(join(cache, name, "last-used"), String(used));
     }
+
     await symlink(join(cache, "unknown"), join(cache, "c".repeat(64)));
     const source = join(root, "source");
+
     const git = (...args: string[]) =>
       checked(
         [
@@ -121,6 +132,7 @@ void test("Git retention skips active transfers, recent caches, symlinks and unk
         ],
         { signal },
       );
+
     await git("init", "-b", "main", source);
     await writeFile(join(source, "file"), "data");
     await git("-C", source, "add", ".");

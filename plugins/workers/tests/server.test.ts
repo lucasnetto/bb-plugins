@@ -4,6 +4,7 @@ import plugin from "../server";
 import { rpcContract, PAGE_SIZE } from "../contract";
 
 const disposers: Array<() => Promise<void>> = [];
+
 afterEach(async () => {
   await Promise.all(disposers.splice(0).map((dispose) => dispose()));
 });
@@ -23,7 +24,11 @@ function setup() {
             }),
             hasPendingInteraction: index === 0,
           })),
-        defaultExecutionOptions: async () => ({ model: "gpt-5.6-luna", reasoningLevel: "low", permissionMode: "accept-edits" }),
+        defaultExecutionOptions: async () => ({
+          model: "gpt-5.6-luna",
+          reasoningLevel: "low",
+          permissionMode: "accept-edits",
+        }),
         spawn: async () => makeThreadResponse({ id: "new-worker", visibility: "hidden" }),
         get: async ({ threadId }) =>
           makeThreadResponse({
@@ -36,16 +41,20 @@ function setup() {
       },
     },
   });
+
   plugin(host.bb);
   disposers.push(() => host.harness.lifecycle.dispose());
+
   return host.harness;
 }
 
 test("queries direct children including hidden workers, bounds metadata reads, and retains paging", async () => {
   const harness = setup();
+
   const result = rpcContract.list.output.parse(
     await harness.behavior.callRpc("list", { threadId: "parent", offset: 0 }),
   );
+
   expect(result.workers).toHaveLength(PAGE_SIZE);
   expect(result.hasMore).toBe(true);
   expect(result.workers[0]?.archived).toBe(true);
@@ -84,14 +93,22 @@ test("publishes worker changes to their parent and ignores root lifecycle events
 
 test("spawns hidden children using the caller's environment and permissions", async () => {
   const harness = setup();
-  await harness.behavior.callAgentTool("bb_worker_thread", {
-    title: "Research", prompt: "Investigate the issue",
-  }, { threadId: "parent" });
+  await harness.behavior.callAgentTool(
+    "bb_worker_thread",
+    {
+      title: "Research",
+      prompt: "Investigate the issue",
+    },
+    { threadId: "parent" },
+  );
   expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
-    title: "Research", prompt: "Investigate the issue",
-    projectId: "parent-project", parentThreadId: "parent",
+    title: "Research",
+    prompt: "Investigate the issue",
+    projectId: "parent-project",
+    parentThreadId: "parent",
     environment: { type: "reuse", environmentId: "parent-environment" },
-    permissionMode: "accept-edits", visibility: "hidden",
+    permissionMode: "accept-edits",
+    visibility: "hidden",
     startedOnBehalfOf: { initiator: "agent", senderThreadId: "parent" },
   });
   expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty("model");
@@ -99,26 +116,43 @@ test("spawns hidden children using the caller's environment and permissions", as
 
 test("passes explicit execution options and supports nested workers", async () => {
   const harness = setup();
-  await harness.behavior.callAgentTool("bb_worker_thread", {
-    title: "Research", prompt: "Investigate", providerId: "pi", model: "chosen-model", reasoningLevel: "high",
-  }, { threadId: "worker" });
+  await harness.behavior.callAgentTool(
+    "bb_worker_thread",
+    {
+      title: "Research",
+      prompt: "Investigate",
+      providerId: "pi",
+      model: "chosen-model",
+      reasoningLevel: "high",
+    },
+    { threadId: "worker" },
+  );
   expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
-    parentThreadId: "worker", visibility: "hidden",
-    providerId: "pi", model: "chosen-model", reasoningLevel: "high",
+    parentThreadId: "worker",
+    visibility: "hidden",
+    providerId: "pi",
+    model: "chosen-model",
+    reasoningLevel: "high",
   });
 });
 
 test("rejects empty tasks and caller overrides of worker safety fields", async () => {
   const harness = setup();
+
   for (const input of [
     { title: " ", prompt: "Task" },
     { title: "Task", prompt: " " },
-    ...["visibility", "parentThreadId", "projectId", "environment", "permissionMode"].map((key) => ({
-      title: "Task", prompt: "Task", [key]: "override",
-    })),
+    ...["visibility", "parentThreadId", "projectId", "environment", "permissionMode"].map(
+      (key) => ({
+        title: "Task",
+        prompt: "Task",
+        [key]: "override",
+      }),
+    ),
   ]) {
     await expect(harness.behavior.callAgentTool("bb_worker_thread", input)).rejects.toThrow();
   }
+
   expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
 });
 

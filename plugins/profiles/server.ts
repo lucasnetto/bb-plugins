@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { z } from "zod";
 import { promisify } from "node:util";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { homedir } from "node:os";
@@ -10,6 +11,7 @@ import { profileProviderIds, resolveProfile } from "./profile.ts";
 export default function plugin(bb: BbPluginApi) {
   const profile = resolveProfile(bb.server.experimental_dataDir);
   const allowedProviders = new Set(profileProviderIds(profile));
+
   const info = {
     current: profile,
     profiles: [
@@ -29,12 +31,15 @@ export default function plugin(bb: BbPluginApi) {
       },
     ],
   };
+
   const personalCommand = join(homedir(), ".local/bin/cursor-agent-personal-acp");
   bb.providers.register(cursorProvider(profile, "acp-cursor", personalCommand));
+
   if (profile === "personal") {
     // Preserve the provider ID persisted on existing Personal conversations.
     bb.providers.register(cursorProvider(profile, "acp-cursor-personal", personalCommand));
   }
+
   bb.rpc.register(rpcContract, { info: () => info });
   bb.agents.contributeInstructions(
     () =>
@@ -47,6 +52,7 @@ export default function plugin(bb: BbPluginApi) {
         message: `This ${profile} instance supports Codex, Cursor, and Pi. Select one of those providers.`,
       };
     }
+
     return { action: "proceed" };
   });
   bb.cli.register({
@@ -65,26 +71,39 @@ export default function plugin(bb: BbPluginApi) {
         if (argv.slice(1).some((arg) => arg !== "--check" && !/^[a-z][a-z0-9-]*$/.test(arg)))
           return { exitCode: 1, stderr: "Usage: bb profiles refresh [plugin-id ...] [--check]" };
         const self = (await bb.sdk.plugins.list()).plugins.find((p) => p.id === bb.pluginId);
+
         if (!self) return { exitCode: 1, stderr: "Profiles installation is missing." };
+
         try {
           const result = await promisify(execFile)(
             "python3",
             [join(self.rootDir, "refresh.py"), ...argv.slice(1)],
             { timeout: 3_600_000, maxBuffer: 2 * 1024 * 1024 },
           );
+
           return { exitCode: 0, stdout: result.stdout };
         } catch (error) {
-          const result = error as { stdout?: string; stderr?: string };
+          const result = z
+            .object({
+              stdout: z.string().optional(),
+              stderr: z.string().optional(),
+            })
+            .safeParse(error);
+
           return {
             exitCode: 1,
-            stdout: result.stdout ?? "",
-            stderr: result.stderr ?? "Profile refresh failed; inspect plugin logs.",
+            stdout: result.success ? (result.data.stdout ?? "") : "",
+            stderr:
+              (result.success ? result.data.stderr : undefined) ??
+              "Profile refresh failed; inspect plugin logs.",
           };
         }
       }
+
       if (argv.length !== 1 || argv[0] !== "status") {
         return { exitCode: 1, stderr: "Usage: bb profiles status" };
       }
+
       return { exitCode: 0, stdout: JSON.stringify(info, null, 2) };
     },
   });

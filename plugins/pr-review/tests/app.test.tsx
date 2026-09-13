@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { rpcContract } from "../contract";
 import { expect, it } from "vite-plus/test";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -9,13 +10,15 @@ it("groups authored and requested reviews, filters locally, and selects a PR wit
   expect(app.navPanels.map(({ path }) => path)).toEqual(["prs"]);
   const views: string[] = [];
   const url = "https://github.com/acme/api/pull/42";
+
   const slot = renderSlot(
     app.navPanels.find((p) => p.id === "pull-requests")!,
     { subPath: "" },
     {
       rpc: {
         savedList: (input) => {
-          const { view } = input as { view: string };
+          const { view } = rpcContract.savedList.input.parse(input);
+
           return {
             scope: view,
             view,
@@ -43,12 +46,14 @@ it("groups authored and requested reviews, filters locally, and selects a PR wit
           };
         },
         refreshList: (input) => {
-          views.push((input as { view: string }).view);
+          views.push(rpcContract.refreshList.input.parse(input).view);
+
           return null;
         },
       },
     },
   );
+
   try {
     await slot.findByText("Fix API");
     await slot.findByText("Review worker");
@@ -71,7 +76,10 @@ it("groups authored and requested reviews, filters locally, and selects a PR wit
     await waitFor(() =>
       expect(JSON.stringify(slot.inspection.rpcCalls)).toContain('"state":"merged"'),
     );
-    expect((slot.getByRole("searchbox") as HTMLInputElement).value).toBe("label:bug");
+    const search = slot.getByRole("searchbox");
+
+    if (!(search instanceof HTMLInputElement)) throw new Error("Expected search input");
+    expect(search.value).toBe("label:bug");
   } finally {
     slot.lifecycle.unmount();
   }
@@ -82,9 +90,11 @@ it("shows SQLite rows on every mount while refresh is pending and rereads realti
   let title = "Saved PR";
   let refreshes = 0;
   let release!: () => void;
+
   const pending = new Promise<null>((resolve) => {
     release = () => resolve(null);
   });
+
   const mount = () =>
     renderSlot(
       app.navPanels.find((p) => p.id === "pull-requests")!,
@@ -100,7 +110,7 @@ it("shows SQLite rows on every mount while refresh is pending and rereads realti
             result: {
               viewer: "lucas",
               rows:
-                (input as { view: string }).view === "reviewing"
+                rpcContract.savedList.input.parse(input).view === "reviewing"
                   ? []
                   : [
                       {
@@ -120,12 +130,15 @@ it("shows SQLite rows on every mount while refresh is pending and rereads realti
           }),
           refreshList: () => {
             refreshes++;
+
             return pending;
           },
         },
       },
     );
+
   let slot = mount();
+
   try {
     await slot.findByText("Saved PR");
     expect(slot.queryByText("Loading pull requests…")).toBeNull();

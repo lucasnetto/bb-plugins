@@ -32,23 +32,30 @@ export function useReviewComposer({
   const composer = useComposer();
   const [comment, setComment] = useState("");
   const [addingComment, setAddingComment] = useState(false);
+
   async function add(action: ReviewAction) {
     if (!threadId || !detail || addingComment) return;
     setAddingComment(true);
+
     try {
       const targetPath = selectionPath ?? selectedPath;
+
       const prompt = reviewContext(
         detail,
         targetPath,
         selection?.range,
         fullDiffs.get(targetPath ?? ""),
       );
+
       const lineLabel = selection ? ` · ${selection.range.start}–${selection.range.end}` : "";
+
       const targetLabel = targetPath
         ? `${targetPath.split("/").pop()}${lineLabel}`
         : `${detail.pr.repository} #${detail.pr.number}`;
+
       const target = selection ? "this code" : targetPath ? "this file" : "this PR";
       const text = buildReviewDraftText(action, target, comment);
+
       if (threadId) {
         const { id } = await rpc.call("stageReviewComment", {
           threadId,
@@ -56,10 +63,12 @@ export function useReviewComposer({
           label: targetLabel,
           context: prompt,
         });
+
         composer.updateText((current) => (current ? `${current}\n\n${text} ` : `${text} `));
         composer.insertMention({ provider: "review-comment", id, label: targetLabel });
         composer.focus();
       }
+
       setComment("");
       setNotice("Added to your draft.");
     } catch (error) {
@@ -68,5 +77,6 @@ export function useReviewComposer({
       setAddingComment(false);
     }
   }
+
   return { comment, setComment, addingComment, add };
 }

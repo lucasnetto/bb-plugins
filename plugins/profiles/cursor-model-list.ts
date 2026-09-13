@@ -1,16 +1,22 @@
 import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { z } from "zod";
 
-const modelListRequest = z.object({
-  method: z.literal("model/list"),
-  params: z.object({
-    providerOptions: z.object({
-      acpDialect: z.literal("cursor"),
-      acpLaunchSpec: experimental_acpLaunchSpecSchema,
-      excludedCursorModelIds: z.array(z.string()),
-    }).passthrough(),
-  }).passthrough(),
-}).passthrough();
+const modelListRequest = z
+  .object({
+    method: z.literal("model/list"),
+    params: z
+      .object({
+        providerOptions: z
+          .object({
+            acpDialect: z.literal("cursor"),
+            acpLaunchSpec: experimental_acpLaunchSpecSchema,
+            excludedCursorModelIds: z.array(z.string()),
+          })
+          .passthrough(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 // Run only for catalog reads. Sessions and credential lookup keep using the
 // account launcher directly. Arguments are passed to execFileSync, never a shell.
@@ -37,12 +43,20 @@ try {
 
 export function cursorModelListRequest(line: string): string {
   let value: unknown;
-  try { value = JSON.parse(line); } catch { return line; }
+
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return line;
+  }
+
   const parsed = modelListRequest.safeParse(value);
+
   if (!parsed.success) return line;
   const request = parsed.data;
   const options = request.params.providerOptions;
   const launch = options.acpLaunchSpec;
+
   if (!launch.modelCli || options.excludedCursorModelIds.length === 0) return line;
   options.acpLaunchSpec = {
     ...launch,
@@ -53,8 +67,15 @@ export function cursorModelListRequest(line: string): string {
     env: { ...launch.env, ELECTRON_RUN_AS_NODE: "1" },
     modelCli: {
       ...launch.modelCli,
-      listArgs: ["-e", filterModelList, launch.command, JSON.stringify(options.excludedCursorModelIds), ...launch.modelCli.listArgs],
+      listArgs: [
+        "-e",
+        filterModelList,
+        launch.command,
+        JSON.stringify(options.excludedCursorModelIds),
+        ...launch.modelCli.listArgs,
+      ],
     },
   };
+
   return JSON.stringify(request);
 }

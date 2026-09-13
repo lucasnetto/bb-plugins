@@ -5,6 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { sideThreadContract } from "../../src/shared/side-thread-contract";
 
 const app = await loadPluginApp(() => import("../../src/ui/app"));
+
 const action = app.composerCustomizations[0]!.actions![0]!;
 
 afterEach(() => {
@@ -14,9 +15,11 @@ afterEach(() => {
 
 test("promotes the embedded side chat once, preserves its draft, and opens the same thread", async () => {
   let finish!: (value: { threadId: string }) => void;
+
   const promotion = new Promise<{ threadId: string }>((resolve) => {
     finish = resolve;
   });
+
   const slot = renderSlot<Record<string, never>, typeof sideThreadContract>(
     action,
     {},
@@ -30,6 +33,7 @@ test("promotes the embedded side chat once, preserves its draft, and opens the s
       },
     },
   );
+
   fireEvent.click(await slot.findByRole("button", { name: "Promote to sidebar" }));
   const pending = await slot.findByRole("button", { name: "Promoting…" });
   expect(pending.hasAttribute("disabled")).toBe(true);
@@ -47,6 +51,7 @@ test("promotes the embedded side chat once, preserves its draft, and opens the s
 test("failed promotion can be retried without navigating away", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   let failed = true;
+
   const slot = renderSlot<Record<string, never>, typeof sideThreadContract>(
     action,
     {},
@@ -56,11 +61,13 @@ test("failed promotion can be retried without navigating away", async () => {
         side_thread_status: () => ({ canPromote: true }),
         side_thread_promote: () => {
           if (failed) throw new Error("offline");
+
           return { threadId: "side" };
         },
       },
     },
   );
+
   fireEvent.click(await slot.findByRole("button", { name: "Promote to sidebar" }));
   await waitFor(() => {
     expect(slot.getByRole("button", { name: "Promote to sidebar" }).hasAttribute("disabled")).toBe(
@@ -75,9 +82,11 @@ test("failed promotion can be retried without navigating away", async () => {
 
 test("stale side-chat lookups cannot add a promote button to another thread", async () => {
   let finish!: (value: { canPromote: boolean }) => void;
+
   const lookup = new Promise<{ canPromote: boolean }>((resolve) => {
     finish = resolve;
   });
+
   const slot = renderSlot<
     Record<string, never>,
     Pick<typeof sideThreadContract, "side_thread_status">
@@ -91,6 +100,7 @@ test("stale side-chat lookups cannot add a promote button to another thread", as
       },
     },
   );
+
   await slot.behavior.setComposerScope({ kind: "thread", threadId: "main" });
   await act(async () => finish({ canPromote: true }));
   expect(slot.queryByRole("button")).toBeNull();
@@ -98,6 +108,7 @@ test("stale side-chat lookups cannot add a promote button to another thread", as
 
 test("promotion in another client and reconnect refresh the action", async () => {
   let canPromote = true;
+
   const slot = renderSlot<
     Record<string, never>,
     Pick<typeof sideThreadContract, "side_thread_status">
@@ -109,6 +120,7 @@ test("promotion in another client and reconnect refresh the action", async () =>
       rpc: { side_thread_status: () => ({ canPromote }) },
     },
   );
+
   await slot.findByRole("button", { name: "Promote to sidebar" });
   canPromote = false;
   await slot.behavior.emitRealtime("side-thread-changed", {});

@@ -18,8 +18,10 @@ test("media subscriptions survive rerenders, share listeners, and move when the 
       removeEventListener: ReturnType<typeof vi.fn>;
     }
   >();
+
   vi.stubGlobal("matchMedia", (query: string) => {
     let media = queries.get(query);
+
     if (!media) {
       const listeners = new Set<() => void>();
       media = {
@@ -30,11 +32,14 @@ test("media subscriptions survive rerenders, share listeners, and move when the 
       };
       queries.set(query, media);
     }
+
     return media;
   });
+
   const first = renderHook(({ query }) => useMediaQuery(query), {
     initialProps: { query: "(max-width: 600px)" },
   });
+
   const narrow = queries.get("(max-width: 600px)")!;
   first.rerender({ query: "(max-width: 600px)" });
   expect(narrow.addEventListener).toHaveBeenCalledTimes(1);
@@ -45,6 +50,7 @@ test("media subscriptions survive rerenders, share listeners, and move when the 
   expect(narrow.removeEventListener).not.toHaveBeenCalled();
   act(() => {
     narrow.matches = true;
+
     for (const notify of narrow.listeners) notify();
   });
   expect(first.result.current).toBe(true);

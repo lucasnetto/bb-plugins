@@ -10,6 +10,7 @@ import { foreign, SdkError, type Profile } from "./operations.js";
 import type { SdkModule } from "./runtime.js";
 
 const exec = promisify(execFile);
+
 export const cloudSourceSchema = z.object({
   repository: z
     .string()
@@ -23,12 +24,15 @@ export const cloudSourceSchema = z.object({
     }, "Expected a canonical GitHub repository URL"),
   ref: z.string().regex(/^[a-f0-9]{40,64}$/),
 });
+
 export type CloudSource = z.infer<typeof cloudSourceSchema>;
+
 const recordSchema = z.object({
   threadId: z.string(),
   source: cloudSourceSchema,
   created: z.boolean(),
 });
+
 const agentIdSchema = z
   .string()
   .regex(/^bc-[a-zA-Z0-9-]+$/)
@@ -39,14 +43,18 @@ export function githubRepository(value: string): string {
     .replace(/^github\.com\//, "https://github.com/")
     .replace(/^git@github\.com:/, "https://github.com/")
     .replace(/^ssh:\/\/git@github\.com\//, "https://github.com/");
+
   const match = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)\/?$/.exec(normalized);
+
   if (!match)
     throw new SdkError({
       message: "Cursor Cloud requires an origin remote on github.com without embedded credentials.",
     });
   const repo = match[2].replace(/\.git$/, "");
+
   if (!repo || repo === "." || repo === ".." || match[1] === "." || match[1] === "..")
     throw new SdkError({ message: "Invalid GitHub repository." });
+
   return `https://github.com/${match[1]}/${repo}`;
 }
 
@@ -72,6 +80,7 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
   runGit: (cwd: string, args: string[]) => Effect.Effect<string, SdkError> = git,
 ) {
   const dirty = yield* runGit(cwd, ["status", "--porcelain", "--untracked-files=normal"]);
+
   if (dirty)
     return yield* Effect.fail(
       new SdkError({
@@ -80,6 +89,7 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
       }),
     );
   const origin = yield* runGit(cwd, ["remote", "get-url", "origin"]);
+
   const repository = yield* Effect.try({
     try: () => githubRepository(origin),
     catch: () =>
@@ -87,8 +97,10 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
         message: "Cursor Cloud requires a valid GitHub origin without embedded credentials.",
       }),
   });
+
   const ref = yield* runGit(cwd, ["rev-parse", "HEAD"]);
   const remote = yield* runGit(cwd, ["ls-remote", "--heads", "origin"]);
+
   const tips = [
     ...new Set(
       remote
@@ -97,7 +109,9 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
         .filter((sha) => /^[a-f0-9]{40,64}$/.test(sha)),
     ),
   ];
+
   let pushed = tips.includes(ref);
+
   for (const tip of tips) {
     if (pushed) break;
     pushed = yield* runGit(cwd, ["merge-base", "--is-ancestor", ref, tip]).pipe(
@@ -105,6 +119,7 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
       Effect.catch(() => Effect.succeed(false)),
     );
   }
+
   if (!pushed)
     return yield* Effect.fail(
       new SdkError({
@@ -112,6 +127,7 @@ export const readCloudSource = Effect.fn("CursorCloud.readSource")(function* (
           "Cursor Cloud cannot verify HEAD on origin. Push this commit, or fetch origin if it was pushed from another checkout, then retry.",
       }),
     );
+
   return yield* Effect.try({
     try: () => cloudSourceSchema.parse({ repository, ref }),
     catch: () =>
@@ -141,11 +157,13 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
   const recordPath = (id: string) => join(directory, `${agentIdSchema.parse(id)}.json`);
   let record: z.infer<typeof recordSchema> | undefined;
   let remote: SDKAgentInfo | undefined;
+
   if (args.providerThreadId) {
     const id = yield* Effect.try({
       try: () => agentIdSchema.parse(args.providerThreadId),
       catch: () => new SdkError({ message: "Invalid Cursor Cloud agent ID." }),
     });
+
     record = yield* foreign(async () => {
       try {
         return recordSchema.parse(JSON.parse(await readFile(recordPath(id), "utf8")));
@@ -154,6 +172,7 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
         throw error;
       }
     });
+
     if (record && record.threadId !== args.threadId)
       return yield* Effect.fail(
         new SdkError({ message: "The saved cloud session belongs to a different BB thread." }),
@@ -165,6 +184,7 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
         const parsed = z
           .object({ code: z.string().optional(), status: z.number().optional() })
           .safeParse(error);
+
         if (
           parsed.success &&
           (parsed.data.status === 404 ||
@@ -174,6 +194,7 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
         throw error;
       }
     });
+
     if (!remote && (!record || record.created))
       return yield* Effect.fail(
         new SdkError({
@@ -181,12 +202,14 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
             "This Cursor Cloud agent is no longer available. Start a new cloud thread instead of replacing its history.",
         }),
       );
+
     if (remote?.archived)
       return yield* Effect.fail(
         new SdkError({
           message: `This cloud agent is archived. Restore it at ${cloudAgentUrl(id)} before sending a follow-up.`,
         }),
       );
+
     if (remote?.status === "running")
       return yield* Effect.fail(
         new SdkError({
@@ -194,15 +217,16 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
         }),
       );
   }
+
   if (!remote && !record)
     record = { threadId: args.threadId, source: yield* args.source(), created: false };
+
   const agent =
     remote && args.providerThreadId
       ? yield* foreign(() => args.sdk.Agent.resume(args.providerThreadId ?? "", args.options))
-      : yield* foreign(() =>
-          args.sdk.Agent.create({
+      : yield* foreign(() => {
+          const options: AgentOptions = {
             ...args.options,
-            ...(args.providerThreadId ? { agentId: args.providerThreadId } : {}),
             cloud: {
               repos: record
                 ? [{ url: record.source.repository, startingRef: record.source.ref }]
@@ -212,8 +236,13 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
               skipReviewerRequest: true,
               metadata: { bb_thread_id: args.threadId },
             },
-          }),
-        );
+          };
+
+          if (args.providerThreadId) options.agentId = args.providerThreadId;
+
+          return args.sdk.Agent.create(options);
+        });
+
   const save = (created: boolean) =>
     foreign(async () => {
       if (!record) return;
@@ -224,33 +253,41 @@ export const openCloudSession = Effect.fn("CursorCloud.openSession")(function* (
       await rename(temporary, target);
       record.created = created;
     });
+
   yield* save(Boolean(remote) || Boolean(record?.created)).pipe(
     Effect.onError(() =>
       foreign(() => agent[Symbol.asyncDispose]()).pipe(Effect.catch(() => Effect.void)),
     ),
   );
+
   return { agent, source: record?.source, markCreated: () => save(true) };
 });
 
 export function cloudRunSummary(agentId: string, source?: CloudSource, result?: RunResult): string {
   const lines = [`*Cursor Cloud:* [Open agent](${cloudAgentUrl(agentId)})`];
+
   if (!result && source)
     lines.push(
       `Repository base: [${source.ref.slice(0, 12)}](${source.repository}/commit/${source.ref}) in ${source.repository}. Changes run remotely on an isolated branch.`,
     );
+
   for (const branch of result?.git?.branches ?? []) {
     let repository: string;
+
     try {
       repository = githubRepository(branch.repoUrl);
     } catch {
       continue;
     }
+
     if (branch.branch)
       lines.push(
         `[Remote branch](${repository}/tree/${encodeURIComponent(branch.branch).replace(/[()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)})`,
       );
+
     if (branch.prUrl && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/.test(branch.prUrl))
       lines.push(`[Pull request](${branch.prUrl})`);
   }
+
   return result && lines.length === 1 ? "" : lines.join("\n\n");
 }

@@ -29,6 +29,7 @@ import { guideTarget, guideProgressInput, savedGuideSchema } from "./guide-contr
 const linkedRootInput = Schema.Struct({
   root: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
 });
+
 export const hostContract = defineRpcContract({
   githubReview: {
     input: standardSchema(
@@ -59,12 +60,14 @@ export const hostContract = defineRpcContract({
     output: standardSchema(linkedDetailSchema),
   },
 });
+
 export const reviewCommentInput = Schema.Struct({
   threadId: Schema.String.check(Schema.isMinLength(1)),
   url: Schema.String,
   label: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(500)),
   context: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(200000)),
 });
+
 export const rpcContract = defineRpcContract({
   githubReview: {
     input: standardSchema(githubReviewTarget),

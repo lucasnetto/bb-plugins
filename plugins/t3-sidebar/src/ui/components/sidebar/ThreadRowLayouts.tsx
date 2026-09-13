@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import type { MouseEvent, ReactNode } from "react";
 import {
   experimental_useSidebarThreadActions,
@@ -50,6 +51,7 @@ export function CompactThreadLayout({
             label={isSnoozed ? "Wake now" : "Un-settle thread"}
             onClick={(event) => {
               event.stopPropagation();
+
               if (isSnoozed) actions.setSnoozed(thread.id, null);
               else actions.setSettled(thread.id, false);
             }}
@@ -79,6 +81,7 @@ export function CardThreadLayout({
 }) {
   const branch = thread.environment?.branchName ?? null;
   const machine = thread.host?.name ?? thread.environment?.name ?? null;
+
   return (
     <div className="relative z-10 px-2.5 py-2">
       {/* Line 1: project · pin · status / time (hover → settle) */}
@@ -109,18 +112,22 @@ export function CardThreadLayout({
               <span
                 className={cn("inline-flex items-center gap-1 font-medium", topStatus.className)}
               >
-                {topStatus.icon === "working" ? (
-                  <Icon
-                    name="Spinner"
-                    className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
-                  />
-                ) : topStatus.icon === "input" ? (
-                  <Icon name="MessageQuestion" className="size-4 shrink-0" />
-                ) : topStatus.icon === "done" ? (
-                  <Icon name="CircleCheck" className="size-4 shrink-0" />
-                ) : topStatus.icon === "monitoring" ? (
-                  <Icon name="Target" className="size-4 shrink-0" />
-                ) : null}
+                {Match.value(topStatus.icon).pipe(
+                  Match.when("working", () => (
+                    <Icon
+                      name="Spinner"
+                      className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
+                    />
+                  )),
+                  Match.when("input", () => (
+                    <Icon name="MessageQuestion" className="size-4 shrink-0" />
+                  )),
+                  Match.when("done", () => <Icon name="CircleCheck" className="size-4 shrink-0" />),
+                  Match.when("monitoring", () => (
+                    <Icon name="Target" className="size-4 shrink-0" />
+                  )),
+                  Match.orElse(() => null),
+                )}
                 <span role="status">{topStatus.label}</span>
               </span>
             ) : (
@@ -191,6 +198,7 @@ export function CardThreadLayout({
 /** Deterministic monogram for a project — bb has no favicons for projects. */
 function ProjectMark({ name, className }: { name: string | null; className?: string }) {
   const letter = name?.trim().charAt(0).toUpperCase() ?? "";
+
   return (
     <span
       aria-hidden
@@ -206,6 +214,7 @@ function ProjectMark({ name, className }: { name: string | null; className?: str
 
 function ProviderMark({ provider }: { provider: ThreadRowProvider | null }) {
   if (provider === null) return null;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -231,6 +240,7 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
   const { pullRequest } = experimental_useSidebarThreadPullRequest(threadId);
   const linked = useLinkedPrs(threadId);
   const actions = experimental_useSidebarThreadActions();
+
   if (linked.length)
     return (
       <>
@@ -241,6 +251,7 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
+
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
               requestLinkedReview(threadId, pr.url, (id) => actions.open(id));
@@ -257,7 +268,9 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
         ))}
       </>
     );
+
   if (pullRequest === null) return null;
+
   return (
     <a
       href={pullRequest.url}

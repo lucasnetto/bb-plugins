@@ -8,6 +8,7 @@ import { registerGuides } from "./guides-server";
 import { registerPrReviewCli } from "./cli";
 import { type BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract } from "../shared/contract";
+
 export default function plugin(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   const links = registerLinks(bb, runtime);
@@ -16,10 +17,12 @@ export default function plugin(bb: BbPluginApi) {
   const generation = registerGuideGeneration(bb, runtime, guides);
   links.onUnlink(generation.guideCancel);
   const github = githubReviewHandlers(bb, links);
+
   const operations = {
     ...links,
     ...reviewDraftHandlers(bb),
   };
+
   bb.rpc.register(rpcContract, {
     githubReview: handler(runtime, github.githubReview),
     githubReviewMutate: handler(runtime, github.githubReviewMutate),

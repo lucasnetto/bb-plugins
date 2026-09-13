@@ -2,6 +2,7 @@
 // remounts. A failed refresh retains the last successful value for rendering.
 export function createRequestCache<T>(limit = 20, maxAge = 60000) {
   const entries = new Map<string, { value?: T; updatedAt: number; request?: Promise<T> }>();
+
   return {
     peek(key: string) {
       return entries.get(key)?.value;
@@ -16,8 +17,11 @@ export function createRequestCache<T>(limit = 20, maxAge = 60000) {
       const entry = entries.get(key) ?? { updatedAt: -Infinity };
       entries.delete(key);
       entries.set(key, entry);
+
       if (entries.size > limit) entries.delete(entries.keys().next().value!);
+
       if (entry.request) return entry.request;
+
       if (!force && entry.value !== undefined && Date.now() - entry.updatedAt < maxAge)
         return Promise.resolve(entry.value);
       const request = Promise.resolve().then(fetch);
@@ -36,6 +40,7 @@ export function createRequestCache<T>(limit = 20, maxAge = 60000) {
           }
         },
       );
+
       return request;
     },
   };

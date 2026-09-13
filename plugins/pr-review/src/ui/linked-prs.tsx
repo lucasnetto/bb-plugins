@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { listenForPrLinks, listenForReviewRequests } from "./lib/review-navigation";
 import { PrReview } from "./review/PrReview";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
@@ -22,39 +23,48 @@ function LinkedPrReview({ threadId, url }: { threadId: string; url: string }) {
   const [error, setError] = useState("");
   useEffect(() => {
     let disposed = false;
+
     async function prepare() {
       const links = await rpc.call("linkedList", { threadId });
+
       if (disposed) return;
+
       if (!links.some((link) => link.url === url)) {
         await rpc.call("linkedLink", { threadId, url, reason: "manual" });
       }
+
       if (!disposed) setReady(true);
     }
+
     void prepare().catch((reason) => {
       if (!disposed) setError(String(reason));
     });
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, url]);
+
   if (error)
     return (
       <p role="alert" className="p-4">
         {error}
       </p>
     );
+
   if (!ready) return <p className="p-4 text-sm text-muted-foreground">Opening pull request…</p>;
+
   return <PrReview threadId={threadId} url={url} />;
 }
 
+const panelParams = z.object({ url: z.string() });
+
+const linksChangedEvent = z.object({ threadId: z.string() });
+
 export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
-  const selectedUrl =
-    typeof params === "object" &&
-    params !== null &&
-    !Array.isArray(params) &&
-    typeof params.url === "string"
-      ? params.url
-      : null;
+  const selection = panelParams.safeParse(params);
+  const selectedUrl = selection.success ? selection.data.url : null;
+
   return selectedUrl ? (
     <LinkedPrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
   ) : (
@@ -83,22 +93,21 @@ function LinkedPrPicker({ threadId }: { threadId: string }) {
         if (!disposed) setError(String(e));
       },
     );
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, connection, revision]);
   useRealtime(LINKS_CHANGED, (payload) => {
-    if (
-      typeof payload === "object" &&
-      payload !== null &&
-      "threadId" in payload &&
-      payload.threadId === threadId
-    )
-      reload();
+    const event = linksChangedEvent.safeParse(payload);
+
+    if (event.success && event.data.threadId === threadId) reload();
   });
+
   async function link() {
     setPending(true);
     setError("");
+
     try {
       await rpc.call("linkedLink", { threadId, url, reason: "manual" });
       setUrl("");
@@ -109,8 +118,10 @@ function LinkedPrPicker({ threadId }: { threadId: string }) {
       setPending(false);
     }
   }
+
   async function unlink(pr: LinkedPr) {
     setError("");
+
     try {
       await rpc.call("linkedUnlink", { threadId, url: pr.url });
       reload();
@@ -118,6 +129,7 @@ function LinkedPrPicker({ threadId }: { threadId: string }) {
       setError(String(e));
     }
   }
+
   function openReview(event: MouseEvent<HTMLAnchorElement>, pr: LinkedPr) {
     if (
       event.defaultPrevented ||
@@ -135,6 +147,7 @@ function LinkedPrPicker({ threadId }: { threadId: string }) {
       params: { url: pr.url },
     });
   }
+
   return (
     <section
       className="flex h-full flex-col gap-4 overflow-auto p-4"
@@ -227,6 +240,7 @@ export function LinkedPrHeader({ threadId }: PluginThreadHeaderActionProps) {
     [threadId, navigate],
   );
   useRealtime(LINKS_CHANGED, () => window.dispatchEvent(new Event("bb:pr-review:links-changed")));
+
   return (
     <Button
       size="sm"

@@ -6,10 +6,13 @@ import { call, createRuntime, sync, decodeSchema } from "./server-effects";
 export function createSnoozeHandlers(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   const lock = Semaphore.makeUnsafe(1);
+
   const read = Effect.fn("Snooze.read")(function* () {
     const raw = yield* call("snooze.read", () => bb.storage.kv.get("snoozed"));
-    return yield* decodeSchema("snooze.decode", snoozedMapSchema, raw ?? {});
+
+    return yield* decodeSchema("snooze.decode", snoozedMapSchema)(raw ?? {});
   });
+
   const update = Effect.fn("Snooze.update")(function* (
     threadId: string,
     until: number | null,
@@ -17,6 +20,7 @@ export function createSnoozeHandlers(bb: BbPluginApi) {
   ) {
     const current = { ...(yield* read()) };
     const now = Date.now();
+
     if (until !== null) {
       yield* sync("snooze.validateTime", () => {
         if (until <= now) throw new Error("Choose a future wake time");
@@ -26,6 +30,7 @@ export function createSnoozeHandlers(bb: BbPluginApi) {
       yield* sync("snooze.validateThread", () => {
         if (!thread || thread.archivedAt !== null || thread.deletedAt !== null)
           throw new Error("Thread is unavailable");
+
         if (thread.hasPendingInteraction || thread.queuedWork === "waiting")
           throw new Error("Threads waiting for input or queued work cannot be snoozed");
       });
@@ -35,13 +40,17 @@ export function createSnoozeHandlers(bb: BbPluginApi) {
       delete current[threadId];
     } else {
       const entry = current[threadId];
+
       if (!entry || entry.until <= now) return { snoozed: current };
       current[threadId] = { ...entry, until: now };
     }
+
     yield* call("snooze.write", () => bb.storage.kv.set("snoozed", current));
     yield* sync("snooze.publish", () => bb.realtime.publish(SNOOZED_CHANGED, {}));
+
     return { snoozed: current };
   });
+
   const set = (threadId: string, until: number | null, remove = false) =>
     runtime.runPromise(update(threadId, until, remove).pipe(Semaphore.withPermit(lock)));
 

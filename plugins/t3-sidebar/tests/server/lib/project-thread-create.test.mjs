@@ -51,19 +51,23 @@ const request = {
 
 test("new thread preserves native composer selections, provenance, prompt variants, and scheduling", async () => {
   const spawned = [];
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
       threads: {
         spawn: async (input) => {
           spawned.push(input);
+
           return { id: "created-thread" };
         },
       },
     },
   });
+
   try {
     await plugin(bb);
+
     for (const environment of [
       request.environment,
       { type: "host", hostId: "selected-host", workspace: { type: "unmanaged", path: null } },
@@ -76,6 +80,7 @@ test("new thread preserves native composer selections, provenance, prompt varian
         environment,
         sendAt: 2_000_000_000_000,
       };
+
       assert.deepEqual(
         await harness.behavior.callRpc("project_thread_create", { request: submitted }),
         { id: "created-thread" },
@@ -93,6 +98,7 @@ test("new thread preserves native composer selections, provenance, prompt varian
 
 test("new thread rejects malformed RPC payloads before spawning and propagates host failures", async () => {
   let spawnCount = 0;
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
@@ -104,8 +110,10 @@ test("new thread rejects malformed RPC payloads before spawning and propagates h
       },
     },
   });
+
   try {
     await plugin(bb);
+
     for (const invalid of [
       null,
       {},
@@ -119,6 +127,7 @@ test("new thread rejects malformed RPC payloads before spawning and propagates h
     ]) {
       await assert.rejects(harness.behavior.callRpc("project_thread_create", { request: invalid }));
     }
+
     assert.equal(spawnCount, 0);
     await assert.rejects(
       harness.behavior.callRpc("project_thread_create", { request }),

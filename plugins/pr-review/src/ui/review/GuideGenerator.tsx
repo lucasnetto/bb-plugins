@@ -41,6 +41,7 @@ export function GuideGenerator({
       (options) => {
         if (disposed) return;
         setModel(options.model);
+
         if (!options.model)
           setError("No model is available. Configure a guide model in PR Review settings.");
         setEnvironmentId(options.environmentId);
@@ -50,10 +51,12 @@ export function GuideGenerator({
         if (!disposed) setError(String(error));
       },
     );
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -113,18 +116,23 @@ export function GuideModelSettings() {
         if (!disposed) setNotice(String(error));
       },
     );
+
     return () => {
       disposed = true;
     };
   }, [rpc, projectId]);
+
   async function save(value: GuideModel | null) {
     setPending(true);
+
     try {
       await rpc.call("guideDefaultsSave", { projectId, model: value });
+
       if (!value) {
         const updated = await rpc.call("guideSettings", { projectId });
         setModel(updated.model ?? updated.fallback);
       }
+
       setNotice(value ? "Default saved" : "Override removed");
     } catch (error) {
       setNotice(String(error));
@@ -132,6 +140,7 @@ export function GuideModelSettings() {
       setPending(false);
     }
   }
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">

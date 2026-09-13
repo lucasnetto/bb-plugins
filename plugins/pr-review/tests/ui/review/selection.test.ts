@@ -2,7 +2,9 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { selectedPatch, reviewContext } from "../../../src/ui/review/selection";
 import type { LinkedDetail } from "../../../src/shared/links-contract";
+
 const patch = "@@ -10,3 +10,4 @@\n same\n-old\n+new\n+extra\n end";
+
 test("selection preserves old/new sides and reverse dragging", () => {
   assert.equal(selectedPatch(patch, { start: 11, end: 11, side: "deletions" }), "-old");
   assert.equal(selectedPatch(patch, { start: 12, end: 11, side: "additions" }), "+new\n+extra");
@@ -11,9 +13,11 @@ test("selection preserves old/new sides and reverse dragging", () => {
     "-old\n+new\n+extra",
   );
 });
+
 test("stale selections cannot quote unrelated lines", () => {
   assert.throws(() => selectedPatch(patch, { start: 999, end: 1000 }), /no longer/);
 });
+
 const detail: LinkedDetail = {
   pr: {
     url: "https://github.com/org/api/pull/8",
@@ -31,6 +35,7 @@ const detail: LinkedDetail = {
   repositoryRoot: null,
   files: [{ path: "src/check.ts", patch }],
 };
+
 test("chip identifies the PR revision and selected sides without duplicating instructions", () => {
   assert.equal(
     reviewContext(detail, "src/check.ts", {
@@ -53,11 +58,13 @@ test("chip identifies the PR revision and selected sides without duplicating ins
     ].join("\n"),
   );
 });
+
 test("whole-file and whole-PR chips do not include unselected code or invent missing revisions", () => {
   const legacy = { ...detail, headRefOid: undefined, baseRefOid: undefined };
   assert.equal(reviewContext(legacy, null), `PR: ${detail.pr.url}`);
   assert.equal(reviewContext(legacy, "src/check.ts"), `PR: ${detail.pr.url}\nFile: "src/check.ts"`);
 });
+
 test("selected code containing backticks cannot terminate its code fence", () => {
   const withFence = { ...detail, files: [{ path: "notes.md", patch: "@@ -1 +1 @@\n-old\n+```" }] };
   assert.match(

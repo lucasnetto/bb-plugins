@@ -21,8 +21,11 @@ vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
     <div data-testid="diff-files">{items.map((item) => item.fileDiff.name).join(",")}</div>
   ),
 }));
+
 vi.mock("../../../src/ui/review/DiffFileTree", () => ({ DiffFileTree: () => null }));
+
 const url = "https://github.com/org/api/pull/42";
+
 const detail = {
   pr: {
     url,
@@ -44,6 +47,7 @@ const detail = {
     patch: "@@ -1 +1 @@\n-old\n+new",
   })),
 };
+
 const saved: SavedGuide = {
   id: "guide-1",
   base: detail.baseRefOid,
@@ -67,12 +71,16 @@ const saved: SavedGuide = {
   },
   reviewed: [false, false],
 };
+
 async function component() {
   installTestPluginRuntime();
+
   return (await import("../../../src/ui/review/PrReview")).PrReview;
 }
+
 test("direct guide generation preserves the draft; chapter cards show their diffs and collapse when reviewed", async () => {
   let data: SavedGuide | null = null;
+
   const slot = renderSlot(
     { component: await component() },
     { threadId: "t1", url },
@@ -99,11 +107,13 @@ test("direct guide generation preserves the draft; chapter cards show their diff
         }),
         guideProgress: () => {
           data = { ...saved, reviewed: [false, true] };
+
           return data;
         },
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
@@ -144,6 +154,7 @@ test("direct guide generation preserves the draft; chapter cards show their diff
     slot.lifecycle.unmount();
   }
 });
+
 test("a stale guide cannot present its chapters against a newer PR diff", async () => {
   const slot = renderSlot(
     { component: await component() },
@@ -156,6 +167,7 @@ test("a stale guide cannot present its chapters against a newer PR diff", async 
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
@@ -193,6 +205,7 @@ test("guide diffs follow the chapter reading order rather than GitHub file order
     },
     reviewed: [false],
   };
+
   const slot = renderSlot(
     { component: await component() },
     { threadId: "t1", url },
@@ -203,6 +216,7 @@ test("guide diffs follow the chapter reading order rather than GitHub file order
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await waitFor(() =>
@@ -222,9 +236,11 @@ test("guide diffs follow the chapter reading order rather than GitHub file order
 test("cancelling generation keeps chapter progress blocked until cancellation completes", async () => {
   let running = true;
   let finishCancel!: () => void;
+
   const cancellation = new Promise<void>((resolve) => {
     finishCancel = resolve;
   });
+
   const slot = renderSlot(
     { component: await component() },
     { threadId: "t1", url },
@@ -247,11 +263,13 @@ test("cancelling generation keeps chapter progress blocked until cancellation co
         guideCancel: async () => {
           await cancellation;
           running = false;
+
           return null;
         },
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await slot.findByTestId("diff-files");

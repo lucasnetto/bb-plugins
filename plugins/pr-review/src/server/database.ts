@@ -28,5 +28,6 @@ export function initializeReviewDatabase(bb: BbPluginApi) {
     "CREATE TABLE pr_auto_settled (thread_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL)",
     "CREATE TABLE legacy_imports (source TEXT PRIMARY KEY)",
   ]);
+
   return db;
 }

@@ -7,10 +7,11 @@ const guideContextSchema = Schema.Struct({
   head: Schema.String,
   detail: Schema.Unknown,
 });
+
 type GuideContext = Schema.Schema.Type<typeof guideContextSchema>;
 
 export function decodeGuideContext(context: string) {
-  return decodeSchema("guide context", Schema.fromJsonString(guideContextSchema), context);
+  return decodeSchema("guide context", Schema.fromJsonString(guideContextSchema))(context);
 }
 
 export function buildGuideWorkerPrompt(context: GuideContext): string {

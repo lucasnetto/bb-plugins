@@ -11,6 +11,7 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
   const ready = Promise.withResolvers();
   let calls = 0;
   let aborted = false;
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
@@ -32,8 +33,10 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
     },
     experimental_callHostRpc: async ({ input, signal }) => {
       calls++;
+
       if (input.path === "/failure") throw new Error("fetch failed");
       assert.equal(input.path, "/waiting");
+
       return new Promise((_resolve, reject) => {
         signal.addEventListener(
           "abort",
@@ -47,6 +50,7 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
       });
     },
   });
+
   try {
     await plugin(bb);
     await bb.storage.kv.set("project-settings:enabled", { autoPull: true });
@@ -65,6 +69,7 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
 
 test("auto-pull propagates interruption and execution failures without fetching", async () => {
   const host = experimental_createHostEntryHarness(hostEntry);
+
   try {
     await assert.rejects(
       host.experimental_call("pull", { path: "/unused" }, { signal: AbortSignal.abort() }),
@@ -72,15 +77,19 @@ test("auto-pull propagates interruption and execution failures without fetching"
   } finally {
     await host.experimental_dispose();
   }
+
   const commands = [];
+
   const layer = Layer.succeed(PullGit, {
     run: (_path, args) => {
       commands.push(args);
+
       return Effect.fail(
         new PullError({ message: "git executable missing", cause: { code: "ENOENT" } }),
       );
     },
   });
+
   await assert.rejects(
     Effect.runPromise(pullCleanDefaultBranch("/repo").pipe(Effect.provide(layer))),
     /git executable missing/,
@@ -91,26 +100,35 @@ test("auto-pull propagates interruption and execution failures without fetching"
 test("auto-pull rechecks branch after fetch and does not merge a changed checkout", async () => {
   let fetched = false;
   const commands = [];
+
   const layer = Layer.succeed(PullGit, {
     run: (_path, args) =>
       Effect.sync(() => {
         commands.push(args[0]);
+
         if (args[0] === "fetch") {
           fetched = true;
+
           return "";
         }
+
         if (args[0] === "symbolic-ref")
           return args.at(-1) === "HEAD"
             ? fetched
               ? "refs/heads/feature"
               : "refs/heads/main"
             : "refs/remotes/origin/HEAD".replace("HEAD", "main");
+
         if (args[0] === "rev-parse") return "origin/main";
+
         if (args[0] === "config") return "origin";
+
         if (args[0] === "rev-list") return "0";
+
         return "";
       }),
   });
+
   assert.deepEqual(
     await Effect.runPromise(pullCleanDefaultBranch("/repo").pipe(Effect.provide(layer))),
     { pulled: false },

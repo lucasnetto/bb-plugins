@@ -1,10 +1,11 @@
+import { Match } from "effect";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import { GithubMarkdown } from "../components/GithubMarkdown";
 import { toast } from "sonner";
 import type { Timeline, workspaceRpcContract } from "../../shared/workspace-contract";
 import { draftPath } from "./navigation";
-import { Icon } from "../components/ui/icon";
+import { Icon, type IconName } from "../components/ui/icon";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ActionDialog, type DialogAction } from "./ActionDialog";
 import { PrMenu, PrMenuItem, PrMenuSeparator } from "./Menu";
@@ -44,6 +45,7 @@ function Section({
     </details>
   );
 }
+
 async function copy(value: string, label: string) {
   try {
     await navigator.clipboard.writeText(value);
@@ -52,6 +54,7 @@ async function copy(value: string, label: string) {
     toast.error("Could not copy to the clipboard.");
   }
 }
+
 export function PullRequestDetail({
   threadId,
   url,
@@ -71,14 +74,17 @@ export function PullRequestDetail({
   const [codeVisited, setCodeVisited] = useState(false);
   const [dialog, setDialog] = useState<DialogAction | null>(null);
   const [timelinePages, setTimelinePages] = useState(1);
+
   const timelineKey = JSON.stringify([
     workspaceKey(threadId, url),
     detail?.updatedAt,
     timelinePages,
   ]);
+
   const [timeline, setTimeline] = useState<Timeline | null>(
     () => timelineCache.peek(timelineKey) ?? null,
   );
+
   const [timelineError, setTimelineError] = useState("");
   const [timelineRetry, setTimelineRetry] = useState(0);
   const previousTimelineRetry = useRef(timelineRetry);
@@ -103,7 +109,9 @@ export function PullRequestDetail({
               rpc.call("prTimeline", { threadId, url, page: index + 1 }),
             ),
           );
+
           const last = pages.at(-1)!;
+
           return {
             ...last,
             entries: [
@@ -130,6 +138,7 @@ export function PullRequestDetail({
           }
         },
       );
+
     return () => {
       disposed = true;
     };
@@ -145,11 +154,14 @@ export function PullRequestDetail({
     timelinePages,
   ]);
   const summary = checksSummary(detail?.checks ?? []);
+
   const changeTab = (value: string) => {
     if (value === "code") setCodeVisited(true);
     setTab(value);
   };
+
   const openStackPr = (next: string) => navigate.toPluginPanel("prs", { subPath: draftPath(next) });
+
   const canMerge =
     !!detail &&
     detail.canMerge &&
@@ -158,8 +170,10 @@ export function PullRequestDetail({
     detail.mergeable !== "CONFLICTING" &&
     data.stackLoaded &&
     !data.stackError;
+
   const primary = detail?.state === "CLOSED" ? "reopen" : detail?.isDraft ? "ready" : "merge";
   const disabled = data.busy || !detail || (primary === "merge" ? !canMerge : !detail.canEdit);
+
   const commentForm = (
     <form
       className="pr-comment-form"
@@ -211,6 +225,7 @@ export function PullRequestDetail({
       </div>
     </form>
   );
+
   return (
     <section className="pr-detail" aria-label="Pull request">
       <header className="pr-detail-header">
@@ -243,20 +258,20 @@ export function PullRequestDetail({
                 onClick={() => setDialog(primary)}
               >
                 <Icon
-                  name={
-                    primary === "merge"
-                      ? "GitMerge"
-                      : primary === "ready"
-                        ? "GitPullRequest"
-                        : "RotateCcw"
-                  }
+                  name={Match.value(primary).pipe(
+                    Match.when("merge", (): IconName => "GitMerge"),
+                    Match.when("ready", (): IconName => "GitPullRequest"),
+                    Match.when("reopen", (): IconName => "RotateCcw"),
+                    Match.exhaustive,
+                  )}
                   className="size-3.5"
                 />
-                {primary === "merge"
-                  ? "Merge"
-                  : primary === "ready"
-                    ? "Ready for review"
-                    : "Reopen"}
+                {Match.value(primary).pipe(
+                  Match.when("merge", () => "Merge"),
+                  Match.when("ready", () => "Ready for review"),
+                  Match.when("reopen", () => "Reopen"),
+                  Match.exhaustive,
+                )}
               </button>
             )}
             <PrMenu label="Pull request actions" icon="MoreHorizontal" compact disabled={!detail}>
@@ -595,13 +610,12 @@ export function PullRequestDetail({
                         <span>{check.name}</span>
                       )}
                       <span className="pr-check-status">
-                        {check.state === "success"
-                          ? "Passed"
-                          : check.state === "failure"
-                            ? "Failed"
-                            : check.state === "skipped"
-                              ? "Skipped"
-                              : "Pending"}
+                        {Match.value(check.state).pipe(
+                          Match.when("success", () => "Passed"),
+                          Match.when("failure", () => "Failed"),
+                          Match.when("skipped", () => "Skipped"),
+                          Match.orElse(() => "Pending"),
+                        )}
                       </span>
                     </div>
                   ))
@@ -710,6 +724,7 @@ export function PullRequestDetail({
     </section>
   );
 }
+
 function ActivityList({
   timeline,
   error,
@@ -729,6 +744,7 @@ function ActivityList({
     timeline?.entries.filter(
       (entry) => !commentsOnly || entry.kind === "comment" || entry.kind === "review",
     ) ?? [];
+
   return (
     <>
       {error && (

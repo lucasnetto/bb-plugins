@@ -1,8 +1,9 @@
 import { definePluginApp, useSettings } from "@get-bb/plugin-sdk/app";
-import { resolveFonts } from "../shared/fonts";
+import { fontSettingsSchema, resolveFonts, type FontSettings } from "../shared/fonts";
 
-export function FontStyles({ values }: { values?: Record<string, unknown> }) {
+export function FontStyles({ values }: { values?: FontSettings }) {
   const fonts = resolveFonts(values);
+
   const declarations = [
     fonts.ui && `--font-sans: ${fonts.ui} !important;`,
     fonts.code && `--font-mono: ${fonts.code} !important;`,
@@ -23,12 +24,13 @@ export function FontStyles({ values }: { values?: Record<string, unknown> }) {
 
 function LiveFonts() {
   const { values } = useSettings();
-  return <FontStyles values={values} />;
+
+  return <FontStyles values={fontSettingsSchema.parse(values)} />;
 }
 
 function FontPreview() {
   const { values, isLoading } = useSettings();
-  const fonts = resolveFonts(values);
+  const fonts = resolveFonts(fontSettingsSchema.parse(values));
 
   if (isLoading) {
     return (

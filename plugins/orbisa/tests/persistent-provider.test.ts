@@ -6,6 +6,7 @@ import { registerPersistentProvider, type PersistentAdapters } from "../persiste
 import {
   ownedPersistentResource,
   persistentResource,
+  persistentSchema,
   persistentInputs,
   PERSISTENT_PROVIDER,
 } from "../persistent-resource.ts";
@@ -16,14 +17,17 @@ void test("each profile owns only its assigned persistent slots", () => {
     [".bb-work", ["01", "02"]],
   ] as const) {
     const dir = `/tmp/persistent/${profile}`;
+
     for (const slot of ["01", "02", "03"] as const) {
       assert.equal(
         persistentInputs(dir).safeParse({ slot }).success,
-        (slots as readonly string[]).includes(slot),
+        slots.some((ownedSlot) => ownedSlot === slot),
       );
-      if ((slots as readonly string[]).includes(slot)) {
+
+      if (slots.some((ownedSlot) => ownedSlot === slot)) {
         const resource = persistentResource(dir, "launch", slot);
         assert.deepEqual(ownedPersistentResource(dir, resource), resource);
+
         for (const name of [
           "180seg-orbisa-01",
           "cursor-base",
@@ -40,16 +44,19 @@ void test("each profile owns only its assigned persistent slots", () => {
 function fixture() {
   const events: string[] = [];
   let exists = false;
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "orbisa",
     dataDir: "/tmp/persistent-test/.bb",
     machineBootstrap: {
       bootstrap: async () => {
         events.push("bootstrap");
+
         return { hostId: "host_vm" };
       },
     },
   });
+
   const adapters: PersistentAdapters = {
     exists: async () => exists,
     seed: () =>
@@ -61,6 +68,7 @@ function fixture() {
       allocate: async (resource) => {
         events.push("allocate");
         exists = true;
+
         return { ...resource, vmId: "vm_01" };
       },
       prepare: async (_resource, _signal, _report, removing) => {
@@ -77,18 +85,22 @@ function fixture() {
       },
     },
   };
+
   registerPersistentProvider(bb, async () => ({ persistentIdleMinutes: 15 }), adapters);
   const provider = harness.inspection.registrations.machineProviders.get(PERSISTENT_PROVIDER)!;
-  const context = {
+
+  const context: Parameters<typeof provider.create>[0] = {
     key: "launch_01",
     attempt: 1,
     inputs: { slot: "01" },
     signal: new AbortController().signal,
     report: { step() {}, log() {} },
-    checkpoint: async (value: unknown) => {
-      events.push((value as { vmId: string | null }).vmId ? "checkpoint-vm" : "checkpoint-intent");
+    checkpoint: async (value) => {
+      const resource = persistentSchema.parse(value);
+      events.push(resource.vmId ? "checkpoint-vm" : "checkpoint-intent");
     },
   };
+
   return {
     bb,
     harness,
@@ -103,6 +115,7 @@ function fixture() {
 
 void test("persistent create is checkpointed; duplicate launches cannot adopt or clean up its VM", async () => {
   const f = fixture();
+
   try {
     assert.equal(f.provider.ephemeral, false);
     const result = await f.provider.create(f.context);
@@ -122,6 +135,7 @@ void test("persistent create is checkpointed; duplicate launches cannot adopt or
     f.events.length = 0;
     await f.provider.reconcileCleanup({ ...f.context, key: "duplicate" });
     assert.deepEqual(f.events, []);
+
     if (result.status !== "created") throw new Error("Expected created");
     await f.provider.suspend!({ ...f.context, hostId: "host_vm", resource: result.resource });
     assert.deepEqual(f.events, ["checkpoint-vm", "stop"]);
@@ -138,6 +152,7 @@ void test("persistent create is checkpointed; duplicate launches cannot adopt or
 void test("an existing unowned VM cannot be adopted or deleted after create fails", async () => {
   const f = fixture();
   f.foreignVm();
+
   try {
     await assert.rejects(f.provider.create(f.context), /without a matching BB ownership/);
     await f.provider.reconcileCleanup(f.context);
@@ -149,8 +164,10 @@ void test("an existing unowned VM cannot be adopted or deleted after create fail
 
 void test("resume refreshes credentials and reconnects without reseeding repositories", async () => {
   const f = fixture();
+
   try {
     const result = await f.provider.create(f.context);
+
     if (result.status !== "created") throw new Error("Expected created");
     f.harness.inspection.sdk.stub("hosts.get", async () => ({ lifecycle: { phase: "suspended" } }));
     f.events.length = 0;

@@ -13,6 +13,7 @@ import { LIST_HOVER_TRANSITION } from "./motion.js";
 import { Icon } from "../../components/ui/icon.js";
 
 type ContextMenuSubTriggerElement = React.ComponentRef<typeof ContextMenuPrimitive.SubTrigger>;
+
 type ContextMenuSubTriggerProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.SubTrigger
 > & {
@@ -20,34 +21,41 @@ type ContextMenuSubTriggerProps = React.ComponentPropsWithoutRef<
 };
 
 type ContextMenuSubContentElement = React.ComponentRef<typeof ContextMenuPrimitive.SubContent>;
+
 type ContextMenuSubContentProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.SubContent
 >;
 
 type ContextMenuContentElement = React.ComponentRef<typeof ContextMenuPrimitive.Content>;
+
 type ContextMenuContentProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>;
 
 type ContextMenuItemElement = React.ComponentRef<typeof ContextMenuPrimitive.Item>;
+
 type ContextMenuItemProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & {
   inset?: boolean;
 };
 
 type ContextMenuCheckboxItemElement = React.ComponentRef<typeof ContextMenuPrimitive.CheckboxItem>;
+
 type ContextMenuCheckboxItemProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.CheckboxItem
 >;
 
 type ContextMenuRadioItemElement = React.ComponentRef<typeof ContextMenuPrimitive.RadioItem>;
+
 type ContextMenuRadioItemProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.RadioItem
 >;
 
 type ContextMenuLabelElement = React.ComponentRef<typeof ContextMenuPrimitive.Label>;
+
 type ContextMenuLabelProps = React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Label> & {
   inset?: boolean;
 };
 
 type ContextMenuSeparatorElement = React.ComponentRef<typeof ContextMenuPrimitive.Separator>;
+
 type ContextMenuSeparatorProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.Separator
 >;
@@ -57,10 +65,15 @@ type ContextMenuShortcutProps = React.HTMLAttributes<HTMLSpanElement>;
 const CONTEXT_MENU_LAYER_CLASS = "z-[70]";
 
 const ContextMenu = ContextMenuPrimitive.Root;
+
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
+
 const ContextMenuGroup = ContextMenuPrimitive.Group;
+
 const ContextMenuPortal = ContextMenuPrimitive.Portal;
+
 const ContextMenuSub = ContextMenuPrimitive.Sub;
+
 const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
 const ContextMenuSubTrigger = React.forwardRef<
@@ -102,6 +115,7 @@ const ContextMenuSubTrigger = React.forwardRef<
     );
   },
 );
+
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
 
 const ContextMenuSubContent = React.forwardRef<
@@ -119,6 +133,7 @@ const ContextMenuSubContent = React.forwardRef<
     {...props}
   />
 ));
+
 ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 
 const ContextMenuContent = React.forwardRef<ContextMenuContentElement, ContextMenuContentProps>(
@@ -139,6 +154,7 @@ const ContextMenuContent = React.forwardRef<ContextMenuContentElement, ContextMe
     </ContextMenuPrimitive.Portal>
   ),
 );
+
 ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName;
 
 const ContextMenuItem = React.forwardRef<ContextMenuItemElement, ContextMenuItemProps>(
@@ -167,6 +183,7 @@ const ContextMenuItem = React.forwardRef<ContextMenuItemElement, ContextMenuItem
     );
   },
 );
+
 ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName;
 
 const ContextMenuCheckboxItem = React.forwardRef<
@@ -217,6 +234,7 @@ const ContextMenuCheckboxItem = React.forwardRef<
     );
   },
 );
+
 ContextMenuCheckboxItem.displayName = ContextMenuPrimitive.CheckboxItem.displayName;
 
 const ContextMenuRadioItem = React.forwardRef<
@@ -254,6 +272,7 @@ const ContextMenuRadioItem = React.forwardRef<
     );
   },
 );
+
 ContextMenuRadioItem.displayName = ContextMenuPrimitive.RadioItem.displayName;
 
 const ContextMenuLabel = React.forwardRef<ContextMenuLabelElement, ContextMenuLabelProps>(
@@ -269,6 +288,7 @@ const ContextMenuLabel = React.forwardRef<ContextMenuLabelElement, ContextMenuLa
     />
   ),
 );
+
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
 
 const ContextMenuSeparator = React.forwardRef<
@@ -281,6 +301,7 @@ const ContextMenuSeparator = React.forwardRef<
     {...props}
   />
 ));
+
 ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName;
 
 function ContextMenuShortcut({ className, ...props }: ContextMenuShortcutProps) {
@@ -288,6 +309,7 @@ function ContextMenuShortcut({ className, ...props }: ContextMenuShortcutProps) 
     <span className={cn("ml-auto text-xs tracking-widest opacity-60", className)} {...props} />
   );
 }
+
 ContextMenuShortcut.displayName = "ContextMenuShortcut";
 
 export {

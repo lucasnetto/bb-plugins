@@ -9,6 +9,7 @@ import {
 
 export function useThreadSnoozeMenu(onSnooze: (until: number) => void) {
   const [now, setNow] = useState(() => Date.now());
+
   return {
     now,
     presets: snoozePresets(new Date(now)),
@@ -18,6 +19,7 @@ export function useThreadSnoozeMenu(onSnooze: (until: number) => void) {
     select: (id: string) => {
       // Resolve relative deadlines when selected, even if the menu has been open for a while.
       const preset = snoozePresets(new Date()).find((item) => item.id === id);
+
       if (preset) onSnooze(preset.until);
     },
   };
@@ -25,6 +27,7 @@ export function useThreadSnoozeMenu(onSnooze: (until: number) => void) {
 
 export function ThreadSnoozeMenu({ onSnooze }: { onSnooze: (until: number) => void }) {
   const menu = useThreadSnoozeMenu(onSnooze);
+
   return (
     <DropdownMenu onOpenChange={menu.onOpenChange}>
       <DropdownMenuTrigger asChild>

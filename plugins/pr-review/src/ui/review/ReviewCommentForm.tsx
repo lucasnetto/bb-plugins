@@ -27,7 +27,9 @@ export function ReviewCommentForm({
       onKeyDown={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (!draft.comment.trim() || loading || draft.addingComment) return;
+
         if (threadId) void draft.add("Comment");
         else if (!githubDisabled && hasDetail) void onAddToReview?.();
       }}
@@ -54,6 +56,7 @@ export function ReviewCommentForm({
           if (event.key === "Enter" && event.metaKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             event.stopPropagation();
+
             if (!event.repeat) event.currentTarget.form?.requestSubmit();
           }
         }}

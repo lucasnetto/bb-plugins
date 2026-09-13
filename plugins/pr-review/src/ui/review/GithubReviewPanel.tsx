@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { reviewFingerprint, type GithubComment } from "../../shared/github-review-contract";
 import type { useGithubReview } from "./useGithubReview";
 import { ReviewCommentBody } from "./ReviewCommentBody";
+
 export type GithubReview = ReturnType<typeof useGithubReview>;
 
 function DraftComment({
@@ -20,14 +21,17 @@ function DraftComment({
   const [text, setText] = useState(comment.body);
   const [original, setOriginal] = useState(comment.body);
   const state = review.state;
+
   if (!state) return null;
   const pending = comment.pull_request_review_id === state.pending?.id;
+
   const expected = {
     login: state.login,
     reviewId: state.pending?.id ?? null,
     commentId: comment.id,
     previousBody: original,
   };
+
   return (
     <article className="space-y-2 rounded-md border border-border p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
@@ -102,6 +106,7 @@ function DraftComment({
     </article>
   );
 }
+
 function ReviewBody({
   head,
   review,
@@ -115,6 +120,7 @@ function ReviewBody({
   const remoteBody = state?.pending?.body ?? "";
   const [edit, setEdit] = useState<{ body: string; original: string } | null>(null);
   const [discard, setDiscard] = useState(false);
+
   if (!state) return null;
   const body = edit?.body ?? remoteBody;
   const conflict = edit !== null && edit.original !== remoteBody;
@@ -122,6 +128,7 @@ function ReviewBody({
   const disabled = review.busy || !review.synced;
   const stale = !head || head !== state.head;
   const pending = state.comments.filter((c) => c.pull_request_review_id === state.pending?.id);
+
   return (
     <div className="space-y-3 px-3 pb-3">
       <p className="text-xs text-muted-foreground">
@@ -277,6 +284,7 @@ function ReviewBody({
     </div>
   );
 }
+
 export function GithubReviewPanel({
   head,
   review,
@@ -289,6 +297,7 @@ export function GithubReviewPanel({
   const count =
     review.state?.comments.filter((c) => c.pull_request_review_id === review.state?.pending?.id)
       .length ?? 0;
+
   return (
     <section
       aria-label="GitHub review"

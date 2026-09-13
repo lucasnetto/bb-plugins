@@ -7,6 +7,7 @@ import { runHost } from "./host-effects";
 import { workspaceHostContract } from "../shared/workspace-contract";
 import { prOverview, prTimeline, prStack, prCandidates } from "./workspace-github";
 import { prAction, prMergeStatus } from "./workspace-actions";
+
 export default experimental_defineHostEntry({
   contract: { ...hostContract, ...workspaceHostContract },
   handlers: {

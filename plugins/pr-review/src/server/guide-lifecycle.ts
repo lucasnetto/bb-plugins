@@ -31,6 +31,7 @@ export function createGuideLifecycle(
 ) {
   const { read, write, isCurrentActiveJob } = jobs;
   const { guideOptions } = models;
+
   const archiveAndStopWorker = Effect.fn("Guide.cleanup")(function* (workerId: string | null) {
     if (!workerId) return;
     // Archive does not terminate hidden agents.
@@ -42,7 +43,9 @@ export function createGuideLifecycle(
       ),
     );
   });
+
   const finishingJobIds = new Set<string>();
+
   const finishGuideJob = Effect.fn("Guide.finish")(function* (
     job: RunningGuideJob,
     output: string | null,
@@ -71,16 +74,20 @@ export function createGuideLifecycle(
       Effect.ensuring(Effect.sync(() => finishingJobIds.delete(job.id))),
     );
   });
+
   const reconcileGuideJob = Effect.fn("Guide.job")(function* (input: Target) {
     const job = yield* sync("guide job", () => read(input));
+
     if (job?.status === "running") {
       const worker = yield* call("guide worker", () =>
         bb.sdk.threads.get({ threadId: job.workerId }),
       );
+
       if (worker.status === "idle") {
         const { output } = yield* call("guide output", () =>
           bb.sdk.threads.output({ threadId: worker.id }),
         );
+
         yield* finishGuideJob(job, output);
       } else if (worker.status === "error" || worker.archivedAt || worker.deletedAt) {
         yield* finishGuideJob(
@@ -90,17 +97,24 @@ export function createGuideLifecycle(
         );
       }
     }
+
     return yield* sync("guide job", () => read(input));
   });
+
   const cancelGuideJob = Effect.fn("Guide.cancel")(function* (input: Target) {
     const job = yield* sync("cancel guide", () => {
       const job = read(input);
+
       if (job && isActiveGuideJob(job)) write(cancelledGuideJob(job));
+
       return job;
     });
+
     if (job) yield* archiveAndStopWorker(guideWorkerId(job));
+
     return null;
   });
+
   const spawnAndRecordGuideWorker = Effect.fnUntraced(function* (
     job: Extract<GuideJob, { status: "preparing" }>,
     input: {
@@ -124,10 +138,13 @@ export function createGuideLifecycle(
         prompt: input.prompt,
       }),
     );
+
     if (!isCurrentActiveJob(job)) {
       yield* archiveAndStopWorker(worker.id);
+
       return cancelledGuideJob(job);
     }
+
     return yield* sync("guide worker save", () =>
       write({
         ...job,
@@ -138,10 +155,12 @@ export function createGuideLifecycle(
       }),
     );
   }, Effect.uninterruptible);
+
   const startGuideJob = Effect.fn("Guide.start")(function* (input: Target & { model: GuideModel }) {
     const job = yield* sync("start guide", () => {
       if (isActiveGuideJob(read(input)))
         throw new Error("A guide is already being generated for this PR.");
+
       return write({
         threadId: input.threadId,
         url: input.url,
@@ -149,12 +168,15 @@ export function createGuideLifecycle(
         status: "preparing",
       });
     });
+
     return yield* Effect.gen(function* () {
       const options = yield* guideOptions(input);
       const context = yield* guides.guideContext(input);
       const parsed = yield* decodeGuideContext(context);
+
       if (!isCurrentActiveJob(job)) return cancelledGuideJob(job);
       const prompt = buildGuideWorkerPrompt(parsed);
+
       return yield* spawnAndRecordGuideWorker(job, {
         projectId: options.projectId,
         environmentId: options.environmentId,
@@ -167,11 +189,13 @@ export function createGuideLifecycle(
       Effect.catchTag("BackendError", (error) =>
         sync("guide start failed", () => {
           if (!isCurrentActiveJob(job)) return cancelledGuideJob(job);
+
           return write(failedGuideJob(job, error.message));
         }),
       ),
     );
   });
+
   return {
     start: startGuideJob,
     reconcile: reconcileGuideJob,

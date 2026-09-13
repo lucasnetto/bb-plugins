@@ -1,4 +1,5 @@
 import type { Overview, PrStack } from "../src/shared/workspace-contract";
+
 export const overview: Overview = {
   id: "PR_42",
   url: "https://github.com/acme/api/pull/42",
@@ -35,8 +36,10 @@ export const overview: Overview = {
   commentCount: 0,
   checkoutRoot: null,
 };
+
 export function rawOverview(overrides: Partial<Overview> = {}) {
   const pr = { ...overview, ...overrides };
+
   return {
     data: {
       viewer: { login: "lucas" },
@@ -60,6 +63,7 @@ export function rawOverview(overrides: Partial<Overview> = {}) {
     },
   };
 }
+
 export const stack: PrStack = {
   number: 7,
   base: "main",

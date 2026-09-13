@@ -33,6 +33,7 @@ interface InboxPreferences {
   filters: Filters;
   setFilters: Dispatch<SetStateAction<Filters>>;
 }
+
 export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const url = draftUrl(subPath);
@@ -45,16 +46,20 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
   const [adding, setAdding] = useState(false);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
+
   const [paneWidth, setPaneWidth] = useState(() => {
     try {
       const saved = Number(localStorage.getItem("pr-review:pane-width:v1"));
+
       return saved >= 30 && saved <= 70 ? saved : 50;
     } catch {
       return 50;
     }
   });
+
   const root = useRef<HTMLElement>(null);
   const drag = useRef(false);
+
   const open = useCallback(
     (next: string) => {
       setOpened((current) => (current.includes(next) ? current : [...current, next]));
@@ -63,26 +68,32 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
     },
     [navigate],
   );
+
   useEffect(() => {
     if (url) {
       setOpened((current) => (current.includes(url) ? current : [...current, url]));
       setVisible(true);
     }
   }, [url]);
+
   const resize = (next: number) => {
     const clamped = Math.max(30, Math.min(70, next));
     setPaneWidth(clamped);
+
     try {
       localStorage.setItem("pr-review:pane-width:v1", String(clamped));
     } catch {
       /* Resizing works without storage. */
     }
   };
+
   function close(target: string) {
     const rest = opened.filter((item) => item !== target);
     setOpened(rest);
+
     if (url === target) {
       const next = rest.at(-1);
+
       if (next) open(next);
       else {
         setVisible(false);
@@ -90,6 +101,7 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
       }
     }
   }
+
   return (
     <main ref={root} className={`pr-workspace ${visible && url ? "pr-workspace-split" : ""}`}>
       <Inbox
@@ -216,9 +228,11 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
             className="pr-dialog-form"
             onSubmit={(event) => {
               event.preventDefault();
+
               try {
                 const path = draftPath(input);
                 const next = draftUrl(path);
+
                 if (next) open(next);
                 setAdding(false);
                 setInput("");
@@ -250,9 +264,11 @@ export function PullRequestsPage({ subPath }: PluginNavPanelProps) {
     </main>
   );
 }
+
 function InboxDetail({ url, active }: { url: string; active: boolean }) {
   return <StandalonePrReview url={url} active={active} />;
 }
+
 function Inbox({
   preferences,
   state,
@@ -274,6 +290,7 @@ function Inbox({
   const reviewing = useList("reviewing", state);
   const { query, setQuery, sort, setSort, filters, setFilters } = preferences;
   const search = useDeferredValue(query);
+
   const repositories = [
     ...new Set(
       [...(authored.result?.rows ?? []), ...(reviewing.result?.rows ?? [])].map(
@@ -281,17 +298,23 @@ function Inbox({
       ),
     ),
   ].sort();
+
+  const defaultFilters = new Map(Object.entries(DEFAULT_FILTERS));
+
   const count =
-    Object.entries(filters).filter(
-      ([key, value]) => value !== DEFAULT_FILTERS[key as keyof Filters],
-    ).length + (state === "all" ? 0 : 1);
+    Object.entries(filters).filter(([key, value]) => value !== defaultFilters.get(key)).length +
+    (state === "all" ? 0 : 1);
+
   const update = (key: keyof Filters) => (value: string) =>
     setFilters((current) => ({ ...current, [key]: value }));
+
   const loading = authored.loading || reviewing.loading;
+
   const groups = [
     { title: "Authored", key: "authored", data: authored },
     { title: "Review requested", key: "reviewing", data: reviewing },
   ].filter((group) => filters.involvement === "all" || filters.involvement === group.key);
+
   return (
     <section className="pr-inbox" aria-label="Pull requests">
       <div className="pr-list-toolbar">
@@ -311,7 +334,9 @@ function Inbox({
             value={sort}
             options={SORT_OPTIONS}
             onChange={(value) => {
-              if (SORT_OPTIONS.some((option) => option.value === value)) setSort(value as Sort);
+              const option = SORT_OPTIONS.find((option) => option.value === value);
+
+              if (option) setSort(option.value);
             }}
           />
         </PrMenu>
@@ -326,6 +351,7 @@ function Inbox({
             ]}
             onChange={(value) => {
               const parsed = stateSchema.safeParse(value);
+
               if (parsed.success) setState(parsed.data);
             }}
           />
@@ -420,6 +446,7 @@ function Inbox({
       <div className="pr-list-scroll" aria-busy={loading}>
         {groups.map(({ key, title, data }) => {
           const rows = visibleRows(data.result?.rows ?? [], search, filters, sort, state);
+
           return (
             <section key={key} className="pr-list-group" aria-label={title}>
               <h2>{title}</h2>

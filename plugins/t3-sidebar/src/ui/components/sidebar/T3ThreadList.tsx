@@ -1,4 +1,5 @@
 import { ProjectScopePicker } from "./ProjectScopePicker";
+import { Schema } from "effect";
 import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
 import { useSidebarClock } from "@/ui/hooks/useSidebarClock";
 import { useSettledThreads } from "@/ui/hooks/useSettledThreads";
@@ -27,6 +28,7 @@ import {
 import { ThreadRow, type ThreadRowActions, type ThreadRowProvider } from "./ThreadRow";
 
 const SCOPE_KEY = "t3-sidebar:project-scope";
+
 const SETTLED_EXPANDED_KEY = "t3-sidebar:settled-expanded";
 
 function ShelfHeader(props: {
@@ -66,6 +68,7 @@ export function T3ThreadList(props: PluginThreadListProps) {
     </LinkedPrProvider>
   );
 }
+
 function T3ThreadListContent(props: PluginThreadListProps) {
   const [projectDialog, setProjectDialog] = useState(false);
   const navigate = useBbNavigate();
@@ -76,35 +79,51 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const { archivedThreads, threads, set: setSettled, refetch } = useSettledThreads(liveThreads);
   // Native unarchive/rename actions also invalidate the host sidebar query.
   useEffect(refetch, [liveThreads, refetch]);
+
   const archivedIds = useMemo(
     () => new Set(archivedThreads.map((thread) => thread.id)),
     [archivedThreads],
   );
+
   const { snoozed, set: setSnoozed } = useSnoozedMap();
   const nowMs = useSidebarClock(snoozed);
+
   const [snoozedExpanded, setSnoozedExpanded] = useLocalStorageState(
     "t3-sidebar:snoozed-expanded",
     false,
+    Schema.Boolean,
   );
 
-  const [scopeProjectId, setScopeProjectId] = useLocalStorageState<string | null>(SCOPE_KEY, null);
-  const [settledExpanded, setSettledExpanded] = useLocalStorageState(SETTLED_EXPANDED_KEY, false);
+  const [scopeProjectId, setScopeProjectId] = useLocalStorageState(
+    SCOPE_KEY,
+    null,
+    Schema.NullOr(Schema.String),
+  );
+
+  const [settledExpanded, setSettledExpanded] = useLocalStorageState(
+    SETTLED_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
 
   // A scope pointing at a project that no longer exists falls back to all.
   const effectiveScope =
     scopeProjectId !== null && projects.some((project) => project.id === scopeProjectId)
       ? scopeProjectId
       : null;
+
   const [settledPagination, setSettledPagination] = useState({
     scope: effectiveScope,
     visibleCount: SETTLED_TAIL_INITIAL_COUNT,
   });
+
   if (settledPagination.scope !== effectiveScope) {
     setSettledPagination({
       scope: effectiveScope,
       visibleCount: SETTLED_TAIL_INITIAL_COUNT,
     });
   }
+
   const settledVisibleCount =
     settledPagination.scope === effectiveScope
       ? settledPagination.visibleCount
@@ -136,6 +155,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
   );
+
   const providerById = useMemo(
     () =>
       new Map<string, ThreadRowProvider>(
@@ -186,6 +206,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     partition.active.length +
     partition.settled.length +
     partition.snoozed.length;
+
   const scopedProject = projects.find((project) => project.id === effectiveScope) ?? null;
 
   return (

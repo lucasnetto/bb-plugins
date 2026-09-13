@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import { memo } from "react";
 import type { PullRequest, PrState } from "../../../contract";
 import { Icon } from "../components/ui/icon";
@@ -34,7 +35,11 @@ export const PullRequestRow = memo(function PullRequestRow({
     >
       <PrGlyph
         draft={pr.isDraft}
-        state={state === "merged" ? "MERGED" : state === "closed" ? "CLOSED" : "OPEN"}
+        state={Match.value(state).pipe(
+          Match.when("merged", () => "MERGED"),
+          Match.when("closed", () => "CLOSED"),
+          Match.orElse(() => "OPEN"),
+        )}
         conflict={pr.mergeable === "CONFLICTING"}
       />
       <span className="pr-row-grid">

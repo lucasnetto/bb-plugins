@@ -10,16 +10,23 @@ const item = {
   state: "open",
   updated_at: "2026-09-07T12:00:00Z",
 };
+
 function api(total = 1, incomplete = false) {
   const calls: string[][] = [];
+
   const gh: Gh = async (args) => {
     calls.push(args);
-    return args.includes("user")
-      ? { login: "lucas" }
-      : { total_count: total, incomplete_results: incomplete, items: [item] };
+
+    return JSON.stringify(
+      args.includes("user")
+        ? { login: "lucas" }
+        : { total_count: total, incomplete_results: incomplete, items: [item] },
+    );
   };
+
   return { gh, calls };
 }
+
 describe("GitHub PR inbox", () => {
   it("always fetches open PRs and excludes drafts only for ready review", async () => {
     for (const view of ["authored", "reviewing"] as const) {
@@ -71,7 +78,7 @@ describe("GitHub PR inbox", () => {
       ),
     ).rejects.toThrow("auth required");
     await expect(
-      listPullRequests(async () => ({}), { view: "authored", page: 1 }),
+      listPullRequests(async () => "{}", { view: "authored", page: 1 }),
     ).rejects.toThrow();
     const { gh, calls } = api();
     await expect(listPullRequests(gh, { view: "authored", page: 21 })).rejects.toThrow();

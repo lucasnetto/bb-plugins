@@ -1,9 +1,19 @@
+import { Schema } from "effect";
 import type { HiddenModel } from "../../shared/contract";
+
 export const PLUGIN_ID = "hide-models";
+
 export const STORAGE_KEY = `bb-plugin-${PLUGIN_ID}:hidden-names`;
+
 export const CHANGED_EVENT = `bb-plugin-${PLUGIN_ID}:changed`;
 
-export type CachedEntry = { providerId: string; name: string };
+const CachedEntry = Schema.Struct({ providerId: Schema.String, name: Schema.String });
+
+export type CachedEntry = typeof CachedEntry.Type;
+
+const isCachedEntry = Schema.is(CachedEntry);
+
+const isCacheArray = Schema.is(Schema.Array(Schema.Unknown));
 
 export const normalize = (label: string) => label.split(" · ")[0]?.trim().toLowerCase() ?? "";
 
@@ -18,15 +28,8 @@ export const serializeCache = (hidden: readonly HiddenModel[]) =>
 export const readCache = (): CachedEntry[] => {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (x): x is CachedEntry =>
-            typeof x === "object" &&
-            x !== null &&
-            typeof x.providerId === "string" &&
-            typeof x.name === "string",
-        )
-      : [];
+
+    return isCacheArray(parsed) ? parsed.filter(isCachedEntry) : [];
   } catch {
     return [];
   }

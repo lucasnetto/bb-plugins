@@ -14,6 +14,7 @@ async function withHost(run) {
       status: "active",
     }),
   ];
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
@@ -26,15 +27,18 @@ async function withHost(run) {
           const thread = rows.find((row) => row.id === threadId);
           thread.archivedAt = Date.now();
           thread.status = "idle";
+
           return { ok: true };
         },
         unarchive: async ({ threadId }) => {
           rows.find((row) => row.id === threadId).archivedAt = null;
+
           return { ok: true };
         },
       },
     },
   });
+
   try {
     await plugin(bb);
     await run({ bb, harness, rows });
@@ -85,6 +89,7 @@ test("native archive/delete events refresh the shelf", async () => {
     for (const event of ["thread.archived", "thread.deleted"]) {
       await harness.behavior.emitThreadEvent(event, { thread: rows[0] });
     }
+
     assert.equal(
       harness.realtimeSignals.filter((signal) => signal.channel === "settled-changed").length,
       2,

@@ -1,9 +1,10 @@
-import type { StandardSchemaV1 } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 
 export const DEFAULT_FONT = "BB default";
+
 export const CUSTOM_FONT = "Custom";
 
-export const INTERFACE_FONTS: Readonly<Record<string, string>> = {
+export const INTERFACE_FONTS = {
   "System UI": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
   Inter: '"Inter", system-ui, sans-serif',
   "Helvetica Neue": '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -12,7 +13,7 @@ export const INTERFACE_FONTS: Readonly<Record<string, string>> = {
   Georgia: "Georgia, Cambria, serif",
 };
 
-export const CODE_FONTS: Readonly<Record<string, string>> = {
+export const CODE_FONTS = {
   "System monospace": "ui-monospace, monospace",
   "SF Mono": '"SF Mono", Menlo, monospace',
   Menlo: "Menlo, monospace",
@@ -23,46 +24,48 @@ export const CODE_FONTS: Readonly<Record<string, string>> = {
   "Fira Code": '"Fira Code", monospace',
 };
 
-// Accept a single installed family name, never arbitrary CSS or a URL.
-export function isCustomFont(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 100 && /^[\p{L}\p{N} ._+-]*$/u.test(value);
-}
+const customFontMessage =
+  "Enter one font family (up to 100 characters), using letters, numbers, spaces, dots, underscores, + or -.";
 
-export const customFontSchema: StandardSchemaV1<string, string> = {
-  "~standard": {
-    version: 1,
-    vendor: "bb-fonts",
-    validate: (value) =>
-      isCustomFont(value)
-        ? { value }
-        : {
-            issues: [
-              {
-                message:
-                  "Enter one font family (up to 100 characters), using letters, numbers, spaces, dots, underscores, + or -.",
-              },
-            ],
-          },
-  },
-};
+// Accept a single installed family name, never arbitrary CSS or a URL.
+export const customFontSchema = z
+  .string({ error: customFontMessage })
+  .max(100, customFontMessage)
+  .regex(/^[\p{L}\p{N} ._+-]*$/u, customFontMessage);
+
+// Saved settings can predate validation. Discard only the invalid field, so a
+// corrupt interface setting never prevents a valid code font from applying.
+export const fontSettingsSchema = z
+  .object({
+    interfaceFont: z.string().optional().catch(undefined),
+    customInterfaceFont: customFontSchema.optional().catch(undefined),
+    codeFont: z.string().optional().catch(undefined),
+    customCodeFont: customFontSchema.optional().catch(undefined),
+  })
+  .default({});
+
+export type FontSettings = z.infer<typeof fontSettingsSchema>;
 
 export function resolveFont(
-  selection: unknown,
-  custom: unknown,
+  selection: string | undefined,
+  custom: string | undefined,
   presets: Readonly<Record<string, string>>,
   fallback: string,
 ): string | undefined {
   if (selection === CUSTOM_FONT) {
-    return isCustomFont(custom) && custom.trim() !== ""
-      ? `"${custom.trim()}", ${fallback}`
+    const family = customFontSchema.safeParse(custom);
+
+    return family.success && family.data.trim() !== ""
+      ? `"${family.data.trim()}", ${fallback}`
       : undefined;
   }
-  return typeof selection === "string" && Object.hasOwn(presets, selection)
+
+  return selection !== undefined && Object.hasOwn(presets, selection)
     ? presets[selection]
     : undefined;
 }
 
-export function resolveFonts(values: Record<string, unknown> = {}) {
+export function resolveFonts(values: FontSettings = {}) {
   return {
     ui: resolveFont(
       values.interfaceFont,

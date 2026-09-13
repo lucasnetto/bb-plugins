@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from "vite-plus/test";
 import { cleanup, render } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { fontSettingsSchema } from "../../src/shared/fonts";
 
 afterEach(cleanup);
 
@@ -10,6 +11,7 @@ it("updates fonts independently and removes overrides on reset and unmount", asy
   const theme = document.createElement("style");
   theme.textContent = ':root { --font-sans: "Theme UI"; --font-mono: "Theme Mono"; }';
   document.head.append(theme);
+
   try {
     const view = render(<FontStyles values={{ interfaceFont: "Georgia", codeFont: "Menlo" }} />);
     expect(document.querySelector("[data-bb-fonts]")?.textContent).toContain(
@@ -46,11 +48,13 @@ it("updates fonts independently and removes overrides on reset and unmount", asy
 
 it("loads BB settings in the app-wide owner and the preview", async () => {
   const app = await loadPluginApp(() => import("../../src/ui/app"));
+
   const settings = {
     interfaceFont: "Custom",
     customInterfaceFont: "Avenir Next",
     codeFont: "Menlo",
   };
+
   const live = renderSlot(app.appOverlays[0]!, {}, { settings });
   expect(document.querySelector("[data-bb-fonts]")?.textContent).toContain('"Avenir Next"');
   const preview = renderSlot(app.settingsSections[0]!, {}, { settings });
@@ -79,7 +83,13 @@ it("ignores missing, corrupt and CSS-bearing saved values", async () => {
   );
   expect(document.querySelector("[data-bb-fonts]")).toBeNull();
   view.rerender(
-    <FontStyles values={{ interfaceFont: 23, codeFont: "Custom", customCodeFont: "   " }} />,
+    <FontStyles
+      values={fontSettingsSchema.parse({
+        interfaceFont: 23,
+        codeFont: "Custom",
+        customCodeFont: "   ",
+      })}
+    />,
   );
   expect(document.querySelector("[data-bb-fonts]")).toBeNull();
 });

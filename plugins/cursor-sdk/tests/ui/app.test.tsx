@@ -14,6 +14,7 @@ async function fixture(
   expect(customization.scopes).toEqual(["new-thread"]);
   expect(customization.banners?.[0].chrome).toBe("bare");
   let cloudAgents = false;
+
   const view = renderSlot<object, typeof rpcContract>(
     customization.actions![0],
     {},
@@ -24,27 +25,32 @@ async function fixture(
         runtimeSet: async (input) => {
           const result = set ? await set(input) : input;
           cloudAgents = result.cloudAgents;
+
           return result;
         },
       },
     },
   );
-  await waitFor(() => expect((view.getByRole("switch") as HTMLButtonElement).disabled).toBe(false));
+
+  await waitFor(() => expect(view.getByRole("switch").hasAttribute("disabled")).toBe(false));
+
   return view;
 }
 
 test("saves the shared runtime and protects submission until the save finishes", async () => {
   let complete!: (input: { cloudAgents: boolean }) => void;
+
   const view = await fixture(
     () =>
       new Promise((resolve) => {
         complete = resolve;
       }),
   );
-  const button = view.getByRole("switch") as HTMLButtonElement;
+
+  const button = view.getByRole("switch");
   expect(button.textContent).toBe("cloud");
   fireEvent.click(button);
-  expect(button.disabled).toBe(true);
+  expect(button.hasAttribute("disabled")).toBe(true);
   expect(view.inspection.composer.inputLocked).toBe(true);
   expect(view.inspection.composer.text).toBe("Keep my prompt");
   await act(async () => complete({ cloudAgents: true }));
@@ -57,7 +63,7 @@ test("receives changes from another window and reconciles after reconnecting", a
   await view.behavior.emitRealtime(RUNTIME_CHANGED, { cloudAgents: true });
   expect(view.getByRole("switch").getAttribute("aria-checked")).toBe("true");
   await view.behavior.setRealtimeConnectionState("reconnecting");
-  expect((view.getByRole("switch") as HTMLButtonElement).disabled).toBe(true);
+  expect(view.getByRole("switch").hasAttribute("disabled")).toBe(true);
   await view.behavior.setRealtimeConnectionState("connected");
   await waitFor(() => expect(view.getByRole("switch").getAttribute("aria-checked")).toBe("false"));
 });
@@ -66,9 +72,10 @@ test("failed saves retain the actual runtime and release the composer", async ()
   const view = await fixture(async () => {
     throw new Error("Offline");
   });
+
   fireEvent.click(view.getByRole("switch"));
   await view.findByRole("alert");
   expect(view.getByRole("switch").getAttribute("aria-checked")).toBe("false");
   expect(view.inspection.composer.inputLocked).toBe(false);
-  expect((view.getByRole("switch") as HTMLButtonElement).disabled).toBe(false);
+  expect(view.getByRole("switch").hasAttribute("disabled")).toBe(false);
 });

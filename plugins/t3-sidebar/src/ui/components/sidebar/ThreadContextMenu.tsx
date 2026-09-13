@@ -32,9 +32,12 @@ export function ThreadContextMenu({
 }) {
   const renameAfterClose = useRef(false);
   const isSnoozed = section === "snoozed";
+
   const canSnooze =
     !thread.isArchived && !thread.hasPendingInteraction && thread.indicator !== "waiting-for-input";
+
   const snoozeMenu = useThreadSnoozeMenu((until) => actions.setSnoozed(thread.id, until));
+
   return (
     <ContextMenu onOpenChange={snoozeMenu.onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>

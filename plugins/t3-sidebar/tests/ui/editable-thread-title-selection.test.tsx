@@ -9,6 +9,7 @@ import {
 
 function RenameHarness({ onRename }: { onRename: (title: string) => void }) {
   const rename = useThreadRename("Original title", onRename);
+
   return (
     <>
       <button onClick={rename.start}>Rename</button>
@@ -42,14 +43,18 @@ function typeText(input: HTMLInputElement, text: string) {
 
 test.each(["Enter", "blur"])("typing preserves the caret and commits on %s", (commit) => {
   const onRename = vi.fn();
+
   const view = render(
     <StrictMode>
       <RenameHarness onRename={onRename} />
     </StrictMode>,
   );
+
   try {
     fireEvent.click(view.getByRole("button", { name: "Rename" }));
-    const input = view.getByRole("textbox") as HTMLInputElement;
+    const input = view.getByRole("textbox");
+
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected title input");
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe(input.value.length);
@@ -67,7 +72,9 @@ test.each(["Enter", "blur"])("typing preserves the caret and commits on %s", (co
     expect(view.queryByRole("textbox")).toBeNull();
 
     fireEvent.click(view.getByRole("button", { name: "Rename" }));
-    const reopened = view.getByRole("textbox") as HTMLInputElement;
+    const reopened = view.getByRole("textbox");
+
+    if (!(reopened instanceof HTMLInputElement)) throw new Error("Expected reopened title input");
     expect(document.activeElement).toBe(reopened);
     expect(reopened.selectionStart).toBe(0);
     expect(reopened.selectionEnd).toBe(reopened.value.length);

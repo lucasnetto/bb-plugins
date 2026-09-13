@@ -8,6 +8,7 @@ const category = z.enum([
   "authentication-failed",
   "incompatible-runtime",
 ]);
+
 export const readinessSchema = z.array(
   z.object({
     name: z.string(),
@@ -17,11 +18,14 @@ export const readinessSchema = z.array(
     detail: z.string(),
   }),
 );
+
 export type ReadinessCheck = z.infer<typeof readinessSchema>[number];
+
 export function verifyReadiness(checks: ReadinessCheck[], report: (text: string) => void) {
   for (const check of checks)
     report(`${check.ok ? "OK" : check.required ? "FAIL" : "WARN"} ${check.name}: ${check.detail}`);
   const failure = checks.find((check) => check.required && !check.ok);
+
   if (failure) throw new StartupFailure(failure.category, `${failure.name}: ${failure.detail}`);
 }
 
@@ -35,6 +39,7 @@ export async function taskReadiness(options: {
   hostConnected: () => Promise<boolean>;
 }) {
   const { name, user, path, catalog, signal, report } = options;
+
   const output = await startupStep(
     "host-unavailable",
     "Cannot reach the task VM. Check OrbStack and the enrolled host, then retry provisioning.",
@@ -62,13 +67,16 @@ export async function taskReadiness(options: {
         report,
       ),
   );
+
   const checks = readinessSchema.parse(JSON.parse(output));
+
   const connected = await startupStep(
     "host-unavailable",
     "Cannot query the enrolled host. Restore the BB connection and retry.",
     signal,
     () => retryConnection(options.hostConnected, signal, report),
   );
+
   checks.push({
     name: "BB host connection",
     ok: connected,
@@ -79,6 +87,7 @@ export async function taskReadiness(options: {
       : "Restore this profile's enrolled daemon connection and retry.",
   });
   verifyReadiness(checks, report);
+
   return checks;
 }
 

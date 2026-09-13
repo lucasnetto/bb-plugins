@@ -14,18 +14,21 @@ function fixture() {
   const owner = taskOwner(dataDir);
   const resource = { ...taskResource(owner, "thr_task"), vmId: "vm_task" };
   const host = makeHostResponse({ id: "host_task", machineProviderId: TASK_PROVIDER });
+
   let root = makeThreadResponse({
     id: "thr_task",
     archivedAt: null,
     environmentId: "env_task",
     status: "idle",
   });
+
   let clock = 1_000_000;
   let live = 1;
   let starting = 0;
   let active = 0;
   let unavailable = false;
   let idleMinutes = 15;
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "orbisa",
     dataDir,
@@ -46,10 +49,13 @@ function fixture() {
       threads: {
         list: async (args) => {
           assert.equal(args?.includeHidden, true);
+
           if (unavailable) throw new Error("unavailable");
           const rows = [];
+
           if (root.archivedAt === null)
             rows.push({ ...root, status: active ? ("active" as const) : root.status });
+
           if (root.archivedAt !== null && live > 0)
             rows.push(
               makeThreadResponse({
@@ -59,6 +65,7 @@ function fixture() {
                 status: active ? "active" : "idle",
               }),
             );
+
           if (starting)
             rows.push(
               makeThreadResponse({
@@ -68,11 +75,13 @@ function fixture() {
                 visibility: "hidden",
               }),
             );
+
           return rows.slice(args?.offset ?? 0, (args?.offset ?? 0) + (args?.limit ?? 100));
         },
       },
     },
   });
+
   const factory = () =>
     createTaskPolicy(
       bb,
@@ -80,7 +89,9 @@ function fixture() {
       async () => idleMinutes,
       () => clock,
     );
+
   const policy = factory();
+
   return {
     bb,
     harness,
@@ -120,6 +131,7 @@ function fixture() {
 
 void test("settling starts a full ten-minute window; no dirty-Git checks precede deletion", async () => {
   const f = fixture();
+
   try {
     await f.policy.reconcile();
     f.settle();
@@ -139,6 +151,7 @@ void test("settling starts a full ten-minute window; no dirty-Git checks precede
 
 void test("unsettling cancels deletion and settling again gets a new full window", async () => {
   const f = fixture();
+
   try {
     f.settle();
     await f.policy.reconcile();
@@ -164,6 +177,7 @@ void test("unsettling cancels deletion and settling again gets a new full window
 
 void test("other live owners, including hidden workers, retain a settled task machine", async () => {
   const f = fixture();
+
   try {
     f.settle();
     f.setLive(1);
@@ -182,6 +196,7 @@ void test("other live owners, including hidden workers, retain a settled task ma
 
 void test("starting launches and failed observations defer removal", async () => {
   const f = fixture();
+
   try {
     f.settle();
     await f.policy.reconcile();
@@ -204,11 +219,13 @@ void test("starting launches and failed observations defer removal", async () =>
 void test("deadline survives plugin reload and startup recovery", async () => {
   const f = fixture();
   let current = f.harness;
+
   try {
     f.settle();
     await f.policy.reconcile();
     f.advance(DELETE_GRACE_MS - 1);
     let policy = f.policy;
+
     const replacement = await f.harness.lifecycle.reload((bb) => {
       policy = createTaskPolicy(
         bb,
@@ -217,6 +234,7 @@ void test("deadline survives plugin reload and startup recovery", async () => {
         () => 1_000_000 + DELETE_GRACE_MS,
       );
     });
+
     current = replacement.harness;
     await policy.reconcile();
     assert.equal(current.inspection.sdk.callsTo("hosts.delete").length, 1);
@@ -227,6 +245,7 @@ void test("deadline survives plugin reload and startup recovery", async () => {
 
 void test("active turns and terminal input extend idle time; zero disables suspension", async () => {
   const f = fixture();
+
   try {
     await f.policy.reconcile();
     f.advance(15 * 60_000);
@@ -253,6 +272,7 @@ void test("active turns and terminal input extend idle time; zero disables suspe
 
 void test("fresh ownership at the deletion boundary prevents removal", async () => {
   const f = fixture();
+
   try {
     f.settle();
     await f.policy.reconcile();
@@ -278,11 +298,14 @@ void test("fresh ownership at the deletion boundary prevents removal", async () 
 
 void test("an active hidden owner beyond the first page prevents suspension and retirement", async () => {
   const f = fixture();
+
   try {
     f.settle();
+
     const rows = Array.from({ length: 100 }, (_, index) =>
       makeThreadResponse({ id: `thr_unrelated_${index}`, environmentId: null }),
     );
+
     rows.push(
       makeThreadResponse({
         id: "thr_last_hidden",
@@ -295,6 +318,7 @@ void test("an active hidden owner beyond the first page prevents suspension and 
       "threads.list",
       async (args: { offset?: number; limit?: number; includeHidden?: boolean } | undefined) => {
         assert.equal(args?.includeHidden, true);
+
         return rows.slice(args?.offset ?? 0, (args?.offset ?? 0) + (args?.limit ?? 100));
       },
     );

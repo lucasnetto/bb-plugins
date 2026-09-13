@@ -6,9 +6,13 @@ import plugin from "../../server";
 import { savedGuideSchema } from "../../src/shared/guide-contract";
 
 const url = "https://github.com/org/api/pull/42";
+
 const target = { threadId: "t1", url };
+
 const base = "a".repeat(40);
+
 const head = "b".repeat(40);
+
 const guide = {
   title: "Validate inputs",
   intent: "Reject invalid requests.",
@@ -21,6 +25,7 @@ const guide = {
   ],
   unplacedFiles: ["api.test.ts"],
 };
+
 async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
   let currentHead = head;
   let workerStatus: "active" | "idle" = "active";
@@ -32,6 +37,7 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
   const stopped: string[] = [];
   const archived: string[] = [];
   let spawnGate: (() => Promise<void>) | null = null;
+
   const host = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -56,22 +62,27 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
           const id = spawned.length === 1 ? "worker" : `worker-${spawned.length}`;
           const gate = spawnGate;
           spawnGate = null;
+
           if (gate) await gate();
+
           return { id };
         },
         output: async () => ({ output }),
         stop: async ({ threadId }) => {
           stopped.push(threadId);
+
           return { ok: true };
         },
         archive: async ({ threadId }) => {
           archived.push(threadId);
+
           return { archived: 1 };
         },
       },
       providers: {
         models: async (args) => {
           catalogRequests.push(args);
+
           return {
             models: hasCatalogModel
               ? [
@@ -98,7 +109,9 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
         state: "OPEN",
         isDraft: false,
       };
+
       if (method === "linkedSummary") return pr;
+
       return {
         pr,
         body: "Reject empty input",
@@ -114,8 +127,10 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
       };
     },
   });
+
   prepareStorage?.(host.bb);
   await plugin(host.bb);
+
   return {
     ...host,
     catalogRequests,
@@ -128,16 +143,21 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
     pauseSpawn: () => {
       let resume!: () => void;
       let notify!: () => void;
+
       const pending = new Promise<void>((resolve) => {
         resume = resolve;
       });
+
       const started = new Promise<void>((resolve) => {
         notify = resolve;
       });
+
       spawnGate = () => {
         notify();
+
         return pending;
       };
+
       return { started, resume };
     },
     spawned,
@@ -152,9 +172,11 @@ async function setup(prepareStorage?: (bb: BbPluginApi) => void) {
     },
   };
 }
+
 test("guide handoff preserves exact revisions, saves through agent tools, and persists progress across reload", async () => {
   const host = await setup();
   let harness = host.harness;
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     const context = await harness.behavior.runCli(["guide-context", url], { threadId: "t1" });
@@ -163,18 +185,22 @@ test("guide handoff preserves exact revisions, saves through agent tools, and pe
     expect(context.stdout).toContain("api.test.ts");
     const request = await harness.behavior.callRpc("guideRequest", target);
     const { id } = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))(request);
+
     const provider = harness.inspection.registrations.mentionProviders.find(
       (p) => p.id === "review-comment",
     );
+
     expect(JSON.stringify(await provider?.resolve(id))).toContain("save_review_guide");
     await harness.behavior.callAgentTool(
       "save_review_guide",
       { url, base, head, guideJson: JSON.stringify(guide) },
       { threadId: "t1" },
     );
+
     const saved = Schema.decodeUnknownSync(savedGuideSchema)(
       await harness.behavior.callRpc("guideGet", target),
     );
+
     expect(saved.reviewed).toEqual([false, false]);
     await harness.behavior.callRpc("guideProgress", {
       ...target,
@@ -183,9 +209,11 @@ test("guide handoff preserves exact revisions, saves through agent tools, and pe
       reviewed: true,
     });
     ({ harness } = await harness.lifecycle.reload(plugin));
+
     const reloaded = Schema.decodeUnknownSync(savedGuideSchema)(
       await harness.behavior.callRpc("guideGet", target),
     );
+
     expect(reloaded.reviewed).toEqual([true, false]);
     expect(reloaded.guide).toEqual(guide);
     await expect(
@@ -198,20 +226,26 @@ test("guide handoff preserves exact revisions, saves through agent tools, and pe
     await harness.lifecycle.dispose();
   }
 });
+
 test("invalid coverage, blank explanations, stale revisions, and stale progress cannot replace a valid guide", async () => {
   const { harness, moveHead } = await setup();
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
-    const save = (value: unknown) =>
+
+    const save = (value: typeof guide) =>
       harness.behavior.callAgentTool(
         "save_review_guide",
         { url, base, head, guideJson: JSON.stringify(value) },
         { threadId: "t1" },
       );
+
     await save(guide);
+
     const original = Schema.decodeUnknownSync(savedGuideSchema)(
       await harness.behavior.callRpc("guideGet", target),
     );
+
     for (const invalid of [
       { ...guide, unplacedFiles: [] },
       { ...guide, unplacedFiles: ["api.ts", "api.test.ts"] },
@@ -248,6 +282,7 @@ test("guide model defaults prefer project over plugin over thread", async () => 
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     expect(await harness.behavior.callRpc("guideOptions", { threadId: "t1" })).toMatchObject({
@@ -276,6 +311,7 @@ test("guide generation spawns a hidden worker with the per-run model", async () 
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideDefaultsSave", { projectId: null, model });
@@ -303,6 +339,7 @@ test("guide generation rejects a second start while a job is active", async () =
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -318,6 +355,7 @@ test("guide generation recovers completion and preserves project defaults after 
   const host = await setup();
   let harness = host.harness;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideDefaultsSave", {
@@ -346,6 +384,7 @@ test("cancelled generation ignores late output and allows a new start", async ()
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -367,6 +406,7 @@ test("malformed guide output fails without saving and allows a retry", async () 
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -385,6 +425,7 @@ test("guide generation rejects output for a changed PR revision", async () => {
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "plugin-model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -404,6 +445,7 @@ test("a cancelled slow spawn cannot replace a newer generation", async () => {
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "model", reasoningLevel: "high" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     const gate = host.pauseSpawn();
@@ -424,6 +466,7 @@ test("unlink cancels the worker and prevents an old guide from reappearing after
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "model", reasoningLevel: "low" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -447,6 +490,7 @@ test("unlink cancels the worker and prevents an old guide from reappearing after
 
 test("threads without saved model defaults use the environment catalog or fail clearly", async () => {
   const host = await setup();
+
   try {
     host.clearThreadDefaults();
     expect(await host.harness.behavior.callRpc("guideOptions", { threadId: "t1" })).toMatchObject({
@@ -466,6 +510,7 @@ test("duplicate completion events save only one guide and clean up the hidden wo
   const host = await setup();
   const { harness } = host;
   const model = { providerId: "codex", model: "model", reasoningLevel: "low" };
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     await harness.behavior.callRpc("guideStart", { ...target, model });
@@ -495,8 +540,10 @@ test("legacy guide jobs migrate before recovery and remain readable after reload
       "CREATE TABLE review_guides (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
       "CREATE TABLE review_guide_jobs (thread_id TEXT NOT NULL, url TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(thread_id, url))",
     ]);
+
     for (const status of ["preparing", "running", "complete", "error", "cancelled"]) {
       const started = status !== "preparing" && status !== "cancelled";
+
       const job = {
         id: status,
         threadId: status,
@@ -507,6 +554,7 @@ test("legacy guide jobs migrate before recovery and remain readable after reload
         head: started ? head : "",
         error: status === "error" ? "Original error" : "",
       };
+
       db.prepare("INSERT INTO review_guide_jobs (thread_id, url, data) VALUES (?, ?, ?)").run(
         status,
         url,
@@ -514,7 +562,9 @@ test("legacy guide jobs migrate before recovery and remain readable after reload
       );
     }
   });
+
   let harness = host.harness;
+
   try {
     const expected = {
       preparing: {
@@ -562,10 +612,13 @@ test("legacy guide jobs migrate before recovery and remain readable after reload
         revision: null,
       },
     };
+
     for (const [threadId, job] of Object.entries(expected)) {
       expect(await harness.behavior.callRpc("guideJob", { threadId, url })).toEqual(job);
     }
+
     ({ harness } = await harness.lifecycle.reload(plugin));
+
     for (const [threadId, job] of Object.entries(expected)) {
       expect(await harness.behavior.callRpc("guideJob", { threadId, url })).toEqual(job);
     }
@@ -576,9 +629,11 @@ test("legacy guide jobs migrate before recovery and remain readable after reload
 
 test("guide-save CLI keeps URL, revisions, and JSON intact with --json in any position", async () => {
   const { harness } = await setup();
+
   try {
     await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
     const args = ["guide-save", url, base, head, JSON.stringify(guide)];
+
     for (let position = 0; position <= args.length; position++) {
       const argv = [...args];
       argv.splice(position, 0, "--json");
@@ -590,6 +645,7 @@ test("guide-save CLI keeps URL, revisions, and JSON intact with --json in any po
         guide,
       });
     }
+
     expect((await harness.behavior.runCli(args)).exitCode).toBe(1);
     expect(
       (await harness.behavior.runCli(["guide-save", url, base], { threadId: target.threadId }))

@@ -16,6 +16,7 @@ void test("persistent machines suspend after idle but are never retired, includi
   let starting = false;
   let suspendFails = false;
   const host = makeHostResponse({ id: "host_03", machineProviderId: PERSISTENT_PROVIDER });
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "orbisa",
     dataDir: "/tmp/persistent-policy/.bb",
@@ -25,6 +26,7 @@ void test("persistent machines suspend after idle but are never retired, includi
         get: async () => ({ ...host, connectMachineId: null }),
         experimental_suspend: async () => {
           if (suspendFails) throw new Error("transport failure containing secret");
+
           return host;
         },
       },
@@ -37,6 +39,7 @@ void test("persistent machines suspend after idle but are never retired, includi
       threads: {
         list: async (args) => {
           assert.equal(args?.includeHidden, true);
+
           return active || starting
             ? [
                 makeThreadResponse({
@@ -50,11 +53,13 @@ void test("persistent machines suspend after idle but are never retired, includi
       },
     },
   });
+
   const policy = createPersistentPolicy(
     bb,
     async () => 15,
     () => clock,
   );
+
   try {
     await Effect.runPromise(policy.sweep());
     clock += 20 * 60_000;

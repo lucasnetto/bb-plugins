@@ -11,7 +11,9 @@ export const settledThreadSchema = Schema.Struct({
   updatedAt: Schema.Finite,
   archivedAt: Schema.Finite,
 });
+
 export type SettledThread = typeof settledThreadSchema.Type;
+
 export const settledContract = {
   settled_list: {
     input: standardSchema(Schema.Null),

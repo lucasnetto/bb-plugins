@@ -1,3 +1,4 @@
+import { machineIsolationSchema } from "./task-boundaries.ts";
 import { taskReadiness } from "./task-readiness.ts";
 import { StartupFailure } from "./task-startup.ts";
 import { concurrently, CATALOG_CONCURRENCY } from "./task-concurrency.ts";
@@ -11,9 +12,10 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { checked } from "./task-process.ts";
 import { normalizeRemote, withGitBundle } from "./task-git-cache.ts";
-import { ownedResource, type TaskResource, TASK_PROVIDER } from "./task-vms.ts";
+import { ownedResource, resourceSchema, type TaskResource, TASK_PROVIDER } from "./task-vms.ts";
 
 export const CHECKOUT_PROVIDER = "orbisa-checkout";
+
 export const checkoutInputs = z.object({
   branch: z
     .discriminatedUnion("kind", [
@@ -22,29 +24,29 @@ export const checkoutInputs = z.object({
     ])
     .optional(),
 });
+
 export function checkoutPath(user: string, key: string) {
   if (!/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid Orbisa remote user.");
+
   return `/home/${user}/orbisa-workspaces/${createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
 }
 
 export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
   const user = process.env.ORBISA_REMOTE_USER ?? "lucas_netto";
   const cache = join(dirname(bb.storage.database().name), "git-cache");
+
   async function machine(hostId: string, signal: AbortSignal) {
-    const resource = ownedResource(owner, await bb.storage.kv.get(`task-resource/${hostId}`));
-    const inventory = JSON.parse(
-      await checked(["orbctl", "list", "--format", "json"], { signal }),
-    ) as {
-      id: string;
-      name: string;
-      config: {
-        isolated?: boolean;
-        isolate_network?: boolean;
-        forward_ssh_agent?: boolean;
-        mounts?: unknown[];
-      };
-    }[];
+    const resource = ownedResource(
+      owner,
+      resourceSchema.parse(await bb.storage.kv.get(`task-resource/${hostId}`)),
+    );
+
+    const inventory = machineIsolationSchema
+      .array()
+      .parse(JSON.parse(await checked(["orbctl", "list", "--format", "json"], { signal })));
+
     const vm = inventory.find((item) => item.name === resource.name);
+
     if (
       !vm ||
       vm.id !== resource.vmId ||
@@ -54,8 +56,10 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
       vm.config.mounts?.length
     )
       throw new Error("Task VM identity or isolation changed.");
+
     return resource;
   }
+
   const run = (resource: TaskResource, args: string[]) => [
     "orbctl",
     "run",
@@ -65,13 +69,17 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
     user,
     ...args,
   ];
+
   const catalogRoot = join(homedir(), "Developer/180seg");
+
   async function isCatalog(projectId: string) {
     const project = await bb.sdk.projects.get({ projectId });
+
     return (
       project.gitRemoteUrl === null && project.sources.some((source) => source.path === catalogRoot)
     );
   }
+
   bb.experimental_environments.register({
     id: CHECKOUT_PROVIDER,
     displayName: "Orbisa checkout",
@@ -89,16 +97,20 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
     async validate({ host, project }) {
       if (host.machineProviderId !== TASK_PROVIDER)
         return { action: "refuse", message: "Requires an Orbisa task VM." };
+
       try {
         if (project.gitRemoteUrl === null) {
           if (await isCatalog(project.id)) return { action: "accept" };
+
           return {
             action: "refuse",
             message:
               "[unsupported-workspace] Choose a project with a Git remote or the configured 180seg workspace.",
           };
         }
+
         normalizeRemote(project.gitRemoteUrl);
+
         return { action: "accept" };
       } catch {
         return {
@@ -109,14 +121,18 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
     },
     async create(context) {
       const path = checkoutPath(user, context.pathKey);
+
       if (!(await context.experimental_claimPath(path)))
         return { status: "failed", message: "Checkout path belongs to another environment." };
       const resource = await machine(context.host.id, context.signal);
+
       const timings = z
         .array(z.string().max(300))
         .max(10)
         .safeParse(await bb.storage.kv.get(`task-timings/${context.host.id}`));
+
       if (timings.success) context.report.log(`${timings.data.join("\n")}\n`);
+
       const readiness = async (catalog: boolean) => {
         const checks = await timed(
           (text) => context.report.log(`${text}\n`),
@@ -133,18 +149,21 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
                 (await bb.sdk.hosts.get({ hostId: context.host.id })).status === "connected",
             }),
         );
+
         await bb.storage.kv.set(`task-readiness/${context.host.id}`, {
           at: Date.now(),
           path,
           checks,
         });
       };
+
       if (context.project.gitRemoteUrl === null) {
         if (!(await isCatalog(context.project.id)))
           throw new StartupFailure(
             "unsupported-workspace",
             "Choose a project with a Git remote or the configured 180seg workspace.",
           );
+
         if (context.inputs.branch)
           return {
             status: "failed",
@@ -192,9 +211,11 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
               },
             ),
         );
+
         const instructions = (
           await readFile(join(homedir(), ".local/libexec/orbisa-agents.md"), "utf8")
         ).replaceAll("/workspace/180seg", path);
+
         await checked(
           run(resource, [
             "python3",
@@ -204,13 +225,16 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
           ]),
           { signal: context.signal, stdin: instructions },
         );
+
         const topology = await readFile(
           join(homedir(), ".local/libexec/orbisa-topology.md"),
           "utf8",
         ).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== "ENOENT") throw error;
+
           return null;
         });
+
         if (topology)
           await checked(
             run(resource, [
@@ -222,6 +246,7 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
             { signal: context.signal, stdin: topology },
           );
         await readiness(true);
+
         return {
           status: "created",
           path,
@@ -229,6 +254,7 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
           resource: { key: context.pathKey, machine: resource },
         };
       }
+
       const remote = normalizeRemote(context.project.gitRemoteUrl);
       context.report.step("Refreshing project Git cache");
       await withGitBundle(
@@ -257,6 +283,7 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
         (text) => context.report.log(`${text}\n`),
       );
       await readiness(false);
+
       return {
         status: "created",
         path,
@@ -266,13 +293,16 @@ export function registerTaskCheckout(bb: BbPluginApi, owner: string) {
     },
     async remove(context) {
       if (!context.path) return { status: "removed" };
+
       if (context.path !== checkoutPath(user, context.pathKey))
         return { status: "failed", message: "Refusing to remove an unexpected checkout path." };
+
       if (!context.hostId) return { status: "failed", message: "Checkout machine is missing." };
       const resource = await machine(context.hostId, context.signal);
       await checked(run(resource, ["python3", "-c", REMOVE_SCRIPT, context.path]), {
         signal: context.signal,
       });
+
       return { status: "removed" };
     },
   });
@@ -319,6 +349,7 @@ try:
 finally:
     os.unlink(bundle)
 `;
+
 export const REMOVE_SCRIPT = String.raw`
 import pathlib,shutil,sys
 p=pathlib.Path(sys.argv[1])

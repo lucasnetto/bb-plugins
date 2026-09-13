@@ -1,4 +1,12 @@
-import type { SDKAgent, SDKCustomTool, SDKImage, SDKModel, Run } from "@cursor/sdk";
+import type {
+  AgentOptions,
+  SendOptions,
+  SDKAgent,
+  SDKCustomTool,
+  SDKImage,
+  SDKModel,
+  Run,
+} from "@cursor/sdk";
 import {
   experimental_defineProviderBridge,
   createBridgeIo,
@@ -40,7 +48,7 @@ import {
   type SdkModule,
 } from "./runtime.js";
 import { resolveModel, modelCatalog, legacyModelCatalog } from "./models.js";
-import { RunEvents } from "./events.js";
+import { RunEvents, runStatus } from "./events.js";
 import {
   cloudRunSummary,
   openCloudSession,
@@ -50,10 +58,36 @@ import {
 } from "./cloud.js";
 import { randomUUID } from "node:crypto";
 
+const requestSchema = z.discriminatedUnion("method", [
+  z.object({ method: z.literal("initialize"), params: initializeParamsSchema }),
+  z.object({ method: z.literal("thread/start"), params: threadStartParamsSchema }),
+  z.object({ method: z.literal("thread/resume"), params: threadResumeParamsSchema }),
+  z.object({ method: z.literal("thread/stop"), params: threadStopParamsSchema }),
+  z.object({ method: z.literal("thread/discard"), params: threadDiscardParamsSchema }),
+  z.object({ method: z.literal("turn/start"), params: turnStartParamsSchema }),
+  z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({ method: z.literal("provider/health"), params: providerMaintenanceParamsSchema }),
+  z.object({ method: z.literal("provider/usage"), params: providerMaintenanceParamsSchema }),
+  z.object({
+    method: z.literal("provider/installation/status"),
+    params: providerInstallationStatusParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/run"),
+    params: providerInstallationRunParamsSchema,
+  }),
+]);
+
+type BridgeRequest = z.infer<typeof requestSchema>;
+
 type StartParams = z.infer<typeof threadStartParamsSchema>;
+
 type ResumeParams = z.infer<typeof threadResumeParamsSchema>;
+
 type TurnParams = z.infer<typeof turnStartParamsSchema>;
+
 type Options = StartParams["options"];
+
 type TurnState = {
   clientRequestId: string;
   accepted: boolean;
@@ -64,6 +98,7 @@ type TurnState = {
   ended: boolean;
   fiber?: Fiber.Fiber<void, never>;
 };
+
 type Session = {
   cloud?: CloudSession;
   models: SDKModel[];
@@ -103,14 +138,18 @@ export function createSdkBridge(
     if (!closing && deltas.length)
       io.send({ jsonrpc: "2.0", method: "thread/delta", params: { threadId, deltas } });
   };
+
   const checkOptions = (options: Options) => {
     if (options.permissionMode !== "full")
       throw new SdkError({ message: "Cursor SDK currently supports Full access mode only." });
   };
+
   const getSession = (threadId: string, providerThreadId: string) => {
     const session = sessions.get(threadId);
+
     if (!session || session.agent.agentId !== providerThreadId || session.released)
       throw new SdkError({ message: "Cursor SDK session is not loaded. Resume the thread first." });
+
     return session;
   };
 
@@ -159,6 +198,7 @@ export function createSdkBridge(
       if (session.turn && !session.turn.ended) {
         session.turn.interrupted = true;
         const run = session.turn.run;
+
         if (run && !session.cloud) yield* foreign(() => run.cancel());
       }
     }).pipe(
@@ -169,6 +209,7 @@ export function createSdkBridge(
         Effect.gen(function* () {
           if (session.turn?.fiber) yield* Fiber.interrupt(session.turn.fiber);
           sessions.delete(session.threadId);
+
           if (sessions.size === 0) {
             for (const name of Object.keys(process.env))
               if (!(name in baseEnv)) delete process.env[name];
@@ -183,20 +224,25 @@ export function createSdkBridge(
     params: StartParams | ResumeParams,
   ) {
     checkOptions(params.options);
+
     if (constructing.has(params.threadId) || sessions.has(params.threadId)) {
       return yield* Effect.fail(
         new SdkError({ message: "Release this SDK session before opening it again." }),
       );
     }
+
     constructing.add(params.threadId);
+
     return yield* Effect.gen(function* () {
       const { profile, runtime } = optionsSchema.parse(params.options.providerOptions);
+
       // A saved native identity owns its runtime. The setting only selects
       // where a new conversation starts, including after a bridge restart.
       const isCloud =
         "providerThreadId" in params
           ? String(params.providerThreadId).startsWith("bc-")
           : runtime === "cloud";
+
       if (isCloud && (params.disallowedTools?.length || params.instructionMode === "replace"))
         return yield* Effect.fail(
           new SdkError({
@@ -207,6 +253,7 @@ export function createSdkBridge(
       const sdk = yield* load(dataDir);
       const apiKey = yield* key(profile);
       const models = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
+
       const model = params.options.model
         ? resolveModel(
             params.options.model,
@@ -215,11 +262,13 @@ export function createSdkBridge(
             params.options.serviceTier,
           )
         : undefined;
+
       if (!model)
         return yield* Effect.fail(
           new SdkError({ message: "Select a Cursor SDK model before starting a thread." }),
         );
       const env = isCloud ? {} : { ...params.options.envVars, CURSOR_API_KEY: apiKey };
+
       if (
         [...sessions.values()].some(
           (session) =>
@@ -233,18 +282,22 @@ export function createSdkBridge(
           }),
         );
       }
+
       if (!isCloud) Object.assign(process.env, env);
       const store = new sdk.JsonlLocalAgentStore(join(dataDir, "conversations", profile));
-      const options = {
+
+      const options: AgentOptions = {
         apiKey,
         model,
         local: { cwd: params.cwd, store },
         mode: params.options.promptMode === "plan" ? ("plan" as const) : ("agent" as const),
-        ...(params.disallowedTools?.length ? { disallowedTools: params.disallowedTools } : {}),
-        ...(params.instructionMode === "replace" && params.options.instructions
-          ? { systemPrompt: params.options.instructions }
-          : {}),
       };
+
+      if (params.disallowedTools?.length) options.disallowedTools = params.disallowedTools;
+
+      if (params.instructionMode === "replace" && params.options.instructions)
+        options.systemPrompt = params.options.instructions;
+
       const cloud = isCloud
         ? yield* openCloudSession({
             sdk,
@@ -257,11 +310,13 @@ export function createSdkBridge(
               "providerThreadId" in params ? String(params.providerThreadId) : undefined,
           })
         : undefined;
+
       const agent = cloud
         ? cloud.agent
         : "providerThreadId" in params
           ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
           : yield* foreign(() => sdk.Agent.create(options));
+
       const session: Session = {
         cloud,
         models,
@@ -273,6 +328,7 @@ export function createSdkBridge(
         env,
         released: false,
       };
+
       if (!isCloud) session.customTools = customTools(params.dynamicTools ?? [], session);
       sessions.set(params.threadId, session);
       io.send({
@@ -281,6 +337,7 @@ export function createSdkBridge(
         params: { threadId: params.threadId, providerThreadId: agent.agentId },
       });
       emit(params.threadId, [{ kind: "session.reset" }]);
+
       return { providerThreadId: agent.agentId };
     }).pipe(Effect.ensuring(Effect.sync(() => constructing.delete(params.threadId))));
   });
@@ -289,11 +346,14 @@ export function createSdkBridge(
     const text: string[] = [];
     const images: SDKImage[] = [];
     const instructions = params.options.instructions ?? session.instructions;
+
     if (instructions && instructions !== session.lastInstructions) text.push(instructions);
+
     for (const input of params.input) {
       if (input.type === "text") text.push(input.text);
       else if (input.type === "localImage") {
         const bytes = yield* foreign(() => readFile(input.path));
+
         if (bytes.length > 15 * 1024 * 1024)
           return yield* Effect.fail(
             new SdkError({ message: "Image exceeds the Cursor SDK 15 MB limit." }),
@@ -314,18 +374,22 @@ export function createSdkBridge(
         text.push(`Attached file: ${input.path}`);
       }
     }
+
     if (images.length > 5)
       return yield* Effect.fail(
         new SdkError({ message: "Cursor SDK supports up to five images per message." }),
       );
+
     if (session.cloud)
       text.push(
         "<bb_cloud_runtime>Execution is on Cursor Cloud in the remote repository. Local BB host paths, environment variables, callback tools, and BB CLI access are unavailable. Use the cloud environment and its configured tools. Report remote branch or pull request links for any changes.</bb_cloud_runtime>",
       );
-    return {
-      message: { text: text.join("\n\n"), ...(images.length ? { images } : {}) },
-      instructions,
-    };
+
+    const message: Exclude<Parameters<SDKAgent["send"]>[0], string> = { text: text.join("\n\n") };
+
+    if (images.length) message.images = images;
+
+    return { message, instructions };
   });
 
   const acceptInput = (session: Session, turn: TurnState) => {
@@ -350,16 +414,17 @@ export function createSdkBridge(
     acceptInput(session, turn);
     turn.events.close(status);
     turn.ended = true;
-    if (!session.released)
-      emit(session.threadId, [
-        {
-          kind: "turn.boundary",
-          status,
-          providerTurnId: turn.run?.id,
-          claimIfIdle: true,
-          ...(message ? { error: { message } } : {}),
-        },
-      ]);
+
+    const boundary: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
+      kind: "turn.boundary",
+      status,
+      providerTurnId: turn.run?.id,
+      claimIfIdle: true,
+    };
+
+    if (message) boundary.error = { message };
+
+    if (!session.released) emit(session.threadId, [boundary]);
   };
 
   const executeTurn = Effect.fn("CursorSdk.executeTurn")(function* (
@@ -369,41 +434,50 @@ export function createSdkBridge(
   ) {
     if (session.released || turn.interrupted) return;
     const input = yield* prompt(params, session);
+
+    const sendOptions: SendOptions = {
+      mode: params.options.promptMode === "plan" ? "plan" : "agent",
+      idempotencyKey: params.clientRequestId,
+    };
+
+    if (params.options.model)
+      sendOptions.model = resolveModel(
+        params.options.model,
+        session.models,
+        params.options.reasoningLevel,
+        params.options.serviceTier,
+      );
+
+    if (!session.cloud) sendOptions.local = { customTools: session.customTools };
+
     const run = yield* foreign(() =>
-      session.agent
-        .send(input.message, {
-          ...(params.options.model
-            ? {
-                model: resolveModel(
-                  params.options.model,
-                  session.models,
-                  params.options.reasoningLevel,
-                  params.options.serviceTier,
-                ),
-              }
-            : {}),
-          mode: params.options.promptMode === "plan" ? "plan" : "agent",
-          ...(session.cloud ? {} : { local: { customTools: session.customTools } }),
-          idempotencyKey: params.clientRequestId,
-        })
-        .then(async (run) => {
-          // Stop can arrive while Cursor is still creating the run. Keep cleanup
-          // attached to the SDK promise even if BB interrupts the waiting fiber.
-          turn.run = run;
-          if (turn.cancelRequested || (session.released && !session.cloud)) await run.cancel();
-          if (session.released) await session.agent[Symbol.asyncDispose]();
-          return run;
-        }),
+      session.agent.send(input.message, sendOptions).then(async (run) => {
+        // Stop can arrive while Cursor is still creating the run. Keep cleanup
+        // attached to the SDK promise even if BB interrupts the waiting fiber.
+        turn.run = run;
+
+        if (turn.cancelRequested || (session.released && !session.cloud)) await run.cancel();
+
+        if (session.released) await session.agent[Symbol.asyncDispose]();
+
+        return run;
+      }),
     );
+
     turn.run = run;
+
     if (session.cloud) yield* session.cloud.markCreated();
     acceptInput(session, turn);
     session.lastInstructions = input.instructions;
+
     if (turn.interrupted || session.released) {
       finish(session, turn, "interrupted");
+
       return;
     }
+
     emit(session.threadId, [{ kind: "turn.open", providerTurnId: run.id }]);
+
     const cloudNote = (text: string) => {
       if (!text) return;
       const key = { providerItemId: `cloud-${randomUUID()}` };
@@ -412,6 +486,7 @@ export function createSdkBridge(
         { kind: "item.textClose", key, channel: "agentMessage", providerTurnId: run.id },
       ]);
     };
+
     if (session.cloud) cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source));
     yield* Stream.fromAsyncIterable(
       run.stream(),
@@ -424,19 +499,18 @@ export function createSdkBridge(
       ),
     );
     const result = yield* foreign(() => run.wait());
+
     if (!turn.ended && !session.released) {
       turn.events.finish(result);
+
       if (session.cloud && result.git?.branches.length)
         cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source, result));
     }
+
     finish(
       session,
       turn,
-      result.status === "cancelled"
-        ? "interrupted"
-        : result.status === "error"
-          ? "failed"
-          : "completed",
+      runStatus(result.status),
       result.error ? safeMessage(result.error.message) : undefined,
     );
   });
@@ -445,10 +519,12 @@ export function createSdkBridge(
     Effect.sync(() => {
       checkOptions(params.options);
       const session = getSession(params.threadId, params.providerThreadId);
+
       if (session.turn && !session.turn.ended)
         throw new SdkError({
           message: "The SDK is already running a turn. Queue the follow-up in BB.",
         });
+
       const turn: TurnState = {
         clientRequestId: params.clientRequestId,
         accepted: false,
@@ -463,6 +539,7 @@ export function createSdkBridge(
         cancelRequested: false,
         ended: false,
       };
+
       const previous = session.turn?.fiber;
       session.turn = turn;
       turn.fiber = Effect.runFork(
@@ -471,6 +548,7 @@ export function createSdkBridge(
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
               const run = turn.run;
+
               if (run && !turn.interrupted && !session.released)
                 yield* foreign(() => run.cancel()).pipe(Effect.catch(() => Effect.void));
               finish(
@@ -483,20 +561,20 @@ export function createSdkBridge(
           ),
         ),
       );
+
       return { accepted: true };
     });
 
-  const handle = Effect.fn("CursorSdk.handleRequest")(function* (
-    method: string,
-    raw: unknown,
-  ): Effect.fn.Return<unknown, SdkError> {
-    if (method === "initialize") {
-      const params = initializeParamsSchema.parse(raw);
+  const handle = Effect.fn("CursorSdk.handleRequest")(function* (request: BridgeRequest) {
+    if (request.method === "initialize") {
+      const params = request.params;
+
       if (params.protocolVersion !== 2)
         return yield* Effect.fail(
           new SdkError({ message: "Cursor SDK requires provider bridge protocol 2." }),
         );
       initialized = true;
+
       return {
         protocolVersion: 2,
         capabilities: {
@@ -512,19 +590,23 @@ export function createSdkBridge(
         },
       };
     }
+
     if (!initialized)
       return yield* Effect.fail(new SdkError({ message: "Initialize the provider bridge first." }));
-    switch (method) {
+
+    switch (request.method) {
       case "thread/start":
-        return yield* openSession(threadStartParamsSchema.parse(raw));
+        return yield* openSession(request.params);
       case "thread/resume":
-        return yield* openSession(threadResumeParamsSchema.parse(raw));
+        return yield* openSession(request.params);
       case "turn/start":
-        return yield* startTurn(turnStartParamsSchema.parse(raw));
+        return yield* startTurn(request.params);
       case "thread/stop": {
-        const params = threadStopParamsSchema.parse(raw);
+        const params = request.params;
         const session = sessions.get(params.threadId);
+
         if (!session || session.agent.agentId !== params.providerThreadId) return {};
+
         if (params.intent === "release") yield* closeSession(session);
         else if (session.turn && !session.turn.ended) {
           const turn = session.turn;
@@ -532,32 +614,42 @@ export function createSdkBridge(
           turn.cancelRequested = true;
           tools.resolvePendingToolCalls(session, "The turn was interrupted.");
           const run = turn.run;
+
           if (run) yield* foreign(() => run.cancel());
           finish(session, turn, "interrupted");
         }
+
         if (params.intent !== "release") yield* closeSession(session);
+
         return {};
       }
+
       case "thread/discard": {
-        const params = threadDiscardParamsSchema.parse(raw);
+        const params = request.params;
         const session = sessions.get(params.threadId);
+
         if (session && session.agent.agentId === params.providerThreadId)
           yield* closeSession(session);
+
         return {};
       }
+
       case "model/list": {
-        const params = modelListParamsSchema.parse(raw);
+        const params = request.params;
         const { profile } = optionsSchema.parse(params.providerOptions);
         const sdk = yield* load(dataDir);
         const apiKey = yield* key(profile);
         const sdkModels = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
         const models = modelCatalog(sdkModels);
+
         return { models, selectedOnlyModels: legacyModelCatalog(sdkModels, models) };
       }
+
       case "provider/health": {
-        const params = providerMaintenanceParamsSchema.parse(raw);
+        const params = request.params;
         const { profile } = optionsSchema.parse(params.providerOptions);
         const status = yield* installationStatus(dataDir);
+
         const health: ProviderHealth = {
           status: status.installed ? "ready" : "not_installed",
           installedVersion: status.currentVersion,
@@ -571,6 +663,7 @@ export function createSdkBridge(
             ? null
             : "Install the pinned Cursor SDK runtime on this host.",
         };
+
         if (status.installed)
           yield* Effect.gen(function* () {
             const sdk = yield* load(dataDir);
@@ -585,28 +678,26 @@ export function createSdkBridge(
               }),
             ),
           );
+
         return { supported: true, health };
       }
+
       case "provider/installation/status":
-        providerInstallationStatusParamsSchema.parse(raw);
         return yield* installationStatus(dataDir);
       case "provider/installation/run":
-        providerInstallationRunParamsSchema.parse(raw);
         return {
           available: true,
           command: installCommand(dataDir),
           verification: { kind: "installed" },
         };
       case "provider/usage":
-        providerMaintenanceParamsSchema.parse(raw);
         return { supported: false };
-      default:
-        throw new Error(`Unsupported method: ${method}`);
     }
   });
 
   const shutdown = () => {
     closing = true;
+
     for (const controller of requests) controller.abort();
     void Effect.runPromise(
       Effect.forEach([...sessions.values()], closeSession, { concurrency: "unbounded" }).pipe(
@@ -614,6 +705,7 @@ export function createSdkBridge(
       ),
     );
   };
+
   const supported = new Set([
     "initialize",
     "thread/start",
@@ -627,59 +719,62 @@ export function createSdkBridge(
     "provider/installation/status",
     "provider/installation/run",
   ]);
-  const validators: Record<string, z.ZodType> = {
-    initialize: initializeParamsSchema,
-    "thread/start": threadStartParamsSchema,
-    "thread/resume": threadResumeParamsSchema,
-    "thread/stop": threadStopParamsSchema,
-    "thread/discard": threadDiscardParamsSchema,
-    "turn/start": turnStartParamsSchema,
-    "model/list": modelListParamsSchema,
-    "provider/health": providerMaintenanceParamsSchema,
-    "provider/usage": providerMaintenanceParamsSchema,
-    "provider/installation/status": providerInstallationStatusParamsSchema,
-    "provider/installation/run": providerInstallationRunParamsSchema,
-  };
+
   return experimental_defineProviderBridge({
     start(context) {
       dataDir = context.dataDir;
     },
     handleLine(line) {
       let message: unknown;
+
       try {
         message = JSON.parse(line);
       } catch {
         io.send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON" } });
+
         return;
       }
+
       const response = decodeBridgeJsonRpcResponse(message);
+
       if (response) {
         tools.handleToolCallResponse(response);
+
         return;
       }
+
       const envelope = bridgeRequestEnvelopeSchema.safeParse(message);
+
       if (!envelope.success) {
         io.send({
           jsonrpc: "2.0",
           id: null,
           error: { code: -32600, message: "Invalid JSON-RPC request" },
         });
+
         return;
       }
+
       const request = envelope.data;
+
       if (!supported.has(request.method)) {
         io.sendError(request.id, -32601, `Unsupported method: ${request.method}`);
+
         return;
       }
-      const parsed = validators[request.method].safeParse(request.params);
+
+      const parsed = requestSchema.safeParse(request);
+
       if (!parsed.success) {
         io.sendError(request.id, -32602, safeMessage(parsed.error));
+
         return;
       }
+
       const controller = new AbortController();
       requests.add(controller);
       void Effect.runPromise(
-        handle(request.method, request.params).pipe(
+        handle(parsed.data).pipe(
           Effect.matchCause({
             onSuccess: (result) => io.sendResult(request.id, result),
             onFailure: (cause) => {

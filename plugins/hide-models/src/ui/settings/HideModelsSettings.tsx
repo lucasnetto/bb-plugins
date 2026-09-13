@@ -5,6 +5,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Icon } from "../components/ui/icon";
 import { cn } from "../lib/utils";
 import { useHiddenModels } from "../hooks/useHiddenModels";
+
 const keyOf = (providerId: string, model: string) => `${providerId}\u0000${model}`;
 
 function ProviderCard({
@@ -19,6 +20,7 @@ function ProviderCard({
   const hiddenCount = provider.models.filter((m) =>
     hiddenKeys.has(keyOf(provider.id, m.model)),
   ).length;
+
   return (
     <details className="group/provider rounded-lg border border-border bg-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-4 py-2.5 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-open/provider:rounded-b-none group-open/provider:border-b group-open/provider:border-border [&::-webkit-details-marker]:hidden">
@@ -46,6 +48,7 @@ function ProviderCard({
           {provider.models.map((model) => {
             const isHidden = hiddenKeys.has(keyOf(provider.id, model.model));
             const id = `hide-models-${provider.id}-${model.model}`;
+
             return (
               <li key={model.model} className="flex items-center gap-3 py-2 text-sm">
                 <Checkbox
@@ -82,6 +85,7 @@ function ProviderCard({
 
 export function HideModelsSettings() {
   const { catalog, hidden, error, save, refetchCatalog } = useHiddenModels();
+
   const hiddenKeys = useMemo(
     () => new Set((hidden ?? []).map((e) => keyOf(e.providerId, e.model))),
     [hidden],
@@ -106,6 +110,7 @@ export function HideModelsSettings() {
   const stale = useMemo(() => {
     if (catalog === null || hidden === null) return [];
     const known = new Set(catalog.flatMap((p) => p.models.map((m) => keyOf(p.id, m.model))));
+
     return hidden.filter((e) => !known.has(keyOf(e.providerId, e.model)));
   }, [catalog, hidden]);
 

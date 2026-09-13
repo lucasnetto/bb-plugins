@@ -2,15 +2,21 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const viewSchema = z.enum(["authored", "reviewing"]);
+
 export const stateSchema = z.enum(["ready", "all", "closed", "merged"]);
+
 const stateInput = stateSchema.optional();
+
 export type PrState = z.infer<typeof stateSchema>;
+
 export const listInput = z.object({
   view: viewSchema,
   state: stateInput,
   page: z.number().int().min(1).max(20),
 });
+
 export const prUrl = z.string().regex(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*$/);
+
 export const pullRequestSchema = z.object({
   url: prUrl,
   repository: z.string(),
@@ -34,6 +40,7 @@ export const pullRequestSchema = z.object({
     .nullable()
     .optional(),
 });
+
 export const listOutput = z.object({
   viewer: z.string(),
   rows: z.array(pullRequestSchema),
@@ -42,7 +49,13 @@ export const listOutput = z.object({
   incomplete: z.boolean(),
   metadataError: z.string().optional(),
 });
+
 export const LIST_CHANGED = "pr-list-changed";
+
+export const listMutationEvent = z.object({ mutation: z.literal(true) });
+
+export const listSnapshotEvent = z.object({ view: viewSchema, scope: z.string() });
+
 export const snapshotSchema = z.object({
   scope: z.string(),
   view: viewSchema,
@@ -51,7 +64,9 @@ export const snapshotSchema = z.object({
   pageCount: z.number().int().min(0).max(20),
   error: z.string().nullable(),
 });
+
 export type ListSnapshot = z.infer<typeof snapshotSchema>;
+
 export const rpcContract = defineRpcContract({
   list: { input: listInput, output: listOutput },
   savedList: { input: z.object({ view: viewSchema, state: stateInput }), output: snapshotSchema },
@@ -65,9 +80,13 @@ export const rpcContract = defineRpcContract({
     output: z.null(),
   },
 });
+
 export const hostContract = defineRpcContract({
   list: { input: listInput, output: listOutput },
 });
+
 export type View = z.infer<typeof viewSchema>;
+
 export type PullRequest = z.infer<typeof pullRequestSchema>;
+
 export type ListResult = z.infer<typeof listOutput>;

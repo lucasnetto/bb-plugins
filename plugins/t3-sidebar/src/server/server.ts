@@ -31,6 +31,7 @@ export default function plugin(bb: BbPluginApi) {
       runtime.runPromise(
         Effect.gen(function* () {
           const listing = yield* call("hosts.directory", () => bb.sdk.hosts.directory(input));
+
           return {
             directory: listing.directory,
             parent: listing.parent,
@@ -49,12 +50,14 @@ export default function plugin(bb: BbPluginApi) {
               .replace(/[\\/]+$/u, "")
               .split(/[\\/]/u)
               .at(-1) || "Root";
+
           const project = yield* call("projects.create", () =>
             bb.sdk.projects.create({
               name,
               source: { type: "local_path", hostId, path },
             }),
           );
+
           return { id: project.id };
         }),
       ),
@@ -64,12 +67,15 @@ export default function plugin(bb: BbPluginApi) {
           const projects = yield* call("projects.list", () =>
             bb.sdk.projects.list({ includePersonal: true }),
           );
+
           const project = projects.find((item) => item.id === projectId);
+
           if (!project || project.kind === "personal")
             return yield* sync("projects.remove", () => {
               throw new Error("This project cannot be removed");
             });
           yield* call("projects.delete", () => bb.sdk.projects.delete({ projectId }));
+
           return null;
         }),
       ),

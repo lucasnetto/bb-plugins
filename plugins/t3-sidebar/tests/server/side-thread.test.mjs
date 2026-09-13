@@ -18,6 +18,7 @@ async function withHost(run) {
     }),
     updates: [],
   };
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
@@ -27,11 +28,13 @@ async function withHost(run) {
           assert.equal(threadId, "side");
           state.updates.push(patch);
           state.thread = { ...state.thread, ...patch };
+
           return state.thread;
         },
       },
     },
   });
+
   try {
     await plugin(bb);
     await run({ state, harness });
@@ -46,6 +49,7 @@ test("promotes an active side chat in place and repeated promotion is idempotent
     assert.deepEqual(await harness.behavior.callRpc("side_thread_status", { threadId: "side" }), {
       canPromote: true,
     });
+
     for (let click = 0; click < 2; click++) {
       assert.deepEqual(
         await harness.behavior.callRpc("side_thread_promote", { threadId: "side" }),
@@ -54,6 +58,7 @@ test("promotes an active side chat in place and repeated promotion is idempotent
         },
       );
     }
+
     assert.deepEqual(state.updates, [{ visibility: "visible", parentThreadId: null }]);
     assert.deepEqual(state.thread, { ...before, visibility: "visible", parentThreadId: null });
     assert.deepEqual(await harness.behavior.callRpc("side_thread_status", { threadId: "side" }), {
@@ -69,6 +74,7 @@ test("promotes an active side chat in place and repeated promotion is idempotent
 test("does not expose workers, ordinary forks, or archived/deleted side chats", async () => {
   await withHost(async ({ state, harness }) => {
     const original = state.thread;
+
     for (const patch of [
       { originPluginId: "workers" },
       { originPluginId: null },
@@ -85,6 +91,7 @@ test("does not expose workers, ordinary forks, or archived/deleted side chats", 
         /Only an unarchived side chat/,
       );
     }
+
     assert.deepEqual(state.updates, []);
     assert.deepEqual(harness.realtimeSignals, []);
   });
@@ -95,6 +102,7 @@ test("invalid input and failed updates leave the side chat hidden without announ
     for (const input of [null, {}, { threadId: "" }, { threadId: 1 }]) {
       await assert.rejects(harness.behavior.callRpc("side_thread_promote", input));
     }
+
     assert.equal(harness.inspection.sdk.callsTo("threads.get").length, 0);
     harness.inspection.sdk.stub("threads.update", async () => {
       throw new Error("Connection lost");

@@ -2,11 +2,14 @@ import { standardSchema } from "./standard-schema";
 import { Schema } from "effect";
 
 export const SNOOZED_CHANGED = "snoozed-changed";
+
 export const snoozedMapSchema = Schema.Record(
   Schema.String,
   Schema.Struct({ at: Schema.Finite, until: Schema.Finite }),
 );
+
 export type SnoozedMap = Schema.Schema.Type<typeof snoozedMapSchema>;
+
 export const snoozeContract = {
   snoozed_list: {
     input: standardSchema(Schema.Null),

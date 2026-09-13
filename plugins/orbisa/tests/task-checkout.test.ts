@@ -17,6 +17,7 @@ void test("checkout rejects credential-bearing and executable remotes", () => {
     normalizeRemote("ssh://git@github.com/owner/repo.git"),
     "https://github.com/owner/repo.git",
   );
+
   for (const remote of [
     "-u",
     "file:///tmp/repo",
@@ -33,6 +34,7 @@ void test("catalog preserves nested repos, skips duplicate origins and worktrees
   const root = await realpath(await mkdtemp(join(tmpdir(), "orbisa-catalog-test-")));
   const signal = new AbortController().signal;
   const catalog = join(root, "catalog");
+
   const git = (...args: string[]) =>
     checked(
       [
@@ -47,6 +49,7 @@ void test("catalog preserves nested repos, skips duplicate origins and worktrees
       ],
       { signal },
     );
+
   try {
     for (const name of ["a", "duplicate", "nested/local"]) {
       const repo = join(catalog, name);
@@ -54,9 +57,11 @@ void test("catalog preserves nested repos, skips duplicate origins and worktrees
       await writeFile(join(repo, "file"), "committed");
       await git("-C", repo, "add", ".");
       await git("-C", repo, "commit", "-m", "seed");
+
       if (name !== "nested/local")
         await git("-C", repo, "remote", "add", "origin", "git@github.com:example/repo.git");
     }
+
     await mkdir(join(catalog, "linked"));
     await writeFile(join(catalog, "linked/.git"), "gitdir: elsewhere");
     await symlink(join(catalog, "a"), join(catalog, "symlink"));
@@ -96,6 +101,7 @@ void test("cached bundles refresh upstream changes, clone independent branches, 
   const root = await realpath(await mkdtemp(join(tmpdir(), "orbisa-checkout-test-")));
   const signal = new AbortController().signal;
   const source = join(root, "source");
+
   const git = (...args: string[]) =>
     checked(
       [
@@ -110,6 +116,7 @@ void test("cached bundles refresh upstream changes, clone independent branches, 
       ],
       { signal },
     );
+
   try {
     await git("init", "-b", "main", source);
     await writeFile(join(source, "file.txt"), "one");
@@ -117,6 +124,7 @@ void test("cached bundles refresh upstream changes, clone independent branches, 
     await git("-C", source, "commit", "-m", "initial");
     const revision1 = (await git("-C", source, "rev-parse", "HEAD")).trim();
     const checkout = join(root, "checkout");
+
     const input = {
       path: checkout,
       remote: "https://github.com/example/repo.git",
@@ -124,6 +132,7 @@ void test("cached bundles refresh upstream changes, clone independent branches, 
       branch: { kind: "new", baseBranch: "origin/main" },
       suggestedBranch: "task/test",
     };
+
     let firstMtime = 0;
     await withGitBundle(join(root, "cache"), source, signal, async (bundle, defaultBranch) => {
       firstMtime = (await stat(bundle)).mtimeMs;

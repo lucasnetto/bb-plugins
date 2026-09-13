@@ -5,27 +5,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { preparedBase } from "../task-base.ts";
+import type { CachedBase } from "../task-base-retention.ts";
 import type { CommandOptions } from "../task-process.ts";
 
-test("cold build, receipt reuse without wake, marker recovery, and replacement identity", async () => {
+void test("cold build, receipt reuse without wake, marker recovery, and replacement identity", async () => {
   const home = await mkdtemp(join(tmpdir(), "base-reuse-"));
   const bytes = Buffer.from("bb-package");
   let artifact = createHash("sha256").update(bytes).digest("hex");
-  let machines: any[] = [];
+  let machines: CachedBase[] = [];
   let ready = "";
   let sequence = 0;
   const calls: string[][] = [];
   const receipts = new Map<string, string>();
+
   const runtime = {
     home,
-    fetch: (async (_url: unknown, options?: RequestInit) =>
+    fetch: async (_url: Parameters<typeof fetch>[0], options?: RequestInit) =>
       new Response(options?.method === "HEAD" ? null : bytes, {
         headers: { "x-bb-artifact-sha256": artifact },
-      })) as typeof fetch,
+      }),
     checked: async (argv: string[], options?: CommandOptions) => {
       calls.push(argv);
+
       if (argv[0] === "codex") return "codex-cli 1.2.3";
+
       if (argv[1] === "list") return JSON.stringify(machines);
+
       if (argv[1] === "clone")
         machines.push({
           name: argv[3],
@@ -33,16 +38,21 @@ test("cold build, receipt reuse without wake, marker recovery, and replacement i
           state: "stopped",
           config: { isolated: true, isolate_network: true, forward_ssh_agent: false, mounts: [] },
         });
+
       if (argv[1] === "delete") machines = machines.filter((vm) => vm.name !== argv[3]);
+
       if (argv.at(-1)?.includes("cat > ~/.cache/orbisa/base-ready"))
         ready = String(options?.stdin);
+
       return "";
     },
     command: async (argv: string[]) => {
       calls.push(argv);
+
       return { exitCode: 0, stdout: ready };
     },
   };
+
   const options = {
     owner: "testowner",
     user: "user",
@@ -59,6 +69,7 @@ test("cold build, receipt reuse without wake, marker recovery, and replacement i
       touch: async () => {},
     },
   };
+
   try {
     const first = await preparedBase(options, runtime);
     assert.equal(calls.filter((argv) => argv[1] === "clone").length, 1);

@@ -19,6 +19,7 @@ export function PrMenu({
   compact?: boolean;
 }) {
   const scope = usePortalScopeProps();
+
   return (
     <Menu.Root>
       <Menu.Trigger asChild>
@@ -48,6 +49,7 @@ export function PrMenu({
     </Menu.Root>
   );
 }
+
 export function PrMenuItem({
   children,
   onSelect,
@@ -72,6 +74,7 @@ export function PrMenuItem({
     </Menu.Item>
   );
 }
+
 export function PrMenuChoices({
   label,
   value,
@@ -84,6 +87,7 @@ export function PrMenuChoices({
   onChange: (value: string) => void;
 }) {
   const scope = usePortalScopeProps();
+
   return (
     <Menu.Sub>
       <Menu.SubTrigger className="pr-menu-item">
@@ -116,5 +120,7 @@ export function PrMenuChoices({
     </Menu.Sub>
   );
 }
+
 export const PrMenuSeparator = () => <Menu.Separator className="pr-menu-separator" />;
+
 export { Menu };

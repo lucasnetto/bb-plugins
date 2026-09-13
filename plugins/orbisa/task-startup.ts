@@ -1,3 +1,5 @@
+import { connectionErrorSchema, errorCodeSchema } from "./task-boundaries.ts";
+import type { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 
 export type StartupCategory =
@@ -6,6 +8,7 @@ export type StartupCategory =
   | "authentication-failed"
   | "incompatible-runtime"
   | "startup-failed";
+
 export class StartupFailure extends Error {
   readonly category: StartupCategory;
   constructor(category: StartupCategory, action: string) {
@@ -25,8 +28,10 @@ export async function startupStep<T>(
     return await work();
   } catch (error) {
     signal.throwIfAborted();
+
     if (error instanceof StartupFailure) throw error;
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT")
+
+    if (errorCodeSchema.safeParse(error).data?.code === "ENOENT")
       throw new StartupFailure(
         "incompatible-runtime",
         "A required executable is missing. Restore the supported tools on the execution host and retry.",
@@ -36,11 +41,13 @@ export async function startupStep<T>(
   }
 }
 
-export function transientConnection(error: unknown): boolean {
-  const value = error as { code?: string; cause?: { code?: string } } | null;
-  const code = value?.code ?? value?.cause?.code;
+type ConnectionError = z.infer<typeof connectionErrorSchema>;
+
+export function transientConnection(error: ConnectionError | undefined): boolean {
+  const code = error?.code ?? error?.cause?.code;
+
   return (
-    code !== undefined &&
+    code != null &&
     [
       "ECONNREFUSED",
       "ECONNRESET",
@@ -61,11 +68,14 @@ export async function retryConnection<T>(
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     signal.throwIfAborted();
+
     try {
       return await work();
     } catch (error) {
       signal.throwIfAborted();
-      if (attempt >= 2 || !transientConnection(error)) throw error;
+
+      if (attempt >= 2 || !transientConnection(connectionErrorSchema.safeParse(error).data))
+        throw error;
       report(`Transient host connection failure; retry ${attempt + 1}/2.`);
       await pause(500 * (attempt + 1));
     }

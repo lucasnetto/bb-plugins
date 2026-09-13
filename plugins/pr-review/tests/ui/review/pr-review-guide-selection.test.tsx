@@ -52,12 +52,14 @@ vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
     </div>
   ),
 }));
+
 vi.mock("../../../src/ui/review/DiffFileTree", () => ({ DiffFileTree: () => null }));
 
 test("background guides preserve code selection; toggles and active guide replacement clear it", async () => {
   installTestPluginRuntime();
   const { PrReview } = await import("../../../src/ui/review/PrReview");
   const url = "https://github.com/org/api/pull/guide-selection";
+
   const detail = {
     pr: {
       url,
@@ -75,6 +77,7 @@ test("background guides preserve code selection; toggles and active guide replac
     headRefOid: "b".repeat(40),
     files: [{ path: "api.ts", status: "modified", patch: "@@ -1 +1 @@\n-old\n+new" }],
   };
+
   const saved: SavedGuide = {
     id: "guide-1",
     base: detail.baseRefOid,
@@ -93,7 +96,9 @@ test("background guides preserve code selection; toggles and active guide replac
     },
     reviewed: [false],
   };
+
   let data: SavedGuide | null = null;
+
   const slot = renderSlot(
     { component: PrReview },
     { threadId: "guide-selection", url },
@@ -106,8 +111,10 @@ test("background guides preserve code selection; toggles and active guide replac
       },
     },
   );
+
   const select = () => fireEvent.click(slot.getByRole("button", { name: "Select line in api.ts" }));
   const toggle = () => fireEvent.click(slot.getByRole("button", { name: "Guide" }));
+
   const publish = async (next: SavedGuide) => {
     data = next;
     await act(async () => {
@@ -117,10 +124,12 @@ test("background guides preserve code selection; toggles and active guide replac
       });
     });
   };
+
   const expectCleared = () => {
     expect(slot.queryByLabelText("Comment on selected code")).toBeNull();
     expect(slot.getByText("Select a file or lines")).toBeTruthy();
   };
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     await slot.findByRole("button", { name: "Select line in api.ts" });
@@ -169,8 +178,10 @@ test("background guides preserve code selection; toggles and active guide replac
 
     fireEvent.click(slot.getByRole("button", { name: "Ask" }));
     await slot.findByText("Added to your draft.");
+
     const detailCalls = () =>
       slot.inspection.rpcCalls.filter((call) => call.method === "linkedDetail").length;
+
     const beforeRefresh = detailCalls();
     fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(detailCalls()).toBe(beforeRefresh + 1));

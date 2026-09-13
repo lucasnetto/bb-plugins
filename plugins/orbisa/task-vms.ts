@@ -1,3 +1,4 @@
+import { errorCodeSchema, machineSchema } from "./task-boundaries.ts";
 import { StartupFailure, startupStep, retryConnection } from "./task-startup.ts";
 import { overlap } from "./task-concurrency.ts";
 import { createHash } from "node:crypto";
@@ -10,41 +11,39 @@ import { checked, command } from "./task-process.ts";
 import { preparedBase, serializeBase, type BaseReceipts } from "./task-base.ts";
 
 export const TASK_PROVIDER = "orbisa-task";
+
 export const resourceSchema = z.object({
   key: z.string().min(1),
   owner: z.string().min(1),
   name: z.string().regex(/^bb-task-[a-f0-9]{10}-[a-f0-9]{20}$/),
   vmId: z.string().nullable(),
 });
+
 export type TaskResource = z.infer<typeof resourceSchema>;
+
 const digest = (value: string, length: number) =>
   createHash("sha256").update(value).digest("hex").slice(0, length);
+
 export const taskOwner = (dataDir: string) => digest(dataDir, 10);
+
 export function taskResource(owner: string, key: string): TaskResource {
   return { key, owner, name: `bb-task-${owner}-${digest(key, 20)}`, vmId: null };
 }
-export function ownedResource(owner: string, value: unknown): TaskResource {
+
+export function ownedResource(owner: string, value: TaskResource): TaskResource {
   const resource = resourceSchema.parse(value);
+
   if (resource.owner !== owner || resource.name !== taskResource(owner, resource.key).name) {
     throw new Error("Refusing to operate on a VM owned by another BB instance.");
   }
+
   return resource;
 }
 
-const machinesSchema = z.array(
-  z.object({
-    id: z.string(),
-    name: z.string(),
-    state: z.string(),
-    config: z.object({
-      isolated: z.boolean().optional(),
-      isolate_network: z.boolean().optional(),
-      forward_ssh_agent: z.boolean().optional(),
-      mounts: z.array(z.unknown()).optional(),
-    }),
-  }),
-);
+const machinesSchema = z.array(machineSchema);
+
 type Vm = z.infer<typeof machinesSchema>[number];
+
 function isolated(vm: Vm) {
   return (
     vm.config.isolated === true &&
@@ -81,38 +80,48 @@ export function createTaskDriver(
   serverUrl?: () => string,
   receipts?: BaseReceipts,
   options: {
-    validateResource?: (value: unknown) => TaskResource;
+    validateResource?: (value: TaskResource) => TaskResource;
     sdkOnly?: boolean;
   } = {},
 ): TaskDriver {
   const owner = taskOwner(dataDir);
   const profile = basename(dataDir) === ".bb-work" ? "work" : "personal";
   const user = process.env.ORBISA_REMOTE_USER ?? "lucas_netto";
-  const validate = options.validateResource ?? ((value: unknown) => ownedResource(owner, value));
+
+  const validate =
+    options.validateResource ?? ((value: TaskResource) => ownedResource(owner, value));
+
   if (!/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid Orbisa remote user.");
   const run = (name: string, argv: string[]) => ["orbctl", "run", "-m", name, "-u", user, ...argv];
+
   const list = async (signal?: AbortSignal) =>
     machinesSchema.parse(
       JSON.parse(await checked(["orbctl", "list", "--format", "json"], { signal })),
     );
+
   async function lookup(value: TaskResource, signal: AbortSignal) {
     const resource = validate(value);
     const vm = (await list(signal)).find((item) => item.name === resource.name);
+
     if (vm && resource.vmId !== null && vm.id !== resource.vmId)
       throw new Error("Task VM identity changed; refusing to touch its replacement.");
+
     return vm;
   }
+
   const optionalRead = async (path: string) => {
     try {
       return await readFile(path, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if (errorCodeSchema.safeParse(error).data?.code === "ENOENT") return null;
       throw error;
     }
   };
+
   return {
     async available(template) {
       if (process.platform !== "darwin") return false;
+
       try {
         return (await list()).some((vm) => vm.name === template && isolated(vm));
       } catch {
@@ -122,13 +131,16 @@ export function createTaskDriver(
     async allocate(value, template, signal, report = () => {}) {
       const resource = validate(value);
       let vm = await lookup(resource, signal);
+
       if (!vm) {
         const base = (await list(signal)).find((item) => item.name === template);
+
         if (!base || !isolated(base) || /^(bb-task-|orbisa-base-|180seg-orbisa-)/.test(template)) {
           throw new Error(
             "Choose an isolated clean Orbisa template, not a shared slot or another task VM.",
           );
         }
+
         await serializeBase(async () => {
           const source = serverUrl
             ? await preparedBase({
@@ -141,21 +153,26 @@ export function createTaskDriver(
                 receipts,
               })
             : template;
+
           await checked(["orbctl", "clone", source, resource.name], { signal });
         });
         vm = await lookup(resource, signal);
       }
+
       if (!vm || !isolated(vm))
         throw new Error("Task VM is missing or its isolation settings are unsafe.");
+
       return { ...resource, vmId: vm.id };
     },
     async prepare(resource, signal, report, forRemoval = false) {
       const vm = await lookup(resource, signal);
+
       if (!vm || !isolated(vm))
         throw new StartupFailure(
           "host-unavailable",
           "Task VM is missing or no longer isolated. Check its identity and isolation in OrbStack.",
         );
+
       const boot = async (signal: AbortSignal) => {
         await startupStep(
           "host-unavailable",
@@ -189,17 +206,21 @@ export function createTaskDriver(
             ),
         );
       };
+
       // BB may briefly resume a persistent machine to finish workspace teardown.
       // Expired user credentials must not prevent disposal of a finished task.
       if (forRemoval) {
         await boot(signal);
+
         return;
       }
+
       // Read independent local credentials and tool versions concurrently.
       const [guestCodex, [localCodex, githubToken, aws, cursor, codex, signing]] = await overlap(
         signal,
         async (signal) => {
           await boot(signal);
+
           return command(run(resource.name, ["codex", "--version"]), { signal }).catch(() => null);
         },
         async (signal) =>
@@ -234,7 +255,9 @@ export function createTaskDriver(
             ),
           ]),
       );
+
       const codexVersion = localCodex?.stdout.trim().match(/^codex-cli (\d+\.\d+\.\d+)$/)?.[1];
+
       if (codexVersion && guestCodex?.stdout.trim() !== `codex-cli ${codexVersion}`) {
         report(`Installing Codex ${codexVersion} to match this server.`);
         await checked(
@@ -253,7 +276,9 @@ export function createTaskDriver(
           { signal, timeoutMs: 300_000 },
         );
       }
+
       const github = githubToken.trim();
+
       const payload = {
         owner: resource.name,
         github,
@@ -265,6 +290,7 @@ export function createTaskDriver(
         sdkOnly: options.sdkOnly === true,
         region: process.env.ORBISA_AWS_REGION ?? "us-east-2",
       };
+
       await checked(
         run(resource.name, [
           "sh",
@@ -277,12 +303,15 @@ export function createTaskDriver(
         signal,
         stdin: JSON.stringify(payload),
       });
+
       const skillsReady = await command(
         run(resource.name, ["test", "-f", ".config/orbisa/bb-task-skills-ready"]),
         { signal },
       );
+
       if (skillsReady.exitCode !== 0) {
         const roots: string[] = [];
+
         for (const path of [
           ".cursor/skills",
           ".agents/skills",
@@ -293,10 +322,12 @@ export function createTaskDriver(
             await access(join(homedir(), path));
             roots.push(path);
           } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            if (errorCodeSchema.safeParse(error).data?.code !== "ENOENT") throw error;
           }
         }
+
         const staging = await mkdtemp(join(tmpdir(), "bb-orbisa-skills-"));
+
         try {
           if (roots.length) {
             const archive = join(staging, "skills.tgz");
@@ -307,6 +338,7 @@ export function createTaskDriver(
               stdin: await readFile(archive),
             });
           }
+
           await checked(run(resource.name, ["touch", ".config/orbisa/bb-task-skills-ready"]), {
             signal,
           });
@@ -314,6 +346,7 @@ export function createTaskDriver(
           await rm(staging, { recursive: true, force: true });
         }
       }
+
       if (payload.cursor && profile === "personal" && !options.sdkOnly) {
         const path = join(homedir(), ".local/bin/cursor-agent-personal-acp");
         await checked(
@@ -333,7 +366,9 @@ export function createTaskDriver(
           { signal },
         );
       }
+
       if (!payload.aws) report("AWS session unavailable; GitHub and provider setup continue.");
+
       if (!codex)
         report(
           "No local Codex login for this profile; sign in on the task machine before using Codex.",
@@ -342,6 +377,7 @@ export function createTaskDriver(
     },
     executor(value) {
       const resource = validate(value);
+
       return {
         exec: async (request) => {
           // Seed software only. Each clone enrolls independently into this directory.
@@ -349,6 +385,7 @@ export function createTaskDriver(
             run(resource.name, ["test", "-f", ".cache/orbisa/base-ready"]),
             { signal: request.signal },
           );
+
           if (cached.exitCode !== 0) return command(run(resource.name, request.command), request);
           await checked(
             run(resource.name, [
@@ -358,6 +395,7 @@ export function createTaskDriver(
             ]),
             { signal: request.signal },
           );
+
           return command(
             run(resource.name, [
               "env",
@@ -372,15 +410,18 @@ export function createTaskDriver(
     async startDaemon(resource, hostId, signal) {
       if (!/^host_[a-z0-9]+$/.test(hostId)) return false;
       const vm = await lookup(resource, signal);
+
       if (!vm || !isolated(vm))
         throw new StartupFailure(
           "host-unavailable",
           "Task VM is missing or no longer isolated. Check its identity and isolation in OrbStack.",
         );
+
       const result = await command(
         run(resource.name, ["python3", "-c", START_DAEMON_SCRIPT, hostId]),
         { signal, timeoutMs: 10_000 },
       );
+
       return result.exitCode === 0;
     },
     async stop(resource, signal) {
@@ -389,6 +430,7 @@ export function createTaskDriver(
     },
     async remove(resource, signal) {
       const vm = await lookup(resource, signal);
+
       if (vm) await checked(["orbctl", "delete", "--force", vm.name], { signal });
     },
   };

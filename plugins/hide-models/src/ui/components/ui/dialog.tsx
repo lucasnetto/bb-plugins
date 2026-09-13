@@ -53,20 +53,25 @@ function Dialog({
   const generatedDescriptionId = React.useId();
   const [titleId, setTitleId] = React.useState(generatedTitleId);
   const [descriptionId, setDescriptionId] = React.useState(generatedDescriptionId);
+
   const registerTitleId = React.useCallback(
     (id: string) => {
       setTitleId(id);
+
       return () => setTitleId(generatedTitleId);
     },
     [generatedTitleId],
   );
+
   const registerDescriptionId = React.useCallback(
     (id: string) => {
       setDescriptionId(id);
+
       return () => setDescriptionId(generatedDescriptionId);
     },
     [generatedDescriptionId],
   );
+
   const ctx = React.useMemo(
     () => ({
       ...responsiveRoot,
@@ -120,6 +125,7 @@ const DialogTrigger = React.forwardRef<
         if (!open) {
           blurActiveKeyboardInputBeforeOverlayOpen();
         }
+
         preventOverlayTriggerSelection(event);
       }}
       {...props}
@@ -128,6 +134,7 @@ const DialogTrigger = React.forwardRef<
     </DialogPrimitive.Trigger>
   );
 });
+
 DialogTrigger.displayName = "DialogTrigger";
 
 interface DialogCloseProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -140,12 +147,15 @@ const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
 
     if (isCompactViewport) {
       const Comp = asChild ? Slot : "button";
+
       const handleClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
         onClick?.(event);
+
         if (!event.defaultPrevented) {
           onOpenChange(false);
         }
       };
+
       return (
         <Comp ref={ref} onClick={handleClick} {...props}>
           {children}
@@ -160,6 +170,7 @@ const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
     );
   },
 );
+
 DialogClose.displayName = "DialogClose";
 
 const DialogOverlay = React.forwardRef<
@@ -176,6 +187,7 @@ const DialogOverlay = React.forwardRef<
     {...props}
   />
 ));
+
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
@@ -201,6 +213,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
 
     if (isCompactViewport) {
       const domProps = stripRadixContentProps(props);
+
       return (
         <ResponsiveDrawerShell
           open={open}
@@ -252,11 +265,13 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
     );
   },
 );
+
 DialogContent.displayName = "DialogContent";
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1.5 text-left", className)} {...props} />
 );
+
 DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -265,6 +280,7 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
     {...props}
   />
 );
+
 DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef<
@@ -277,6 +293,7 @@ const DialogTitle = React.forwardRef<
     if (!isCompactViewport) {
       return;
     }
+
     return registerTitleId(resolvedId);
   }, [isCompactViewport, registerTitleId, resolvedId]);
 
@@ -286,6 +303,7 @@ const DialogTitle = React.forwardRef<
       className: cn("text-base font-semibold leading-none tracking-tight", className),
       ...props,
     };
+
     if (asChild) {
       return (
         <Slot ref={ref} {...titleProps}>
@@ -293,12 +311,14 @@ const DialogTitle = React.forwardRef<
         </Slot>
       );
     }
+
     return (
       <h2 ref={ref} {...titleProps}>
         {children}
       </h2>
     );
   }
+
   return (
     <DialogPrimitive.Title
       ref={ref}
@@ -311,6 +331,7 @@ const DialogTitle = React.forwardRef<
     </DialogPrimitive.Title>
   );
 });
+
 DialogTitle.displayName = "DialogTitle";
 
 const DialogDescription = React.forwardRef<
@@ -323,6 +344,7 @@ const DialogDescription = React.forwardRef<
     if (!isCompactViewport) {
       return;
     }
+
     return registerDescriptionId(resolvedId);
   }, [isCompactViewport, registerDescriptionId, resolvedId]);
 
@@ -332,6 +354,7 @@ const DialogDescription = React.forwardRef<
       className: cn("text-sm text-muted-foreground", className),
       ...props,
     };
+
     if (asChild) {
       return (
         <Slot ref={ref} {...descriptionProps}>
@@ -339,12 +362,14 @@ const DialogDescription = React.forwardRef<
         </Slot>
       );
     }
+
     return (
       <p ref={ref} {...descriptionProps}>
         {children}
       </p>
     );
   }
+
   return (
     <DialogPrimitive.Description
       ref={ref}
@@ -357,6 +382,7 @@ const DialogDescription = React.forwardRef<
     </DialogPrimitive.Description>
   );
 });
+
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {

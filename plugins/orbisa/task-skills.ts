@@ -1,8 +1,19 @@
+import { z } from "zod";
+import { errorCodeSchema } from "./task-boundaries.ts";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { checked } from "./task-process.ts";
+
+const manifestSchema = z.object({ roots: z.array(z.string()), signature: z.string() });
+
+const receiptSchema = z.object({
+  signature: z.string(),
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+  size: z.number(),
+  mtime: z.number(),
+});
 
 // Hash what will actually be extracted, including permissions, but excluding
 // timestamps, archive ordering, uid/gid and other packaging metadata.
@@ -43,16 +54,19 @@ export async function cachedSkillArchive(home: string, signal: AbortSignal, cach
       tmpdir(),
       `orbisa-skills-${createHash("sha256").update(home).digest("hex").slice(0, 16)}`,
     );
+
   await mkdir(cache, { recursive: true, mode: 0o700 });
   const archive = join(cache, "skills.tar");
   const receipt = join(cache, "receipt.json");
+
   const manifest = async () =>
-    JSON.parse(
-      await checked(
-        [
-          "python3",
-          "-c",
-          String.raw`
+    manifestSchema.parse(
+      JSON.parse(
+        await checked(
+          [
+            "python3",
+            "-c",
+            String.raw`
 import hashlib,json,os,pathlib,stat,sys
 home=pathlib.Path(sys.argv[1]); rows=[]; roots=[]
 def walk(path,logical,parents):
@@ -70,34 +84,43 @@ for root in ['.cursor/skills','.agents/skills','.claude/skills','.codex/skills']
     roots.append(root); walk(path,root,set())
 print(json.dumps({'roots':roots,'signature':hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()}))
 `,
-          home,
-        ],
-        { signal },
+            home,
+          ],
+          { signal },
+        ),
       ),
-    ) as { roots: string[]; signature: string };
+    );
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const before = await manifest();
+
     if (!before.roots.length)
       return { archive: undefined, digest: createHash("sha256").digest("hex") };
+
     try {
-      const saved = JSON.parse(await readFile(receipt, "utf8"));
+      const saved = receiptSchema.safeParse(JSON.parse(await readFile(receipt, "utf8"))).data;
       const file = await stat(archive);
+
       if (
         saved?.signature === before.signature &&
-        typeof saved.digest === "string" &&
-        /^[a-f0-9]{64}$/.test(saved.digest) &&
         saved.size === file.size &&
         saved.mtime === file.mtimeMs
       )
-        return { archive, digest: saved.digest as string };
+        return { archive, digest: saved.digest };
     } catch (error) {
-      if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== "ENOENT")
+      if (
+        !(error instanceof SyntaxError) &&
+        errorCodeSchema.safeParse(error).data?.code !== "ENOENT"
+      )
         throw error;
     }
+
     const pending = join(cache, "skills.pending.tar");
+
     try {
       await checked(["tar", "-chf", pending, "-C", home, ...before.roots], { signal });
       const digest = await skillArchiveFingerprint(pending, signal);
+
       if ((await manifest()).signature !== before.signature) continue;
       await rename(pending, archive);
       const file = await stat(archive);
@@ -112,10 +135,12 @@ print(json.dumps({'roots':roots,'signature':hashlib.sha256(json.dumps(rows,separ
         { mode: 0o600 },
       );
       await rename(join(cache, "receipt.pending.json"), receipt);
+
       return { archive, digest };
     } finally {
       await rm(pending, { force: true });
     }
   }
+
   throw new Error("Skills changed repeatedly while preparing the archive; retry.");
 }

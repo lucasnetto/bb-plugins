@@ -19,6 +19,7 @@ export function useGuideGeneration(
   useEffect(() => {
     if (!threadId) return;
     let disposed = false;
+
     const load = () =>
       rpc.call("guideJob", { threadId, url }).then(
         (value) => {
@@ -39,30 +40,38 @@ export function useGuideGeneration(
           if (!disposed) setError(String(error));
         },
       );
+
     void load();
     const timer = generating ? setInterval(() => void load(), 3000) : undefined;
+
     return () => {
       disposed = true;
       clearInterval(timer);
     };
   }, [rpc, threadId, url, revision, connection, generating]);
+
   async function start(model: GuideModel) {
     if (!threadId || blocked || operation !== null) return false;
     setOperation("starting");
     setError("");
+
     try {
       setJob(await rpc.call("guideStart", { threadId, url, model }));
+
       return true;
     } catch (error) {
       setError(String(error));
+
       return false;
     } finally {
       setOperation(null);
     }
   }
+
   async function cancel() {
     if (!threadId || blocked || operation !== null) return;
     setOperation("cancelling");
+
     try {
       await rpc.call("guideCancel", { threadId, url });
       refresh();
@@ -72,6 +81,7 @@ export function useGuideGeneration(
       setOperation(null);
     }
   }
+
   return {
     generating,
     starting: operation === "starting",

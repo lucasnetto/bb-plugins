@@ -19,8 +19,10 @@ export function useSavedGuide(
   useEffect(() => {
     if (!threadId) {
       setLoading(false);
+
       return;
     }
+
     let disposed = false;
     setLoading(true);
     rpc
@@ -39,14 +41,17 @@ export function useSavedGuide(
       .finally(() => {
         if (!disposed) setLoading(false);
       });
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, url, connection, refreshRevision, revision]);
+
   async function mark(chapter: number, reviewed: boolean) {
     if (!threadId || !data || savingProgress) return;
     setSavingProgress(true);
     setError("");
+
     try {
       await rpc.call("guideProgress", { threadId, url, id: data.id, chapter, reviewed });
       refresh();
@@ -56,5 +61,6 @@ export function useSavedGuide(
       setSavingProgress(false);
     }
   }
+
   return { data, loading, savingProgress, error, mark };
 }

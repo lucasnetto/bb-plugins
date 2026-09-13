@@ -10,6 +10,7 @@ const expected = {
   base: stack.base,
   heads: stack.layers.map(({ number, headRefOid }) => ({ number, headRefOid: headRefOid! })),
 };
+
 const rawStack = [
   {
     number: 7,
@@ -24,6 +25,7 @@ const rawStack = [
     })),
   },
 ];
+
 function fixture(
   options: {
     pr?: Partial<Overview>;
@@ -34,30 +36,43 @@ function fixture(
   } = {},
 ) {
   const writes: { args: string[]; body?: string }[] = [];
+
   const run: Command = async (_root, program, args, _signal, body) => {
     if (program === "git") {
       if (args.includes("remote")) return "https://github.com/acme/api.git";
+
       if (args.includes("rev-parse")) return "/checkout";
+
       if (args.includes("status")) return options.dirty ? " M file.ts" : "";
     }
+
     const payload = body ? JSON.parse(body.startsWith("{") ? body : "{}") : {};
+
     if (args.includes("graphql") && payload.query?.includes("viewer{login}"))
       return JSON.stringify(rawOverview(options.pr));
+
     if (args.some((arg) => arg.includes("/stacks?"))) {
       if (options.stackError) throw new Error(options.stackError);
+
       return JSON.stringify(options.stack ?? []);
     }
+
     writes.push({ args, body });
+
     if (args.includes("graphql"))
       return JSON.stringify({
         data: { updatePullRequestBranch: { pullRequest: { headRefOid: "d".repeat(40) } } },
       });
+
     return JSON.stringify(options.status ?? { status: "pending", details: { uuid: "merge-job" } });
   };
+
   const action = (action: WorkspaceAction, head = overview.headRefOid) =>
     runHost(prAction("/checkout", overview.url, head, "main", action), undefined, run);
+
   return { writes, run, action };
 }
+
 it("normal merges match the reviewed SHA and let GitHub enforce merge policy", async () => {
   const f = fixture();
   await f.action({ kind: "merge", method: "squash", auto: false, stack: null });
@@ -68,6 +83,7 @@ it("normal merges match the reviewed SHA and let GitHub enforce merge policy", a
     },
   ]);
 });
+
 it("native stack merge submits one atomic operation for the confirmed scope and tracks its status", async () => {
   const f = fixture({ stack: rawStack });
   expect(
@@ -80,14 +96,17 @@ it("native stack merge submits one atomic operation for the confirmed scope and 
     merge_method: "merge",
     merge_action: "default",
   });
+
   const status = await runHost(
     prMergeStatus("/checkout", overview.url, "merge-job"),
     undefined,
     f.run,
   );
+
   expect(status.status).toBe("pending");
   expect(f.writes[1]?.args).toContain("repos/acme/api/pulls/42/merge-async/merge-job");
 });
+
 it("rejects changed heads, stack membership and lower layer revisions before writing", async () => {
   const f = fixture({ stack: rawStack });
   await expect(
@@ -108,6 +127,7 @@ it("rejects changed heads, stack membership and lower layer revisions before wri
   expect(() => stackScope({ ...stack, base: "other" }, expected, 42, false)).toThrow("changed");
   expect(() => stackScope(stack, expected, 41, true)).toThrow("changed");
 });
+
 it("a stack authorization failure never falls back to ordinary merging", async () => {
   const f = fixture({ stackError: "HTTP 403 forbidden" });
   await expect(
@@ -122,6 +142,7 @@ it("a stack authorization failure never falls back to ordinary merging", async (
     ),
   ).toBeNull();
 });
+
 it("requires every stack layer to be ready and rejects GitHub merge failures", async () => {
   const f = fixture({
     stack: [
@@ -131,18 +152,22 @@ it("requires every stack layer to be ready and rejects GitHub merge failures", a
       },
     ],
   });
+
   await expect(
     f.action({ kind: "merge", method: "squash", auto: false, stack: expected }),
   ).rejects.toThrow("ready");
   expect(f.writes).toEqual([]);
+
   const failed = fixture({
     stack: rawStack,
     status: { status: "failed", details: { message: "Checks failed" } },
   });
+
   await expect(
     failed.action({ kind: "merge", method: "squash", auto: false, stack: expected }),
   ).rejects.toThrow("Checks failed");
 });
+
 it("branch rebases guard the expected head and description edits reject stale versions", async () => {
   const f = fixture();
   await f.action({ kind: "update-branch", method: "rebase", stack: null });
@@ -156,6 +181,7 @@ it("branch rebases guard the expected head and description edits reject stale ve
   ).rejects.toThrow("description changed");
   expect(f.writes).toHaveLength(1);
 });
+
 it("passes comment text through stdin and refuses to check out over local changes", async () => {
   const f = fixture({ dirty: true });
   const body = "A comment with `code` and $(literal text)\n\nSecond paragraph.";
@@ -164,10 +190,13 @@ it("passes comment text through stdin and refuses to check out over local change
   await expect(f.action({ kind: "checkout" })).rejects.toThrow("uncommitted");
   expect(f.writes).toHaveLength(1);
 });
+
 it("maps Git commit authors without logins, and paginates timeline events", async () => {
   const calls: string[][] = [];
+
   const run: Command = async (_root, _program, args) => {
     calls.push(args);
+
     return JSON.stringify([
       {
         event: "committed",
@@ -177,6 +206,7 @@ it("maps Git commit authors without logins, and paginates timeline events", asyn
       },
     ]);
   };
+
   const value = await runHost(prTimeline("/checkout", overview.url, 2), undefined, run);
   expect(calls[0]).toContain("repos/acme/api/issues/42/timeline?per_page=100&page=2");
   expect(value).toMatchObject({

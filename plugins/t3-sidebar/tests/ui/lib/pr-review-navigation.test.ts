@@ -7,6 +7,7 @@ test("sidebar stores the review before navigation and signals after navigation",
   const order: string[] = [];
   const receive = () => order.push("event");
   window.addEventListener("bb:pr-review:open-review", receive);
+
   try {
     requestLinkedReview("t1", url, (threadId) => {
       expect(threadId).toBe("t1");

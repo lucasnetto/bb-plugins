@@ -12,12 +12,15 @@ import { z } from "zod";
 import { SdkError, foreign } from "./operations.js";
 
 export const SDK_VERSION = "1.0.31";
+
 export type SdkModule = {
   Agent: Pick<typeof CursorSdk.Agent, "create" | "resume" | "get">;
   Cursor: Pick<typeof CursorSdk.Cursor, "me" | "models">;
   JsonlLocalAgentStore: typeof CursorSdk.JsonlLocalAgentStore;
 };
+
 const runtimeDir = (dataDir: string) => join(dataDir, `runtime-${SDK_VERSION}`);
+
 const packageDir = (dataDir: string) => join(runtimeDir(dataDir), "node_modules/@cursor/sdk");
 
 export function installCommand(dataDir: string): ProviderInstallationCommand {
@@ -32,6 +35,7 @@ export function installCommand(dataDir: string): ProviderInstallationCommand {
     "--ignore-scripts",
     `@cursor/sdk@${SDK_VERSION}`,
   ];
+
   return { command: "npm", args, displayCommand: experimental_formatCommand("npm", args) };
 }
 
@@ -49,7 +53,9 @@ export const installationStatus = Effect.fn("CursorSdk.installationStatus")(func
     ),
     Effect.catch(() => Effect.succeed(null)),
   );
+
   const installed = version === SDK_VERSION;
+
   return {
     installed,
     currentVersion: version,
@@ -77,10 +83,12 @@ export const loadSdk = Effect.fn("CursorSdk.loadSdk")(function* (dataDir: string
       }),
     );
   }
+
   // Keep the published package intact: its local runtime loads adjacent chunks
   // and platform helpers. A variable import prevents BB's single-file builder
   // from rewriting those package-relative imports.
   const url = pathToFileURL(join(packageDir(dataDir), "dist/esm/index.js")).href;
   const module: SdkModule = yield* foreign(() => import(/* @vite-ignore */ url));
+
   return module;
 });

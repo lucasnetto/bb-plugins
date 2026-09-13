@@ -9,9 +9,12 @@ import { reconnectDaemon } from "../task-resume.ts";
 
 void test("skills archive is reused and invalidates for edits, additions, removals and symlink targets", async () => {
   const root = await mkdtemp(join(tmpdir(), "orbisa-archive-test-"));
+
   const home = join(root, "home"),
     cache = join(root, "cache");
+
   const signal = new AbortController().signal;
+
   try {
     const skills = join(home, ".agents/skills");
     await mkdir(skills, { recursive: true });
@@ -23,6 +26,10 @@ void test("skills archive is reused and invalidates for edits, additions, remova
     assert.equal(second.digest, first.digest);
     assert.equal((await stat(second.archive!)).ino, archiveStat.ino);
     assert.equal((await stat(second.archive!)).mtimeMs, archiveStat.mtimeMs);
+    // Malformed persisted metadata is a cache miss, not a startup failure.
+    await writeFile(join(cache, "receipt.json"), JSON.stringify({ digest: 123 }));
+    const recovered = await cachedSkillArchive(home, signal, cache);
+    assert.equal(recovered.digest, first.digest);
     const original = await stat(file);
     await writeFile(file, "other");
     await utimes(file, original.atime, original.mtime);
@@ -49,6 +56,7 @@ void test("skills archive is reused and invalidates for edits, additions, remova
 void test("boot and credentials overlap and failures drain the other branch", async () => {
   let release!: () => void;
   const started: string[] = [];
+
   const work = overlap(
     new AbortController().signal,
     async () => {
@@ -56,19 +64,23 @@ void test("boot and credentials overlap and failures drain the other branch", as
       await new Promise<void>((resolve) => {
         release = resolve;
       });
+
       return 1;
     },
     async () => {
       started.push("credentials");
+
       return "ready";
     },
   );
+
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(started, ["boot", "credentials"]);
   release();
   assert.deepEqual(await work, [1, "ready"]);
   const failure = new Error("credential failure");
   let drained = false;
+
   const failed = overlap(
     new AbortController().signal,
     async (signal) => {
@@ -81,6 +93,7 @@ void test("boot and credentials overlap and failures drain the other branch", as
       throw failure;
     },
   );
+
   await assert.rejects(failed, (error) => error === failure);
   assert.ok(drained);
 });
@@ -136,6 +149,7 @@ void test("scheduled cache maintenance expires caches without a task launch", as
   const { createFakePluginHost } = await import("@get-bb/plugin-sdk/testing");
   const { registerTaskMaintenance } = await import("../task-maintenance.ts");
   const { bb, harness } = createFakePluginHost({ pluginId: "orbisa" });
+
   try {
     const expired = join(dirname(bb.storage.database().name), "git-cache", "a".repeat(64));
     await mkdir(expired, { recursive: true });
@@ -159,6 +173,7 @@ void test("daemon fast path only clears suspension for the matching installation
   const data = join(root, ".bb-machines/orbisa");
   const units = join(root, ".config/systemd/user");
   const host = "host_test";
+
   try {
     await mkdir(data, { recursive: true });
     await mkdir(units, { recursive: true });
@@ -168,6 +183,7 @@ void test("daemon fast path only clears suspension for the matching installation
       join(units, `bb-host-daemon-example-${host}.service`),
       `Environment="BB_DATA_DIR=${data}"`,
     );
+
     const script =
       String.raw`
 import pathlib,subprocess,sys,types,json
@@ -177,16 +193,19 @@ def record(args,**kwargs):
     return types.SimpleNamespace(returncode=0)
 subprocess.run=record
 ` + START_DAEMON_SCRIPT;
+
     const signal = new AbortController().signal;
     await assert.rejects(checked(["python3", "-c", script, host, root], { signal }));
     assert.ok((await stat(join(data, "machine-suspended"))).isFile());
     await writeFile(join(data, "host-id"), host);
     await checked(["python3", "-c", script, host, root], { signal });
     await assert.rejects(stat(join(data, "machine-suspended")), { code: "ENOENT" });
+
     const calls = (await readFile(join(root, "calls"), "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+
     assert.deepEqual(
       calls.map((args) => args[2]),
       ["reset-failed", "start"],

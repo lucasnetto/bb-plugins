@@ -16,10 +16,15 @@ export const guideModelSchema = Schema.Struct({
   ]),
   serviceTier: Schema.optionalKey(Schema.Literals(["default", "fast"])),
 });
+
 export type GuideModel = Schema.Schema.Type<typeof guideModelSchema>;
+
 const jobIdentity = { id: Schema.String, ...guideTarget.fields };
+
 const workerId = Schema.String.check(Schema.isMinLength(1));
+
 const runningJobFields = { ...jobIdentity, workerId, ...guideRevision.fields };
+
 export const guideJobSchema = Schema.Union([
   Schema.Struct({ ...jobIdentity, status: Schema.Literal("preparing") }),
   Schema.Struct({ ...runningJobFields, status: Schema.Literal("running") }),
@@ -38,12 +43,18 @@ export const guideJobSchema = Schema.Union([
     revision: Schema.NullOr(guideRevision),
   }),
 ]);
+
 export type GuideJob = Schema.Schema.Type<typeof guideJobSchema>;
+
 export type RunningGuideJob = Extract<GuideJob, { status: "running" }>;
+
 export type ActiveGuideJob = Extract<GuideJob, { status: "preparing" | "running" }>;
+
 export const isActiveGuideJob = (job: GuideJob | null): job is ActiveGuideJob =>
   job?.status === "preparing" || job?.status === "running";
+
 export const guideWorkerId = (job: GuideJob) => (job.status === "preparing" ? null : job.workerId);
+
 const jobRevision = (job: GuideJob) => {
   switch (job.status) {
     case "preparing":
@@ -56,6 +67,7 @@ const jobRevision = (job: GuideJob) => {
       return job.revision;
   }
 };
+
 export const cancelledGuideJob = (job: GuideJob): Extract<GuideJob, { status: "cancelled" }> => ({
   id: job.id,
   threadId: job.threadId,
@@ -64,6 +76,7 @@ export const cancelledGuideJob = (job: GuideJob): Extract<GuideJob, { status: "c
   workerId: guideWorkerId(job),
   revision: jobRevision(job),
 });
+
 export const failedGuideJob = (
   job: GuideJob,
   error: string,
@@ -76,19 +89,24 @@ export const failedGuideJob = (
   revision: jobRevision(job),
   error: error || "Guide generation failed.",
 });
+
 export const guideStartInput = guideTarget.pipe(Schema.fieldsAssign({ model: guideModelSchema }));
+
 export const guideDefaultsInput = Schema.Struct({ projectId: Schema.NullOr(Schema.String) });
+
 export const guideDefaultsSaveInput = guideDefaultsInput.pipe(
   Schema.fieldsAssign({
     model: Schema.NullOr(guideModelSchema),
   }),
 );
+
 export const guideOptionsSchema = Schema.Struct({
   projectId: Schema.String,
   environmentId: Schema.String,
   model: Schema.NullOr(guideModelSchema),
   source: Schema.Literals(["project", "plugin", "thread"]),
 });
+
 export const guideSettingsSchema = Schema.Struct({
   model: Schema.NullOr(guideModelSchema),
   fallback: Schema.NullOr(guideModelSchema),

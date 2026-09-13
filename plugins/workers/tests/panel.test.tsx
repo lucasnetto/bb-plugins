@@ -5,10 +5,13 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Worker } from "../contract";
 
 const app = await loadPluginApp(() => import("../app"));
+
 const unmounts: Array<() => void> = [];
+
 afterEach(() => {
   unmounts.splice(0).forEach((unmount) => unmount());
 });
+
 const worker: Worker = {
   id: "luna",
   title: "Inspect plugin",
@@ -31,6 +34,7 @@ test("opens a hidden worker in native compact chat with inherited permissions", 
       },
     },
   );
+
   unmounts.push(() => slot.lifecycle.unmount());
   await slot.findByTestId("bb-thread-chat");
   const chat = slot.getByTestId("bb-thread-chat");
@@ -42,6 +46,7 @@ test("opens a hidden worker in native compact chat with inherited permissions", 
 
 test("refreshes only for the current parent and removes deleted selections", async () => {
   let workers = [worker];
+
   const slot = renderSlot(
     app.threadPanelActions[0]!,
     { threadId: "parent", params: null },
@@ -49,6 +54,7 @@ test("refreshes only for the current parent and removes deleted selections", asy
       rpc: { list: () => ({ workers, hasMore: false }) },
     },
   );
+
   unmounts.push(() => slot.lifecycle.unmount());
   await slot.findByTestId("bb-thread-chat");
   const count = slot.inspection.rpcCalls.length;
@@ -62,6 +68,7 @@ test("refreshes only for the current parent and removes deleted selections", asy
 
 test("shows loading errors and recovers on reconnection", async () => {
   let fail = true;
+
   const slot = renderSlot(
     app.threadPanelActions[0]!,
     { threadId: "parent", params: null },
@@ -69,11 +76,13 @@ test("shows loading errors and recovers on reconnection", async () => {
       rpc: {
         list: () => {
           if (fail) throw new Error("Offline");
+
           return { workers: [], hasMore: false };
         },
       },
     },
   );
+
   unmounts.push(() => slot.lifecycle.unmount());
   expect((await slot.findByRole("alert")).textContent).toContain("Offline");
   fail = false;
@@ -98,6 +107,7 @@ test("switches between workers in a compact picker, including archived workers",
       },
     },
   );
+
   unmounts.push(() => slot.lifecycle.unmount());
   await slot.findByTestId("bb-thread-chat");
   expect(slot.queryByRole("checkbox")).toBeNull();

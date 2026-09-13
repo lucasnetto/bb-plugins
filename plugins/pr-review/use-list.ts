@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import {
   LIST_CHANGED,
+  listMutationEvent,
+  listSnapshotEvent,
   type ListSnapshot,
   type rpcContract,
   type View,
@@ -18,44 +20,54 @@ export function useList(view: View, state: PrState) {
   const active = useRef(false);
   const sequence = useRef(0);
   const refreshingRef = useRef(false);
+
   const read = useCallback(async () => {
     const request = ++sequence.current;
+
     try {
       const data = await rpc.call("savedList", { view, state });
+
       if (active.current && sequence.current === request) setSnapshot(data);
     } catch (reason) {
       if (active.current && sequence.current === request) setError(String(reason));
     }
   }, [rpc, view, state]);
+
   const refresh = useCallback(
     async (force = false, loadMore = false) => {
       if (refreshingRef.current) return;
       refreshingRef.current = true;
       setRefreshing(true);
       setError("");
+
       try {
         await rpc.call("refreshList", { view, state, force, loadMore });
+
         if (active.current) await read();
       } catch (reason) {
         if (active.current) setError(String(reason));
       } finally {
         refreshingRef.current = false;
+
         if (active.current) setRefreshing(false);
       }
     },
     [rpc, view, state, read],
   );
+
   useRealtime(LIST_CHANGED, (payload) => {
-    if (typeof payload === "object" && payload !== null && "mutation" in payload) {
+    if (listMutationEvent.safeParse(payload).success) {
       void refresh(true);
+
       return;
     }
+
+    const event = listSnapshotEvent.safeParse(payload);
+
     if (
-      typeof payload === "object" &&
-      payload !== null &&
-      "view" in payload &&
-      payload.view === view &&
-      (!snapshot || ("scope" in payload && payload.scope === snapshot.scope))
+      event.success &&
+      event.data.view === view &&
+      (!snapshot || event.data.scope === snapshot.scope)
     )
       void read();
   });
@@ -63,6 +75,7 @@ export function useList(view: View, state: PrState) {
     active.current = true;
     // Avoid flashing a full-page loader for a fast SQLite round trip.
     const timer = setTimeout(() => setShowLoading(true), 150);
+
     return () => {
       active.current = false;
       sequence.current++;
@@ -71,20 +84,25 @@ export function useList(view: View, state: PrState) {
   }, []);
   useEffect(() => {
     void read();
+
     if (connection === "connected") void refresh();
   }, [read, refresh, connection]);
   useEffect(() => {
     if (connection !== "connected") return;
+
     const background = () => {
       if (document.visibilityState !== "hidden") void refresh();
     };
+
     window.addEventListener("focus", background);
     const timer = window.setInterval(background, 60000);
+
     return () => {
       window.removeEventListener("focus", background);
       window.clearInterval(timer);
     };
   }, [connection, refresh]);
+
   return {
     result: snapshot?.result ?? null,
     fetchedAt: snapshot?.fetchedAt,

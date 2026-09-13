@@ -9,11 +9,13 @@ import plugin from "../../server";
 
 const readySignal = () => {
   const deferred = Deferred.makeUnsafe<void>();
+
   return {
     wait: () => Effect.runPromise(Deferred.await(deferred)),
     signal: () => Effect.runSync(Deferred.succeed(deferred, undefined)),
   };
 };
+
 test("GitHub command and decoding errors remain failures, with no retries", async () => {
   for (const reply of ["invalid JSON", "{}", "[[{}]]"]) {
     let calls = 0;
@@ -23,12 +25,14 @@ test("GitHub command and decoding errors remain failures, with no retries", asyn
         undefined,
         async (_cwd, program) => {
           calls++;
+
           return program === "git" ? "git@github.com:org/repo.git" : reply;
         },
       ),
     );
     assert.equal(calls, 1);
   }
+
   let calls = 0;
   await assert.rejects(
     runHost(linkedSummary("/repo", "https://github.com/org/api/pull/42"), undefined, async () => {
@@ -57,12 +61,15 @@ test("failed revision read aborts its sibling command", async () => {
       undefined,
       async (_cwd, _program, args, signal) => {
         const route = args.at(-1) ?? "";
+
         if (route.includes("/compare/"))
           return JSON.stringify({ merge_base_commit: { sha: "c".repeat(40) } });
+
         if (route.includes("/old?")) {
           await started.wait();
           throw new Error("read failed");
         }
+
         return new Promise<string>((_resolve, reject) => {
           signal?.addEventListener(
             "abort",
@@ -85,6 +92,7 @@ test("plugin reload aborts an in-flight host call and the replacement can serve 
   const ready = readySignal();
   let aborted = false;
   let wait = true;
+
   const detail = {
     pr: {
       url: "https://github.com/org/api/pull/42",
@@ -100,12 +108,15 @@ test("plugin reload aborts an in-flight host call and the replacement can serve 
     repositoryRoot: null,
     files: [],
   };
+
   const input = { url: detail.pr.url };
+
   const initial = createFakePluginHost({
     pluginId: "pr-review",
     sdk: { system: { config: async () => ({ primaryHostId: "host" }) } },
     experimental_callHostRpc: async ({ signal }) => {
       if (!wait) return detail;
+
       return new Promise((_resolve, reject) => {
         signal?.addEventListener(
           "abort",
@@ -119,8 +130,10 @@ test("plugin reload aborts an in-flight host call and the replacement can serve 
       });
     },
   });
+
   const bb = initial.bb;
   let harness = initial.harness;
+
   try {
     await plugin(bb);
     const rejected = assert.rejects(harness.behavior.callRpc("reviewDraftDetail", input));

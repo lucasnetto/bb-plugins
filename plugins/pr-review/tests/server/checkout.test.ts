@@ -11,6 +11,7 @@ test("checkout matching supports GitHub remotes and only reads the current check
     expect(githubRemote(remote)).toBe("org/repo");
   expect(githubRemote("https://example.com/org/repo.git")).toBeNull();
   const calls: string[][] = [];
+
   const path = await runHost(
     matchingCheckout("/repo/subdir", "org/repo"),
     undefined,
@@ -18,9 +19,11 @@ test("checkout matching supports GitHub remotes and only reads the current check
       expect(cwd).toBe("/repo/subdir");
       expect(program).toBe("git");
       calls.push(args);
+
       return args.includes("remote") ? "git@github.com:org/repo.git" : "/repo\n";
     },
   );
+
   expect(path).toBe("/repo");
   expect(calls).toEqual([
     ["--no-pager", "remote", "get-url", "origin"],
@@ -33,6 +36,7 @@ test("a different checkout or unavailable Git still allows a GitHub-only review"
   expect(
     await runHost(matchingCheckout("/repo", "org/repo"), undefined, async () => {
       reads++;
+
       return "git@github.com:org/other.git";
     }),
   ).toBeNull();

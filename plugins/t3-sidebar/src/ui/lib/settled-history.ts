@@ -8,33 +8,38 @@ export function mergeSettledHistory(
   archived: readonly SettledThread[],
 ): SidebarThread[] {
   const liveIds = new Set(live.map((thread) => thread.id));
+
   return [
     ...live,
-    ...archived
-      .filter((thread) => !liveIds.has(thread.id))
-      .map((thread): SidebarThread => ({
-        ...thread,
-        isArchived: true,
-        isPinned: false,
-        isUnread: false,
-        parentThreadId: null,
-        sectionId: null,
-        originKind: null,
-        originPluginId: null,
-        hasPendingInteraction: false,
-        indicator: "none",
-        indicatorLabel: null,
-        activity: {
-          workflows: 0,
-          backgroundAgents: 0,
-          backgroundCommands: 0,
-          planMode: 0,
-          goals: 0,
-        },
-        environment: null,
-        host: null,
-        lastReadAt: null,
-        latestAttentionAt: 0,
-      })),
+    ...archived.flatMap((thread): SidebarThread[] =>
+      liveIds.has(thread.id)
+        ? []
+        : [
+            {
+              ...thread,
+              isArchived: true,
+              isPinned: false,
+              isUnread: false,
+              parentThreadId: null,
+              sectionId: null,
+              originKind: null,
+              originPluginId: null,
+              hasPendingInteraction: false,
+              indicator: "none",
+              indicatorLabel: null,
+              activity: {
+                workflows: 0,
+                backgroundAgents: 0,
+                backgroundCommands: 0,
+                planMode: 0,
+                goals: 0,
+              },
+              environment: null,
+              host: null,
+              lastReadAt: null,
+              latestAttentionAt: 0,
+            },
+          ],
+    ),
   ];
 }

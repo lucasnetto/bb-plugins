@@ -14,6 +14,7 @@ test("context menu snoozes a thread; shelf can wake it without navigating", asyn
   window.localStorage.clear();
   const app = await loadPluginApp(() => import("../../src/ui/app"));
   let snoozed: SnoozedMap = {};
+
   const slot = renderSlot(
     app.threadLists[0]!,
     {
@@ -31,14 +32,17 @@ test("context menu snoozes a thread; shelf can wake it without navigating", asyn
         snoozed_list: () => ({ snoozed }),
         snoozed_set: async (input) => {
           const result = await snoozeContract.snoozed_set.input["~standard"].validate(input);
+
           if (result.issues) throw new Error("Invalid snooze input");
           const { threadId, until } = result.value;
           snoozed = { ...snoozed, [threadId]: { at: Date.now(), until: until ?? Date.now() } };
+
           return { snoozed };
         },
       },
     },
   );
+
   try {
     fireEvent.contextMenu(await slot.findByRole("link", { name: "Reminder" }));
     fireEvent.keyDown(await slot.findByText("Snooze", { selector: '[role="menuitem"]' }), {

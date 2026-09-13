@@ -1,32 +1,14 @@
 // Adapted from T3 Code. See T3-LICENSE.
-export interface FileTreeExpansionModel {
-  getItem(path: string): unknown;
-}
+import type { FileTree, FileTreeDirectoryHandle, FileTreeItemHandle } from "@pierre/trees";
 
-type DirectoryHandle = {
-  isDirectory(): boolean;
-  isExpanded(): boolean;
-  expand(): void;
-  collapse(): void;
-};
+export type FileTreeExpansionModel = Pick<FileTree, "getItem">;
 
-function asDirectoryHandle(item: unknown): DirectoryHandle | null {
-  if (
-    typeof item !== "object" ||
-    item === null ||
-    !("isDirectory" in item) ||
-    typeof item.isDirectory !== "function" ||
-    !item.isDirectory() ||
-    !("isExpanded" in item) ||
-    typeof item.isExpanded !== "function" ||
-    !("expand" in item) ||
-    typeof item.expand !== "function" ||
-    !("collapse" in item) ||
-    typeof item.collapse !== "function"
-  ) {
+function asDirectoryHandle(item: FileTreeItemHandle | null): FileTreeDirectoryHandle | null {
+  if (item === null || !item.isDirectory() || !("expand" in item)) {
     return null;
   }
-  return item as DirectoryHandle;
+
+  return item;
 }
 
 export function areAllDirectoriesExpanded(
@@ -37,6 +19,7 @@ export function areAllDirectoriesExpanded(
     directoryPaths.length > 0 &&
     directoryPaths.every((path) => {
       const item = asDirectoryHandle(model.getItem(path));
+
       return item !== null && item.isExpanded();
     })
   );
@@ -49,7 +32,9 @@ export function setAllDirectoriesExpanded(
 ): void {
   for (const path of directoryPaths) {
     const item = asDirectoryHandle(model.getItem(path));
+
     if (item === null || item.isExpanded() === expanded) continue;
+
     if (expanded) item.expand();
     else item.collapse();
   }

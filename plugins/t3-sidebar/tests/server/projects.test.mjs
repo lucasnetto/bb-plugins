@@ -6,6 +6,7 @@ import plugin from "../../src/server/server.ts";
 test("project controls route folders and mutations through BB and protect personal projects", async () => {
   const created = [];
   const deleted = [];
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
@@ -17,6 +18,7 @@ test("project controls route folders and mutations through BB and protect person
         directory: async ({ hostId, path }) => {
           assert.equal(hostId, "online");
           assert.equal(path, "/work");
+
           return {
             directory: "/work",
             parent: "/",
@@ -34,6 +36,7 @@ test("project controls route folders and mutations through BB and protect person
         ],
         create: async (args) => {
           created.push(args);
+
           return { id: "created" };
         },
         delete: async (args) => {
@@ -42,6 +45,7 @@ test("project controls route folders and mutations through BB and protect person
       },
     },
   });
+
   try {
     await plugin(bb);
     assert.deepEqual(await harness.behavior.callRpc("project_hosts", null), [

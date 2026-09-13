@@ -6,6 +6,16 @@
     "build": "bb plugin build",
     "test": "node --experimental-strip-types --test *.test.ts"
   },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "better-sqlite3": "catalog:",
+    "react": "catalog:"
+  },
   "engines": {
     "bb": ">=0.42.1",
     "bbPluginSdk": ">=0.4.47"
@@ -20,15 +30,5 @@
     "app": "./app.tsx",
     "host": "./host.ts",
     "skills": []
-  },
-  "dependencies": {
-    "@get-bb/plugin-sdk": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "react": "catalog:",
-    "better-sqlite3": "catalog:"
   }
 }

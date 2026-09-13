@@ -7,11 +7,31 @@ import {
   type GithubReviewAction,
 } from "../shared/github-review-contract";
 
+type ReviewThreadInput = Pick<
+  Extract<GithubReviewAction, { kind: "add" }>,
+  "body" | "path" | "line" | "side" | "startLine" | "startSide"
+>;
+
+type ReviewMutationInput =
+  | (ReviewThreadInput & { pullRequestReviewId: string })
+  | { pullRequestId: string; commitOID: string; threads: ReviewThreadInput[] }
+  | { pullRequestReviewCommentId: string; body: string }
+  | { id: string };
+
+type ReviewGraphqlVariables =
+  | { owner: string | undefined; name: string | undefined; number: number; after: string | null }
+  | { id: string; after: string | null }
+  | { input: ReviewMutationInput };
+
+type ReviewApiPayload =
+  | { query: string; variables: ReviewGraphqlVariables }
+  | { event: "COMMENT" | "APPROVE" | "REQUEST_CHANGES"; body: string; commit_id?: string };
+
 const api = Effect.fn("GithubReview.api")(function* (
   root: string,
   path: string,
   method = "GET",
-  payload?: unknown,
+  payload?: ReviewApiPayload,
   paginate = false,
 ) {
   return yield* command(
@@ -30,44 +50,53 @@ const api = Effect.fn("GithubReview.api")(function* (
     payload === undefined ? undefined : JSON.stringify(payload),
   );
 });
+
 const user = Schema.Struct({ login: Schema.String });
+
 const reviewSchema = Schema.Struct({
   ...githubPendingSchema.fields,
   state: Schema.String,
   user: Schema.NullOr(user),
 });
+
 const prSchema = Schema.Struct({
   node_id: Schema.String,
   head: Schema.Struct({ sha: Schema.String }),
   user,
 });
+
 const read = Effect.fn("GithubReview.read")(function* (root: string, url: string) {
   const ref = yield* decode(() => parsePrUrl(url));
   const path = `repos/${ref.repository}/pulls/${ref.number}`;
+
   const [viewer, pr, reviews] = yield* Effect.all(
     [
       api(root, "user").pipe(
-        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(user), raw)),
+        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(user))(raw)),
       ),
       api(root, path).pipe(
-        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(prSchema), raw)),
+        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(prSchema))(raw)),
       ),
       api(root, `${path}/reviews?per_page=100`, "GET", undefined, true).pipe(
         Effect.flatMap((raw) =>
-          decodeSchema(Schema.fromJsonString(Schema.Array(Schema.Array(reviewSchema))), raw),
+          decodeSchema(Schema.fromJsonString(Schema.Array(Schema.Array(reviewSchema))))(raw),
         ),
       ),
     ],
     { concurrency: 3 },
   );
+
   const pending =
     reviews.flat().find((r) => r.state === "PENDING" && r.user?.login === viewer.login) ?? null;
+
   return { ref, path, viewer, pr, pending };
 });
+
 const pageInfo = Schema.Struct({
   hasNextPage: Schema.Boolean,
   endCursor: Schema.NullOr(Schema.String),
 });
+
 const graphComment = Schema.Struct({
   databaseId: Schema.Number,
   id: Schema.String,
@@ -76,7 +105,9 @@ const graphComment = Schema.Struct({
   author: Schema.NullOr(user),
   pullRequestReview: Schema.NullOr(Schema.Struct({ databaseId: Schema.Number })),
 });
+
 const graphComments = Schema.Struct({ nodes: Schema.Array(graphComment), pageInfo });
+
 const graphThread = Schema.Struct({
   id: Schema.String,
   path: Schema.String,
@@ -88,23 +119,28 @@ const graphThread = Schema.Struct({
   subjectType: Schema.Literals(["LINE", "FILE"]),
   comments: graphComments,
 });
+
 const commentFields =
   "nodes { databaseId id body url author { login } pullRequestReview { databaseId } } pageInfo { hasNextPage endCursor }";
+
 const threadQuery = `query($owner:String!,$name:String!,$number:Int!,$after:String) {
   repository(owner:$owner,name:$name) { pullRequest(number:$number) {
     reviewThreads(first:100,after:$after) { nodes { id path line originalLine diffSide startLine isOutdated subjectType comments(first:100) { ${commentFields} } } pageInfo { hasNextPage endCursor } }
   } }
 }`;
+
 export const githubReview = Effect.fn("GithubReview.get")(function* (root: string, url: string) {
   const { ref, viewer, pr, pending } = yield* read(root, url);
   const [owner, name] = ref.repository.split("/");
   const comments = [];
   let after: string | null = null;
+
   do {
     const raw: string = yield* api(root, "graphql", "POST", {
       query: threadQuery,
       variables: { owner, name, number: ref.number, after },
     });
+
     const result = yield* decodeSchema(
       Schema.fromJsonString(
         Schema.Struct({
@@ -117,11 +153,13 @@ export const githubReview = Effect.fn("GithubReview.get")(function* (root: strin
           }),
         }),
       ),
-      raw,
-    );
+    )(raw);
+
     const page = result.data.repository.pullRequest.reviewThreads;
+
     for (const thread of page.nodes) {
       let commentPage = thread.comments;
+
       while (true) {
         for (const c of commentPage.nodes) {
           if (!c.pullRequestReview) continue;
@@ -141,25 +179,31 @@ export const githubReview = Effect.fn("GithubReview.get")(function* (root: strin
             pull_request_review_id: c.pullRequestReview.databaseId,
           });
         }
+
         if (!commentPage.pageInfo.hasNextPage) break;
+
         const rawComments = yield* api(root, "graphql", "POST", {
           query: `query($id:ID!,$after:String) { node(id:$id) { ... on PullRequestReviewThread { comments(first:100,after:$after) { ${commentFields} } } } }`,
           variables: { id: thread.id, after: commentPage.pageInfo.endCursor },
         });
+
         const more = yield* decodeSchema(
           Schema.fromJsonString(
             Schema.Struct({
               data: Schema.Struct({ node: Schema.Struct({ comments: graphComments }) }),
             }),
           ),
-          rawComments,
-        );
+        )(rawComments);
+
         commentPage = more.data.node.comments;
       }
     }
+
     after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
   } while (after);
+
   comments.sort((a, b) => a.id - b.id);
+
   return {
     login: viewer.login,
     author: pr.user.login,
@@ -176,22 +220,25 @@ export const githubReview = Effect.fn("GithubReview.get")(function* (root: strin
     comments,
   };
 });
+
 const graphql = Effect.fn("GithubReview.graphql")(function* (
   root: string,
   query: string,
-  input: unknown,
+  input: ReviewMutationInput,
 ) {
   const raw = yield* api(root, "graphql", "POST", { query, variables: { input } });
+
   const result = yield* decodeSchema(
     Schema.fromJsonString(
       Schema.Struct({
         errors: Schema.optionalKey(Schema.Array(Schema.Struct({ message: Schema.String }))),
       }),
     ),
-    raw,
-  );
+  )(raw);
+
   if (result.errors?.length) return yield* invalid(result.errors.map((e) => e.message).join("; "));
 });
+
 export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
   root: string,
   url: string,
@@ -200,30 +247,39 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
   const state = yield* githubReview(root, url);
   const ref = yield* decode(() => parsePrUrl(url));
   const path = `repos/${ref.repository}/pulls/${ref.number}`;
+
   if (state.login !== action.login)
     return yield* invalid("GitHub account changed. Refresh before saving.");
+
   if ((state.pending?.id ?? null) !== action.reviewId)
     return yield* invalid("Your pending review changed on GitHub. Refresh and try again.");
+
   if (action.kind === "submit" && action.head !== state.head)
     return yield* invalid("New commits arrived. Refresh the diff before submitting your review.");
   const pending = state.pending;
+
   if (action.kind === "add") {
     if (action.head !== state.head)
       return yield* invalid("New commits arrived. Refresh the diff before adding to this review.");
+
     if (pending && pending.commit_id !== state.head)
       return yield* invalid(
         "This pending review belongs to an earlier commit. Finish it on GitHub or discard it before adding comments.",
       );
+
     if (!action.body.trim()) return yield* invalid("Write a comment first.");
-    const thread = {
+
+    let thread: ReviewThreadInput = {
       body: action.body,
       path: action.path,
       line: action.line,
       side: action.side,
-      ...(action.startLine === undefined
-        ? {}
-        : { startLine: action.startLine, startSide: action.startSide }),
     };
+
+    if (action.startLine !== undefined) {
+      thread = { ...thread, startLine: action.startLine, startSide: action.startSide };
+    }
+
     if (pending) {
       yield* graphql(
         root,
@@ -232,8 +288,9 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
       );
     } else {
       const pr = yield* api(root, path).pipe(
-        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(prSchema), raw)),
+        Effect.flatMap((raw) => decodeSchema(Schema.fromJsonString(prSchema))(raw)),
       );
+
       yield* graphql(
         root,
         "mutation($input:AddPullRequestReviewInput!){addPullRequestReview(input:$input){pullRequestReview{id}}}",
@@ -244,10 +301,12 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
     if (action.kind === "submit" && !pending) {
       if (reviewFingerprint(state) !== action.fingerprint)
         return yield* invalid("Your review changed on GitHub. Refresh before submitting.");
+
       if (action.event !== "COMMENT" && state.login === state.author)
         return yield* invalid(
           "GitHub does not allow approving or requesting changes on your own PR.",
         );
+
       if (action.event !== "APPROVE" && !action.body.trim())
         return yield* invalid("Write a review summary first.");
       yield* api(root, `${path}/reviews`, "POST", {
@@ -255,10 +314,13 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
         body: action.body,
         commit_id: state.head,
       });
+
       return { url: ref.url };
     }
+
     if (!pending)
       return yield* invalid("There is no pending review. Refresh to see its current state.");
+
     if (action.kind === "edit" || action.kind === "remove") {
       const comment = state.comments.find(
         (c) =>
@@ -266,10 +328,13 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
           c.pull_request_review_id === pending.id &&
           c.user?.login === state.login,
       );
+
       if (!comment || comment.body !== action.previousBody)
         return yield* invalid("This draft comment changed on GitHub. Reload it before editing.");
+
       if (action.kind === "edit" && !action.body.trim())
         return yield* invalid("Write a comment first.");
+
       if (action.kind === "edit")
         yield* graphql(
           root,
@@ -287,6 +352,7 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
         return yield* invalid(
           "Your review changed on GitHub. Refresh and review all comments before continuing.",
         );
+
       if (action.kind === "discard") yield* api(root, `${path}/reviews/${pending.id}`, "DELETE");
       else {
         if (action.event !== "COMMENT" && state.login === state.author)
@@ -300,6 +366,7 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
       }
     }
   }
+
   // A completed write returns a receipt. A failed subsequent refresh must never masquerade as a failed write.
   return { url: pending?.html_url ?? `${ref.url}/files` };
 });

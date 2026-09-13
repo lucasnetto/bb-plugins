@@ -9,20 +9,24 @@ import {
   pullCleanDefaultBranch as pull,
   pullGitLive,
 } from "../../../src/server/lib/project-auto-pull";
+
 const pullCleanDefaultBranch = (path) =>
   Effect.runPromise(pull(path).pipe(Effect.provide(pullGitLive)));
 
 test("auto-pull fast-forwards only clean default checkouts without local commits", async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-pull-"));
+
   const remote = join(root, "remote.git"),
     writer = join(root, "writer"),
     checkout = join(root, "checkout");
+
   const git = (cwd, ...args) =>
     execFileSync("git", args, {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
+
   try {
     git(root, "init", "--bare", "--initial-branch=main", remote);
     git(root, "clone", remote, writer);

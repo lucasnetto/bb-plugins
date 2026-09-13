@@ -26,6 +26,7 @@ export function useProjectSettings(projectId: string) {
         if (!cancelled) setError(String(cause));
       },
     );
+
     return () => {
       cancelled = true;
     };
@@ -39,12 +40,15 @@ export function useProjectSettings(projectId: string) {
     setPending(true);
     setSaved(false);
     setError(null);
+
     try {
       const result = await rpc.call("project_settings_update", {
         projectId,
         ...patch,
       });
+
       setSettings(result);
+
       if (patch.name !== undefined) setName(result.name);
       setSaved(true);
     } catch (cause) {
@@ -54,11 +58,13 @@ export function useProjectSettings(projectId: string) {
       setPending(false);
     }
   }
+
   async function remove() {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
     setError(null);
+
     try {
       await rpc.call("project_remove", { projectId });
       navigate.toPluginPanel("projects");
@@ -69,6 +75,7 @@ export function useProjectSettings(projectId: string) {
       setPending(false);
     }
   }
+
   return {
     settings,
     name,

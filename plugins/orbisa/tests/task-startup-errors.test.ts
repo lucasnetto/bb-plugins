@@ -4,8 +4,9 @@ import { StartupFailure, retryConnection, startupStep } from "../task-startup.ts
 import { verifyReadiness } from "../task-readiness.ts";
 import { command } from "../task-process.ts";
 
-test("connection retry is bounded and never retries configuration or authentication", async () => {
+void test("connection retry is bounded and never retries configuration or authentication", async () => {
   const signal = new AbortController().signal;
+
   for (const error of [
     new StartupFailure("authentication-failed", "Sign in"),
     new Error("bad config"),
@@ -25,6 +26,7 @@ test("connection retry is bounded and never retries configuration or authenticat
     );
     assert.equal(attempts, 1);
   }
+
   let attempts = 0;
   await assert.rejects(
     retryConnection(
@@ -43,6 +45,7 @@ test("connection retry is bounded and never retries configuration or authenticat
     await retryConnection(
       async () => {
         if (++attempts === 1) throw Object.assign(new Error(), { code: "ECONNREFUSED" });
+
         return "connected";
       },
       signal,
@@ -53,7 +56,7 @@ test("connection retry is bounded and never retries configuration or authenticat
   );
 });
 
-test("cancellation prevents retries and keeps the original abort reason", async () => {
+void test("cancellation prevents retries and keeps the original abort reason", async () => {
   const controller = new AbortController();
   const reason = new Error("cancelled");
   controller.abort(reason);
@@ -67,7 +70,7 @@ test("cancellation prevents retries and keeps the original abort reason", async 
   );
 });
 
-test("startup errors retain categories without credential-bearing subprocess output", async () => {
+void test("startup errors retain categories without credential-bearing subprocess output", async () => {
   await assert.rejects(
     startupStep(
       "authentication-failed",
@@ -91,8 +94,9 @@ test("startup errors retain categories without credential-bearing subprocess out
   );
 });
 
-test("readiness reports optional accounts, rejects invalid workspaces and disconnected hosts", () => {
+void test("readiness reports optional accounts, rejects invalid workspaces and disconnected hosts", () => {
   const messages: string[] = [];
+
   const optional = {
     name: "Cursor",
     ok: false,
@@ -100,8 +104,10 @@ test("readiness reports optional accounts, rejects invalid workspaces and discon
     category: "authentication-failed" as const,
     detail: "Sign in",
   };
+
   verifyReadiness([optional], (text) => messages.push(text));
   assert.match(messages[0]!, /^WARN/);
+
   for (const category of [
     "unsupported-workspace",
     "host-unavailable",
@@ -115,7 +121,7 @@ test("readiness reports optional accounts, rejects invalid workspaces and discon
   }
 });
 
-test("command distinguishes missing binaries, timeout and abort without echoing arguments", async () => {
+void test("command distinguishes missing binaries, timeout and abort without echoing arguments", async () => {
   await assert.rejects(
     command(["/no-such-orbisa-test-binary", "private-token"]),
     (error: any) => error.code === "ENOENT" && !error.message.includes("private-token"),
@@ -126,7 +132,7 @@ test("command distinguishes missing binaries, timeout and abort without echoing 
   );
 });
 
-test("missing authentication executable is a runtime failure rather than a login failure", async () => {
+void test("missing authentication executable is a runtime failure rather than a login failure", async () => {
   await assert.rejects(
     startupStep("authentication-failed", "Sign in", new AbortController().signal, async () => {
       throw Object.assign(new Error("private arguments"), { code: "ENOENT" });

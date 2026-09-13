@@ -9,6 +9,7 @@ export function useSnoozedMap() {
   const connection = useRealtimeConnectionState();
   const [snoozed, setSnoozed] = useState<SnoozedMap>({});
   const generation = useRef(0);
+
   const refetch = useCallback(() => {
     const request = ++generation.current;
     void rpc.call("snoozed_list").then(
@@ -18,15 +19,18 @@ export function useSnoozedMap() {
       (cause: unknown) => console.warn("[t3-sidebar] snoozed_list failed", cause),
     );
   }, [rpc]);
+
   useEffect(() => {
     refetch();
     window.addEventListener("focus", refetch);
+
     return () => {
       ++generation.current;
       window.removeEventListener("focus", refetch);
     };
   }, [refetch, connection]);
   useRealtime(SNOOZED_CHANGED, refetch);
+
   const set = useCallback(
     (threadId: string, until: number | null) => {
       void rpc.call("snoozed_set", { threadId, until }).then(
@@ -41,5 +45,6 @@ export function useSnoozedMap() {
     },
     [rpc, refetch],
   );
+
   return { snoozed, set };
 }

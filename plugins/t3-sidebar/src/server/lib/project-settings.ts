@@ -1,45 +1,57 @@
 import type { BbPluginApi, StandardSchemaV1InferOutput } from "@get-bb/plugin-sdk";
 
-import { Context, Effect, Layer, ManagedRuntime, RcMap, Semaphore, Schema } from "effect";
+import { Context, Effect, Layer, ManagedRuntime, RcMap, Semaphore, Schema, Result } from "effect";
 import { call, sync, createRuntime, decodeSchema } from "./server-effects";
 import { projectHostContract } from "../../shared/project-host-contract";
 
 import { preferencesSchema, projectSettingsContract } from "../../shared/project-settings-contract";
+
 const key = (id: string) => `project-settings:${id}`;
+
 class SettingsLocks extends Context.Service<
   SettingsLocks,
   RcMap.RcMap<string, Semaphore.Semaphore>
 >()("sidebar/SettingsLocks") {}
+
 const settingsLocks = Layer.effect(
   SettingsLocks,
   RcMap.make({ lookup: (_id: string) => Semaphore.make(1) }),
 );
+
 export function createProjectSettingsHandlers(bb: BbPluginApi) {
   const runtime = ManagedRuntime.make(settingsLocks);
   bb.onDispose(() => runtime.dispose());
+
   const read = Effect.fn("ProjectSettings.read")(function* (id: string) {
     const raw = yield* call("settings.read", () => bb.storage.kv.get(key(id)));
-    return yield* decodeSchema("settings.decode", preferencesSchema, raw ?? {});
+
+    return yield* decodeSchema("settings.decode", preferencesSchema)(raw ?? {});
   });
+
   const get = Effect.fn("ProjectSettings.get")(function* ({ projectId }: { projectId: string }) {
     const project = yield* call("projects.get", () => bb.sdk.projects.get({ projectId }));
+
     if (project.kind === "personal")
       return yield* sync("project settings", () => {
         throw new Error("Personal workspace has no project settings");
       });
     const source = project.sources.find((s) => s.isDefault) ?? project.sources[0];
     const prefs = yield* read(projectId);
+
     let resolvedModel =
       prefs.model ??
       (yield* call("projects.defaultExecutionOptions", () =>
         bb.sdk.projects.defaultExecutionOptions({ projectId }),
       ).pipe(Effect.catchTag("BackendError", () => Effect.succeed(null))));
+
     if (!resolvedModel) {
       const catalog = yield* call("providers.models", () =>
         bb.sdk.providers.models(source ? { hostId: source.hostId } : {}),
       ).pipe(Effect.catchTag("BackendError", () => Effect.succeed(null)));
+
       const model = catalog?.models.find((m) => m.isDefault) ?? catalog?.models[0];
       const provider = model?.routeProviderId ?? catalog?.providers.find((p) => p.available)?.id;
+
       if (model && provider)
         resolvedModel = {
           providerId: provider,
@@ -47,6 +59,7 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
           reasoningLevel: model.defaultReasoningEffort,
         };
     }
+
     return {
       ...prefs,
       id: project.id,
@@ -56,6 +69,7 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
       resolvedModel,
     };
   });
+
   const update = Effect.fn("ProjectSettings.update")(function* (
     input: StandardSchemaV1InferOutput<
       typeof projectSettingsContract.project_settings_update.input
@@ -63,9 +77,11 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
   ) {
     const locks = yield* SettingsLocks;
     const lock = yield* RcMap.get(locks, input.projectId);
+
     return yield* Effect.gen(function* () {
       yield* get({ projectId: input.projectId });
       const { projectId, name, ...patch } = input;
+
       if (name !== undefined)
         yield* call("projects.update", () => bb.sdk.projects.update({ projectId, name }));
       const current = yield* read(projectId);
@@ -75,9 +91,11 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
       yield* sync("settings.publish", () =>
         bb.realtime.publish("project-settings-changed", { projectId }),
       );
+
       return yield* get({ projectId });
     }).pipe(Semaphore.withPermit(lock));
   });
+
   return {
     project_settings_get: (input: { projectId: string }) => runtime.runPromise(get(input)),
     project_settings_update: (
@@ -87,20 +105,27 @@ export function createProjectSettingsHandlers(bb: BbPluginApi) {
     ) => runtime.runPromise(update(input).pipe(Effect.scoped)),
   };
 }
+
 export function registerProjectAutoPull(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   const host = bb.hosts.experimental_client({ contract: projectHostContract });
   const passLock = Semaphore.makeUnsafe(1);
+
   const pass = Effect.fn("ProjectAutoPull.pass")(function* () {
     const hosts = yield* call("hosts.list", () => bb.sdk.hosts.list());
+
     const connected = new Set(
       hosts.filter((host) => host.status === "connected").map((host) => host.id),
     );
+
     const projects = yield* call("projects.list", () => bb.sdk.projects.list());
+
     for (const project of projects) {
       const stored = yield* call("settings.read", () => bb.storage.kv.get(key(project.id)));
       const prefs = Schema.decodeUnknownResult(preferencesSchema)(stored ?? {});
-      if (prefs._tag === "Failure" || !prefs.success.autoPull) continue;
+
+      if (Result.isFailure(prefs) || !prefs.success.autoPull) continue;
+
       for (const source of project.sources) {
         if (!connected.has(source.hostId)) continue;
         yield* call("host.pull", (signal) =>
@@ -113,6 +138,7 @@ export function registerProjectAutoPull(bb: BbPluginApi) {
       }
     }
   });
+
   // BB owns the cron lifecycle. Skip an overlapping tick; never overlap Git writes.
   bb.background.schedule("project-auto-pull", "*/5 * * * *", () =>
     runtime.runPromise(pass().pipe(passLock.withPermitsIfAvailable(1), Effect.asVoid)),

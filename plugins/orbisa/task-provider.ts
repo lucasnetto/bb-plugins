@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { startupStep, retryConnection } from "./task-startup.ts";
 import { reconnectDaemon } from "./task-resume.ts";
 import { dirname, join } from "node:path";
@@ -9,6 +10,7 @@ import { createTaskPolicy } from "./task-policy.ts";
 import {
   createTaskDriver,
   ownedResource,
+  resourceSchema,
   taskOwner,
   taskResource,
   TASK_PROVIDER,
@@ -19,6 +21,7 @@ export interface TaskSettings {
   taskTemplate: string;
   taskIdleMinutes: number;
 }
+
 export function registerTaskProvider(
   bb: BbPluginApi,
   settings: () => Promise<TaskSettings>,
@@ -26,17 +29,22 @@ export function registerTaskProvider(
   now = Date.now,
 ) {
   const owner = taskOwner(bb.server.experimental_dataDir);
+
   const receipts = {
     cacheDir: join(dirname(bb.storage.database().name), "skills-cache"),
-    get: (name: string) => bb.storage.kv.get(`task-base/${name}`),
-    lastUsed: (name: string) => bb.storage.kv.get(`task-base-used/${name}`),
+    get: async (name: string) =>
+      z.string().safeParse(await bb.storage.kv.get(`task-base/${name}`)).data,
+    lastUsed: async (name: string) =>
+      z.number().safeParse(await bb.storage.kv.get(`task-base-used/${name}`)).data,
     touch: (name: string, at: number) => bb.storage.kv.set(`task-base-used/${name}`, at),
     set: (name: string, id: string) => bb.storage.kv.set(`task-base/${name}`, id),
     select: (name: string) => bb.storage.kv.set("task-base-current", name),
   };
+
   const machineDriver =
     driver ??
     createTaskDriver(bb.server.experimental_dataDir, () => bb.server.loopbackBaseUrl, receipts);
+
   registerTaskMaintenance(bb, owner, receipts);
 
   const policy = createTaskPolicy(bb, owner, async () => (await settings()).taskIdleMinutes, now);
@@ -67,10 +75,12 @@ export function registerTaskProvider(
       context.report.step("Creating isolated Orbisa task VM");
       const report = (text: string) => context.report.step(text);
       const timings: string[] = [];
+
       const timing = (text: string) => {
         timings.push(text);
         context.report.log(`${text}\n`);
       };
+
       resource = await timed(timing, "Base preparation and VM clone", async () =>
         machineDriver.allocate(resource, (await settings()).taskTemplate, context.signal, report),
       );
@@ -78,6 +88,7 @@ export function registerTaskProvider(
       await timed(timing, "VM start and credential setup", () =>
         machineDriver.prepare(resource, context.signal, report),
       );
+
       const { hostId } = await timed(timing, "Machine enrollment and connection", () =>
         startupStep(
           "host-unavailable",
@@ -97,27 +108,33 @@ export function registerTaskProvider(
             ),
         ),
       );
+
       await bb.storage.kv.set(`task-resource/${hostId}`, resource);
       // Bootstrap may finish its progress stream before our final measurement.
       // Replay the bounded summary when workspace provisioning takes over.
       await bb.storage.kv.set(`task-timings/${hostId}`, timings);
       await policy.bump(hostId);
+
       return { status: "created", name: resource.name, resource };
     },
     async reconcileCleanup(context) {
       await machineDriver.remove(taskResource(owner, context.key), context.signal);
+
       return { status: "removed" };
     },
     async suspend(context) {
-      const resource = ownedResource(owner, context.resource);
+      const resource = ownedResource(owner, resourceSchema.parse(context.resource));
       await context.checkpoint(resource);
       await machineDriver.stop(resource, context.signal);
+
       return { resource };
     },
     async resume(context) {
-      const resource = ownedResource(owner, context.resource);
+      const resource = ownedResource(owner, resourceSchema.parse(context.resource));
+
       const removing =
         (await bb.sdk.hosts.get({ hostId: context.hostId })).lifecycle.phase === "removing";
+
       await machineDriver.prepare(
         resource,
         context.signal,
@@ -125,6 +142,7 @@ export function registerTaskProvider(
         removing,
       );
       await context.checkpoint(resource);
+
       const connected =
         machineDriver.startDaemon &&
         (await reconnectDaemon({
@@ -133,6 +151,7 @@ export function registerTaskProvider(
           connected: async () =>
             (await bb.sdk.hosts.get({ hostId: context.hostId })).status === "connected",
         }));
+
       if (connected) context.report.log("Resumed existing BB daemon without bootstrap.\n");
       else {
         context.report.step("Restoring BB daemon through bootstrap");
@@ -154,13 +173,19 @@ export function registerTaskProvider(
             ),
         );
       }
+
       // Removal may resume while our sweep awaits hosts.delete. Do not acquire
       // the policy lock in that path or extend activity on a retiring machine.
       if (!removing) await policy.bump(context.hostId);
+
       return { resource };
     },
     async remove(context) {
-      await machineDriver.remove(ownedResource(owner, context.resource), context.signal);
+      await machineDriver.remove(
+        ownedResource(owner, resourceSchema.parse(context.resource)),
+        context.signal,
+      );
+
       return { status: "removed" };
     },
   });
@@ -172,5 +197,6 @@ export function registerTaskProvider(
     machineProviderId: TASK_PROVIDER,
     environmentProviderId: CHECKOUT_PROVIDER,
   });
+
   return policy;
 }

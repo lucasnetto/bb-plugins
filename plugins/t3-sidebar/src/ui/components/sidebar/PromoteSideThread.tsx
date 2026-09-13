@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useBbNavigate,
@@ -20,14 +21,15 @@ import {
 
 export function PromoteSideThread() {
   const { scope } = useComposerView();
+
   // BB's embedded ThreadChat uses a thread scope. Also support the native
   // side-chat scope, whose child does not exist until its first submission.
-  const threadId =
-    scope.kind === "thread"
-      ? scope.threadId
-      : scope.kind === "side-chat"
-        ? scope.childThreadId
-        : null;
+  const threadId = Match.value(scope).pipe(
+    Match.when({ kind: "thread" }, (scope) => scope.threadId),
+    Match.when({ kind: "side-chat" }, (scope) => scope.childThreadId),
+    Match.orElse(() => null),
+  );
+
   return threadId ? <PromoteButton key={threadId} threadId={threadId} /> : null;
 }
 
@@ -57,6 +59,7 @@ function PromoteButton({ threadId }: { threadId: string }) {
 
   useEffect(() => {
     refetch();
+
     return () => {
       revision.current += 1;
     };
@@ -68,6 +71,7 @@ function PromoteButton({ threadId }: { threadId: string }) {
     promoting.current = true;
     revision.current += 1;
     setPending(true);
+
     try {
       const result = await rpc.call("side_thread_promote", { threadId });
       setCanPromote(false);
@@ -84,6 +88,7 @@ function PromoteButton({ threadId }: { threadId: string }) {
 
   if (!canPromote) return null;
   const label = pending ? "Promoting…" : "Promote to sidebar";
+
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>

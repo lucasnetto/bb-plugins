@@ -3,8 +3,10 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "../../server";
 
 const url = "https://github.com/org/external/pull/42";
+
 async function setup() {
   const spawned: unknown[] = [];
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "pr-review",
     settings: { project: "deleted-project" },
@@ -14,6 +16,7 @@ async function setup() {
       threads: {
         spawn: async (input) => {
           spawned.push(input);
+
           return { id: "review-thread" };
         },
         get: async () => ({ environmentId: "e1" }),
@@ -27,6 +30,7 @@ async function setup() {
     experimental_callHostRpc: async ({ method, input, hostId }) => {
       expect(hostId).toBe("h1");
       expect(input).toMatchObject({ root: null, url });
+
       const pr = {
         url,
         repository: "org/external",
@@ -35,7 +39,9 @@ async function setup() {
         state: "OPEN",
         isDraft: true,
       };
+
       if (method === "linkedSummary") return pr;
+
       if (method === "linkedDetail")
         return {
           pr,
@@ -47,15 +53,20 @@ async function setup() {
           headRefOid: "b".repeat(40),
           files: [],
         };
+
       if (method === "linkedContents") return { oldContents: "before", newContents: "after" };
       throw new Error(`Unexpected host call: ${method}`);
     },
   });
+
   await plugin(bb);
+
   return { harness, spawned };
 }
+
 it("loads standalone PR details without starting a thread or resolving the configured workspace", async () => {
   const { harness, spawned } = await setup();
+
   try {
     expect(await harness.behavior.callRpc("reviewDraftDetail", { url })).toMatchObject({
       pr: { title: "Fix" },

@@ -2,7 +2,9 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export { WORKERS_CHANGED, PAGE_SIZE } from "./events";
+
 const id = z.string().min(1).max(200);
+
 export const workerSchema = z.object({
   id,
   title: z.string(),
@@ -14,7 +16,9 @@ export const workerSchema = z.object({
   visibility: z.enum(["visible", "hidden"]),
   archived: z.boolean(),
 });
+
 export type Worker = z.infer<typeof workerSchema>;
+
 export const rpcContract = defineRpcContract({
   list: {
     input: z.object({ threadId: id, offset: z.number().int().min(0) }),

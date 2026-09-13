@@ -7,6 +7,7 @@ import { Icon } from "@/ui/components/ui/icon";
 import { usePortalScopeProps } from "@/ui/lib/portal-scope";
 
 type Project = { id: string; name: string };
+
 type Listing = {
   directory: string;
   parent: string | null;
@@ -31,6 +32,7 @@ export function ProjectDialog({
   const [error, setError] = useState<string | null>(null);
   const sequence = useRef(0);
   const busy = useRef(false);
+
   const browse = useCallback(
     async (host: string, path?: string) => {
       const request = ++sequence.current;
@@ -38,11 +40,13 @@ export function ProjectDialog({
       setListing(null);
       setQuery("");
       setError(null);
+
       try {
-        const result = await rpc.call("project_directory", {
-          hostId: host,
-          ...(path === undefined ? {} : { path }),
-        });
+        const result =
+          path === undefined
+            ? await rpc.call("project_directory", { hostId: host })
+            : await rpc.call("project_directory", { hostId: host, path });
+
         if (sequence.current === request) setListing(result);
       } catch (cause) {
         if (sequence.current === request) setError(String(cause));
@@ -52,12 +56,14 @@ export function ProjectDialog({
     },
     [rpc],
   );
+
   useEffect(() => {
     let cancelled = false;
     rpc.call("project_hosts").then(
       (result) => {
         if (cancelled) return;
         setHosts(result);
+
         if (result[0]) {
           setHostId(result[0].id);
           void browse(result[0].id);
@@ -73,6 +79,7 @@ export function ProjectDialog({
         }
       },
     );
+
     return () => {
       cancelled = true;
       sequence.current++;
@@ -84,12 +91,15 @@ export function ProjectDialog({
     busy.current = true;
     setPending(true);
     setError(null);
+
     try {
       if (!listing || loading) return;
+
       const project = await rpc.call("project_create", {
         hostId,
         path: listing.directory,
       });
+
       onCreated(project.id);
       onClose();
     } catch (cause) {
@@ -99,9 +109,11 @@ export function ProjectDialog({
       setPending(false);
     }
   };
+
   const entries =
     listing?.entries.filter((entry) => entry.name.toLowerCase().includes(query.toLowerCase())) ??
     [];
+
   return (
     <Dialog.Root
       open

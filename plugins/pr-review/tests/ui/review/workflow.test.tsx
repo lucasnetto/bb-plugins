@@ -71,6 +71,7 @@ vi.mock("../../../src/ui/review/StyledDiffCodeView", () => ({
     </div>
   ),
 }));
+
 vi.mock("../../../src/ui/review/DiffFileTree", () => ({ DiffFileTree: () => null }));
 
 test("expanded context reaches the draft with exact revisions and refresh reloads its contents", async () => {
@@ -82,6 +83,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
   let contextLine = "before";
   const staged: unknown[] = [];
   const contentsRequests: unknown[] = [];
+
   const slot = renderSlot(
     { component: PrReview },
     { threadId: "t1", url },
@@ -108,6 +110,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
         guideJob: () => null,
         linkedContents: (input) => {
           contentsRequests.push(input);
+
           return {
             oldContents: `${contextLine}\nold\nafter\n`,
             newContents: `${contextLine}\nnew\nafter\n`,
@@ -115,11 +118,13 @@ test("expanded context reaches the draft with exact revisions and refresh reload
         },
         stageReviewComment: (input) => {
           staged.push(input);
+
           return { id: "comment-1" };
         },
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });
@@ -190,6 +195,7 @@ test("standalone review selects code without offering thread draft actions", asy
   installTestPluginRuntime();
   const { StandalonePrReview } = await import("../../../src/ui/review/PrReview");
   const url = "https://github.com/org/api/pull/789";
+
   const slot = renderSlot(
     { component: StandalonePrReview },
     { url },
@@ -219,6 +225,7 @@ test("standalone review selects code without offering thread draft actions", asy
       },
     },
   );
+
   try {
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });

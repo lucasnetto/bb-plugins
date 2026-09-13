@@ -6,6 +6,7 @@ import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing
 it("renders Bugbot HTML alongside Markdown without exposing hidden markers", async () => {
   installTestPluginRuntime();
   const { GithubMarkdown } = await import("../../src/ui/components/GithubMarkdown");
+
   const slot = renderSlot(
     { component: GithubMarkdown },
     {
@@ -27,6 +28,7 @@ Comment \`@cursor review\` to trigger another review.
     },
     { openUrl: () => true },
   );
+
   try {
     expect(slot.container.textContent).not.toContain("BUGBOT_");
     expect(slot.container.textContent).not.toContain("<sup>");
@@ -57,6 +59,7 @@ Comment \`@cursor review\` to trigger another review.
 it("renders GitHub tables, task lists, strikethrough and literal code", async () => {
   installTestPluginRuntime();
   const { GithubMarkdown } = await import("../../src/ui/components/GithubMarkdown");
+
   const view = render(
     <GithubMarkdown
       content={`## Results
@@ -77,16 +80,19 @@ it("renders GitHub tables, task lists, strikethrough and literal code", async ()
 \`\`\``}
     />,
   );
+
   try {
     expect(view.getByRole("heading", { name: "Results" })).toBeTruthy();
     expect(view.getByRole("table").querySelector("del")?.textContent).toBe("Broken");
-    expect(view.getAllByRole("checkbox").map((box) => (box as HTMLInputElement).checked)).toEqual([
-      true,
-      false,
-    ]);
-    expect(view.getAllByRole("checkbox").every((box) => (box as HTMLInputElement).disabled)).toBe(
-      true,
-    );
+
+    const checkboxes = view.getAllByRole("checkbox").map((box) => {
+      if (!(box instanceof HTMLInputElement)) throw new Error("Expected checkbox input");
+
+      return box;
+    });
+
+    expect(checkboxes.map((box) => box.checked)).toEqual([true, false]);
+    expect(checkboxes.every((box) => box.disabled)).toBe(true);
     expect(view.container.querySelectorAll("ol li")).toHaveLength(2);
     expect(view.container.querySelector("pre code")?.textContent).toContain(
       "<sup>Keep code literal</sup>\n<!-- Keep this comment -->",
@@ -100,6 +106,7 @@ it("renders GitHub tables, task lists, strikethrough and literal code", async ()
 it("removes active HTML, event handlers, styles and unsafe URLs", async () => {
   installTestPluginRuntime();
   const { GithubMarkdown } = await import("../../src/ui/components/GithubMarkdown");
+
   const view = render(
     <GithubMarkdown
       content={`<script>alert('script')</script>
@@ -114,6 +121,7 @@ it("removes active HTML, event handlers, styles and unsafe URLs", async () => {
 <sup>Safe superscript</sup>`}
     />,
   );
+
   try {
     expect(view.container.querySelector("script, iframe, form")).toBeNull();
     expect(view.container.querySelector("[onerror], [onclick], [onmouseover], [style]")).toBeNull();

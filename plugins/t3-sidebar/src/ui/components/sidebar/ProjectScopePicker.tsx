@@ -22,15 +22,18 @@ export function ProjectScopePicker(props: {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const openingSettings = useRef(false);
+
   const matchingProjects = props.projects.filter((project) =>
     project.name.toLowerCase().includes(query.toLowerCase()),
   );
+
   return (
     <div className="flex items-center gap-1 px-1.5 pb-1 pt-1.5">
       <DropdownMenu
         open={open}
         onOpenChange={(value) => {
           setOpen(value);
+
           if (value) {
             setQuery("");
             openingSettings.current = false;

@@ -4,18 +4,24 @@ import { cloudRunSummary, githubRepository, readCloudSource } from "../../src/se
 import { SdkError } from "../../src/server/operations.js";
 
 const ref = "a".repeat(40);
+
 const tip = "b".repeat(40);
+
 function checkout(overrides: Record<string, string | null> = {}) {
-  const responses: Record<string, string | null> = {
-    "status --porcelain --untracked-files=normal": "",
-    "remote get-url origin": "git@github.com:example/repo.git",
-    "rev-parse HEAD": ref,
-    "ls-remote --heads origin": `${ref}\trefs/heads/main`,
-    ...overrides,
-  };
+  const responses = new Map<string, string | null>(
+    Object.entries({
+      "status --porcelain --untracked-files=normal": "",
+      "remote get-url origin": "git@github.com:example/repo.git",
+      "rev-parse HEAD": ref,
+      "ls-remote --heads origin": `${ref}\trefs/heads/main`,
+      ...overrides,
+    }),
+  );
+
   return (_cwd: string, args: string[]) => {
-    const value = responses[args.join(" ")];
-    return typeof value === "string"
+    const value = responses.get(args.join(" "));
+
+    return value != null
       ? Effect.succeed(value)
       : Effect.fail(new SdkError({ message: "Git failed" }));
   };
@@ -57,6 +63,7 @@ describe("cloud repository source", () => {
         Effect.catchTag("SdkError", (error) => Effect.succeed(error)),
       ),
     );
+
     expect(result).toBeInstanceOf(SdkError);
     expect(JSON.stringify(result)).not.toContain("secret@");
   });
@@ -65,6 +72,7 @@ describe("cloud repository source", () => {
       "ls-remote --heads origin": `${tip}\trefs/heads/main`,
       [`merge-base --is-ancestor ${ref} ${tip}`]: "",
     });
+
     expect((await Effect.runPromise(readCloudSource("/checkout", git))).ref).toBe(ref);
   });
   test("rejects a dirty tree or unpushed commit", async () => {
@@ -100,6 +108,7 @@ describe("cloud repository source", () => {
         ],
       },
     });
+
     expect(summary).toContain("https://cursor.com/agents/bc-test");
     expect(summary).toContain("/tree/cursor%2Fa%29b");
     expect(summary).toContain("/pull/12");

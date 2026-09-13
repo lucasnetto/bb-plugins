@@ -16,19 +16,24 @@ export const foreign = <A>(operation: () => Promise<A>) =>
     catch: (error) => new SdkError({ message: safeMessage(error) }),
   });
 
-export function safeMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error))
+const errorMessageSchema = z.unknown().transform((error) =>
+  (error instanceof Error ? error.message : String(error))
     .replace(/crsr_[\w-]+/g, "[redacted]")
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-    .slice(0, 2000);
-}
+    .slice(0, 2000),
+);
+
+export const safeMessage = errorMessageSchema.parse.bind(errorMessageSchema);
 
 export const profileSchema = z.enum(["personal", "work"]);
+
 export type Profile = z.infer<typeof profileSchema>;
+
 export const optionsSchema = z.object({
   profile: profileSchema,
   runtime: z.enum(["local", "cloud"]).default("local"),
 });
+
 const exec = promisify(execFile);
 
 const command = (file: string, args: string[], cwd?: string) =>
@@ -55,9 +60,11 @@ export const readApiKey = Effect.fn("CursorSdk.readApiKey")(function* (profile: 
       : (yield* foreign(() =>
           readFile(join(homedir(), ".config/orbisa", `cursor-${profile}-api-key`), "utf8"),
         )).trim();
+
   if (!key)
     return yield* Effect.fail(
       new SdkError({ message: `The ${profile} Cursor API key is missing.` }),
     );
+
   return key;
 });

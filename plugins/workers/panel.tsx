@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import {
   ThreadChat,
   useRpc,
@@ -11,17 +12,20 @@ import type { Worker, rpcContract } from "./contract";
 
 const button =
   "rounded-md border border-border px-2.5 py-1.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed";
-const statusLabels: Record<string, string> = {
-  active: "Working",
-  idle: "Idle",
-  error: "Failed",
-  starting: "Starting",
-  pending: "Queued",
-  stopping: "Stopping",
-  provisioning: "Preparing",
-  "host-reconnecting": "Reconnecting",
-  "waiting-for-host": "Waiting for host",
-};
+
+const workerChangedSchema = z.object({ threadId: z.string() });
+
+const statusLabels = new Map([
+  ["active", "Working"],
+  ["idle", "Idle"],
+  ["error", "Failed"],
+  ["starting", "Starting"],
+  ["pending", "Queued"],
+  ["stopping", "Stopping"],
+  ["provisioning", "Preparing"],
+  ["host-reconnecting", "Reconnecting"],
+  ["waiting-for-host", "Waiting for host"],
+]);
 
 export function WorkersPanel({ threadId }: PluginThreadPanelProps) {
   // Reset selection and pending requests when the host reuses this panel for another parent.
@@ -41,17 +45,14 @@ function WorkerBrowser({ threadId }: { threadId: string }) {
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
 
   useRealtime(WORKERS_CHANGED, (payload) => {
-    if (
-      typeof payload === "object" &&
-      payload !== null &&
-      "threadId" in payload &&
-      payload.threadId === threadId
-    )
-      refresh();
+    const event = workerChangedSchema.safeParse(payload);
+
+    if (event.success && event.data.threadId === threadId) refresh();
   });
   useEffect(() => {
     // Covers renames, visibility changes, and interaction resolutions without lifecycle events.
     const timer = setInterval(refresh, 10000);
+
     return () => clearInterval(timer);
   }, [refresh]);
   useEffect(() => {
@@ -75,12 +76,14 @@ function WorkerBrowser({ threadId }: { threadId: string }) {
         setLoading(false);
       },
     );
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, offset, revision, connection]);
 
   const selected = workers.find((worker) => worker.id === selectedId);
+
   function changePage(nextOffset: number) {
     setOffset(nextOffset);
     setWorkers([]);
@@ -112,7 +115,7 @@ function WorkerBrowser({ threadId }: { threadId: string }) {
                 {worker.title} · {worker.model ?? worker.providerId} ·{" "}
                 {worker.hasPendingInteraction
                   ? "Needs input"
-                  : (statusLabels[worker.status] ?? worker.status)}
+                  : (statusLabels.get(worker.status) ?? worker.status)}
               </option>
             ))}
           </select>

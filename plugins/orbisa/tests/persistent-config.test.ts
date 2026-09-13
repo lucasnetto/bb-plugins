@@ -12,6 +12,7 @@ void test("remote user configuration is injectable and defaults only when absent
         ),
       ),
     );
+
   assert.equal(await read({}), "lucas_netto");
   assert.equal(await read({ ORBISA_REMOTE_USER: "test_user" }), "test_user");
   await assert.rejects(read({ ORBISA_REMOTE_USER: "invalid user" }));

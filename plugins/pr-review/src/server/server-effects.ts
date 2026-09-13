@@ -1,11 +1,12 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { Effect, Layer, ManagedRuntime, Schema, flow } from "effect";
 
 export class BackendError extends Schema.TaggedError<BackendError>()("BackendError", {
   operation: Schema.String,
   message: Schema.String,
   cause: Schema.Unknown,
 }) {}
+
 export const call = Effect.fn("Backend.call")(
   <A>(operation: string, run: (signal: AbortSignal) => Promise<A>) =>
     Effect.tryPromise({
@@ -18,6 +19,7 @@ export const call = Effect.fn("Backend.call")(
         }),
     }),
 );
+
 export const sync = <A>(operation: string, run: () => A) =>
   Effect.try({
     try: run,
@@ -28,10 +30,12 @@ export const sync = <A>(operation: string, run: () => A) =>
         cause,
       }),
   });
+
 export function createRuntime(bb: BbPluginApi) {
   const runtime = ManagedRuntime.make(Layer.empty);
   // Disposal interrupts in-flight work and waits for Effect finalizers.
   bb.onDispose(() => runtime.dispose());
+
   return runtime;
 }
 
@@ -43,12 +47,12 @@ export const handler =
   ) =>
   (...args: Args) =>
     runtime.runPromise(operation(...args));
+
 export const fail = (message: string) =>
   Effect.fail(new BackendError({ operation: "validation", message, cause: null }));
 
-export const decodeSchema = Effect.fn("Backend.decode")(
-  <S extends Schema.Constraint>(operation: string, schema: S, input: unknown) =>
-    Schema.decodeUnknownEffect(schema)(input).pipe(
-      Effect.mapError((cause) => new BackendError({ operation, message: cause.message, cause })),
-    ),
-);
+export const decodeSchema = <S extends Schema.Constraint>(operation: string, schema: S) =>
+  flow(
+    Schema.decodeUnknownEffect(schema),
+    Effect.mapError((cause) => new BackendError({ operation, message: cause.message, cause })),
+  );

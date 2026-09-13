@@ -14,17 +14,21 @@ export interface CommandOptions {
 export function command(argv: string[], options: CommandOptions = {}) {
   return new Promise<{ exitCode: number; stdout: string }>((resolve, reject) => {
     options.signal?.throwIfAborted();
+
     const child = spawn(argv[0]!, argv.slice(1), {
       stdio: ["pipe", "pipe", "pipe"],
       detached: true,
       env: { ...process.env, ORBENV: "" },
     });
+
     const input = options.stdinFile ? createReadStream(options.stdinFile) : null;
     let stdout = "";
     let failed = false;
     let failureCode = "EIO";
+
     const stop = () => {
       failed = true;
+
       if (child.pid) {
         try {
           process.kill(-child.pid, "SIGKILL");
@@ -33,13 +37,16 @@ export function command(argv: string[], options: CommandOptions = {}) {
         }
       }
     };
+
     const timer = setTimeout(() => {
       failureCode = "ETIMEDOUT";
       stop();
     }, options.timeoutMs ?? 120_000);
+
     options.signal?.addEventListener("abort", stop, { once: true });
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
+
       if (stdout.length > 2 * 1024 * 1024) stop();
       options.onOutput?.(chunk.toString());
     });
@@ -55,6 +62,7 @@ export function command(argv: string[], options: CommandOptions = {}) {
       input?.destroy();
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", stop);
+
       if (options.signal?.aborted) reject(options.signal.reason);
       else if (failed)
         reject(
@@ -64,6 +72,7 @@ export function command(argv: string[], options: CommandOptions = {}) {
         );
       else resolve({ exitCode: code ?? 1, stdout });
     });
+
     if (input) input.on("error", stop).pipe(child.stdin);
     else child.stdin.end(options.stdin ?? "");
   });
@@ -71,9 +80,11 @@ export function command(argv: string[], options: CommandOptions = {}) {
 
 export async function checked(argv: string[], options: CommandOptions = {}) {
   const result = await command(argv, options);
+
   if (result.exitCode !== 0)
     throw new Error(
       `Orbisa ${argv[0]?.split("/").at(-1)} command failed (exit ${result.exitCode}).`,
     );
+
   return result.stdout;
 }

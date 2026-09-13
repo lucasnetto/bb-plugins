@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Match } from "effect";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../../shared/contract";
 import type { GithubReviewAction, GithubReviewState } from "../../shared/github-review-contract";
@@ -17,12 +18,15 @@ export function useGithubReview(threadId: string | null, url: string) {
   const writing = useRef(false);
   const generation = useRef(0);
   const reading = useRef(false);
+
   const refresh = useCallback(async () => {
     if (reading.current || writing.current) return;
     reading.current = true;
     const current = ++generation.current;
+
     try {
       const next = await rpc.call("githubReview", { threadId, url });
+
       if (!alive.current || current !== generation.current) return;
       setState((old) => (JSON.stringify(old) === JSON.stringify(next) ? old : next));
       setSynced(true);
@@ -34,18 +38,23 @@ export function useGithubReview(threadId: string | null, url: string) {
       }
     } finally {
       reading.current = false;
+
       if (alive.current && current !== generation.current && !writing.current) void refresh();
     }
   }, [rpc, threadId, url]);
+
   useEffect(() => {
     alive.current = true;
     void refresh();
+
     const onFocus = () => {
       if (document.visibilityState !== "hidden") void refresh();
     };
+
     const timer = window.setInterval(onFocus, 30000);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
+
     return () => {
       alive.current = false;
       generation.current++;
@@ -54,6 +63,7 @@ export function useGithubReview(threadId: string | null, url: string) {
       document.removeEventListener("visibilitychange", onFocus);
     };
   }, [refresh]);
+
   const mutate = async (action: GithubReviewAction) => {
     if (writing.current || !synced) return false;
     writing.current = true;
@@ -61,19 +71,22 @@ export function useGithubReview(threadId: string | null, url: string) {
     setBusy(true);
     setNotice("Saving…");
     setWriteError("");
+
     try {
       const receipt = await rpc.call("githubReviewMutate", { threadId, url, action });
+
       if (alive.current) {
         if (action.kind === "submit") setPublishedUrl(receipt.url);
         setSynced(false);
         setNotice(
-          action.kind === "submit"
-            ? "Review submitted to GitHub."
-            : action.kind === "discard"
-              ? "Review discarded on GitHub."
-              : "Saved to GitHub.",
+          Match.value(action.kind).pipe(
+            Match.when("submit", () => "Review submitted to GitHub."),
+            Match.when("discard", () => "Review discarded on GitHub."),
+            Match.orElse(() => "Saved to GitHub."),
+          ),
         );
       }
+
       return true;
     } catch (cause) {
       if (alive.current) {
@@ -83,14 +96,18 @@ export function useGithubReview(threadId: string | null, url: string) {
         );
         setSynced(false);
       }
+
       return false;
     } finally {
       writing.current = false;
+
       if (alive.current) setBusy(false);
+
       // Do not retry writes. Read the authoritative state, independently of the write result.
       if (!reading.current) void refresh();
     }
   };
+
   return {
     state,
     publishedUrl,

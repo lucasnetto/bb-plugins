@@ -6,7 +6,9 @@ import plugin from "../../server";
 import { parsePrUrl } from "../../src/shared/links-contract";
 
 const url = "https://github.com/org/api/pull/42";
+
 const other = "https://github.com/org/web/pull/7";
+
 async function setup() {
   let thread = makeThreadResponse({ id: "t1", status: "idle", environmentId: "env" });
   let childBusy = false;
@@ -14,6 +16,7 @@ async function setup() {
   let failedUrl = "";
   let archiveFails = false;
   let duringFetch = () => {};
+
   const initial = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -24,6 +27,7 @@ async function setup() {
         archive: async () => {
           if (archiveFails) throw new Error("Archive failed");
           thread = { ...thread, archivedAt: 10 };
+
           return { thread };
         },
       },
@@ -31,8 +35,10 @@ async function setup() {
     },
     experimental_callHostRpc: async ({ input }) => {
       const request = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(input);
+
       if (request.url === failedUrl) throw new Error("GitHub unavailable");
       duringFetch();
+
       return {
         ...parsePrUrl(request.url),
         title: "Change",
@@ -41,8 +47,10 @@ async function setup() {
       };
     },
   });
+
   let harness = initial.harness;
   await plugin(initial.bb);
+
   return {
     states,
     enable: (autoSettle: boolean) => harness.behavior.setSettings({ autoSettle }),
@@ -76,6 +84,7 @@ async function setup() {
 
 test("all PRs must be closed or merged; empty, open and failed lookups never settle", async () => {
   const h = await setup();
+
   try {
     await h.sweep();
     assert.equal(h.archived(), false);
@@ -98,14 +107,17 @@ test("all PRs must be closed or merged; empty, open and failed lookups never set
 
 test("busy, queued and hidden threads wait; an idle thread settles on the next pass", async () => {
   const h = await setup();
+
   try {
     await h.link();
     h.states.set(url, "CLOSED");
+
     for (const status of ["active", "starting", "pending", "stopping", "error"] as const) {
       h.setThread({ status });
       await h.sweep();
       assert.equal(h.archived(), false);
     }
+
     h.setThread({ status: "idle", queuedMessageCount: 1 });
     await h.sweep();
     assert.equal(h.archived(), false);
@@ -129,6 +141,7 @@ test("busy, queued and hidden threads wait; an idle thread settles on the next p
 
 test("rechecks thread activity after GitHub calls", async () => {
   const h = await setup();
+
   try {
     await h.link();
     h.states.set(url, "MERGED");
@@ -142,6 +155,7 @@ test("rechecks thread activity after GitHub calls", async () => {
 
 test("Un-settle survives reload and reopening or reclosing the same PR", async () => {
   const h = await setup();
+
   try {
     await h.link();
     h.states.set(url, "CLOSED");
@@ -163,6 +177,7 @@ test("Un-settle survives reload and reopening or reclosing the same PR", async (
 
 test("a new PR allows settlement after Un-settle, and an archive failure is retried", async () => {
   const h = await setup();
+
   try {
     await h.link();
     h.states.set(url, "MERGED");
@@ -186,6 +201,7 @@ test("a new PR allows settlement after Un-settle, and an archive failure is retr
 
 test("removing or relinking previously settled PRs never counts as a new PR", async () => {
   const h = await setup();
+
   try {
     await h.link();
     await h.link(other);
@@ -208,6 +224,7 @@ test("removing or relinking previously settled PRs never counts as a new PR", as
 
 test("automatic settling can be disabled without losing its previous settlement history", async () => {
   const h = await setup();
+
   try {
     await h.link();
     h.states.set(url, "MERGED");

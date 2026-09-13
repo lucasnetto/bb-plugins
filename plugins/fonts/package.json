@@ -6,6 +6,9 @@
     "build": "bb plugin build",
     "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/fonts"
   },
+  "dependencies": {
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@get-bb/plugin-sdk": "catalog:",
     "@pierre/diffs": "catalog:",

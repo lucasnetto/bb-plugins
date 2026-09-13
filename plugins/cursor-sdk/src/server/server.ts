@@ -6,9 +6,11 @@ import { rpcContract, RUNTIME_CHANGED } from "../shared/runtime-settings.js";
 
 export default function plugin(bb: BbPluginApi) {
   const directory = basename(bb.server.experimental_dataDir);
+
   if (directory !== ".bb" && directory !== ".bb-work")
     throw new Error("Cursor SDK requires a configured Personal or Work profile.");
   const profile = directory === ".bb-work" ? "work" : "personal";
+
   const settings = bb.settings.define({
     cloudAgents: {
       type: "boolean",
@@ -18,6 +20,7 @@ export default function plugin(bb: BbPluginApi) {
       default: false,
     },
   });
+
   settings.onChange((next) => bb.realtime.publish(RUNTIME_CHANGED, next));
   bb.rpc.register(rpcContract, {
     runtimeGet: () => Effect.runPromise(foreign(() => settings.get())),

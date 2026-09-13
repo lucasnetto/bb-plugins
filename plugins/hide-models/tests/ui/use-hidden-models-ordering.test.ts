@@ -6,21 +6,25 @@ import { HIDDEN_CHANGED, type CatalogProvider, type HiddenModel } from "../../sr
 import { CHANGED_EVENT, readCache } from "../../src/ui/lib/hidden-model-cache";
 
 installTestPluginRuntime();
+
 const { useHiddenModels } = await import("../../src/ui/hooks/useHiddenModels");
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (cause: Error) => void;
+
   const promise = new Promise<T>((yes, no) => {
     resolve = yes;
     reject = no;
   });
+
   return { promise, resolve, reject };
 }
 
 const models = (name: string): HiddenModel[] => [
   { providerId: "work", model: name, displayName: name },
 ];
+
 const providers: CatalogProvider[] = [
   {
     id: "work",
@@ -38,10 +42,13 @@ function mount(strict = false) {
   const writes: ReturnType<typeof deferred<{ hidden: HiddenModel[] }>>[] = [];
   const catalogs: ReturnType<typeof deferred<{ providers: CatalogProvider[] }>>[] = [];
   let state!: ReturnType<typeof useHiddenModels>;
+
   function Probe() {
     state = useHiddenModels();
+
     return null;
   }
+
   const slot = renderSlot(
     { component: Probe },
     {},
@@ -50,21 +57,25 @@ function mount(strict = false) {
         hidden_get: () => {
           const response = deferred<{ hidden: HiddenModel[] }>();
           reads.push(response);
+
           return response.promise;
         },
         hidden_set: () => {
           const response = deferred<{ hidden: HiddenModel[] }>();
           writes.push(response);
+
           return response.promise;
         },
         catalog: () => {
           const response = deferred<{ providers: CatalogProvider[] }>();
           catalogs.push(response);
+
           return response.promise;
         },
       },
     },
   );
+
   return {
     slot,
     reads,
@@ -223,6 +234,7 @@ test.each(["resolve", "reject"] as const)(
     hook.slot.lifecycle.unmount();
     const changed = vi.fn();
     window.addEventListener(CHANGED_EVENT, changed);
+
     try {
       const savedState = hook.state;
       await act(async () => {

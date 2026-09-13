@@ -31,11 +31,13 @@ test("settings retain defaults and trim updates while enforcing only the strict 
 
 test("snooze timestamps preserve integer and Date limits through Standard Schema", async () => {
   const validate = snoozeContract.snoozed_set.input["~standard"].validate;
+
   for (const until of [null, 0, 8_640_000_000_000_000]) {
     expect(await validate({ threadId: "one", until })).toEqual({
       value: { threadId: "one", until },
     });
   }
+
   for (const until of [-1, 1.5, NaN, Infinity, 8_640_000_000_000_001]) {
     expect((await validate({ threadId: "one", until })).issues).toBeDefined();
   }

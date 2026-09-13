@@ -150,24 +150,29 @@ type CoreIconName = keyof typeof CORE_ICON_MAP;
 
 export type IconName = CoreIconName | ExtendedIconName;
 
+// SAFETY: CORE_ICON_MAP is a local object literal with exactly these enumerable string keys.
 const CORE_ICON_NAMES = Object.keys(CORE_ICON_MAP) as readonly CoreIconName[];
 
 export const ICON_NAMES: readonly IconName[] = [...CORE_ICON_NAMES, ...EXTENDED_ICON_NAMES];
 
-const CORE_ICON_LOOKUP: Readonly<Record<string, IconSvgElement | undefined>> = CORE_ICON_MAP;
+const CORE_ICON_LOOKUP = new Map<string, IconSvgElement>(Object.entries(CORE_ICON_MAP));
 
 let extendedIconsLoad: Promise<void> | null = null;
 
 export function preloadExtendedIcons(): Promise<void> {
   if (getExtendedIcons() !== null) return Promise.resolve();
-  extendedIconsLoad ??= import("./icon-extended").then(
-    () => undefined,
-    (error: unknown) => {
-      extendedIconsLoad = null;
-      throw error;
-    },
-  );
+  extendedIconsLoad ??= loadExtendedIcons();
+
   return extendedIconsLoad;
+}
+
+async function loadExtendedIcons(): Promise<void> {
+  try {
+    await import("./icon-extended");
+  } catch (error) {
+    extendedIconsLoad = null;
+    throw error;
+  }
 }
 
 const EMPTY_ICON: IconSvgElement = [];
@@ -187,7 +192,8 @@ export function Icon({
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
-  const coreIcon = CORE_ICON_LOOKUP[name];
+  const coreIcon = CORE_ICON_LOOKUP.get(name);
+
   if (coreIcon !== undefined) {
     return (
       <HugeiconsIcon
@@ -200,6 +206,7 @@ export function Icon({
       />
     );
   }
+
   return (
     <ExtendedIcon
       name={name}
@@ -220,10 +227,13 @@ function ExtendedIcon({
 }: IconProps) {
   const extendedIcons: Readonly<Record<string, IconSvgElement | undefined>> | null =
     useSyncExternalStore(subscribeExtendedIcons, getExtendedIcons, getExtendedIcons);
+
   const icon = extendedIcons?.[name];
+
   if (icon === undefined) {
     void preloadExtendedIcons().catch(() => undefined);
   }
+
   return (
     <HugeiconsIcon
       icon={icon ?? EMPTY_ICON}

@@ -28,6 +28,7 @@ export function RuntimeDefault() {
 
   useRealtime(RUNTIME_CHANGED, (payload) => {
     const parsed = runtimeSettingsSchema.safeParse(payload);
+
     if (!parsed.success) return;
     revision.current++;
     setCloud(parsed.data.cloudAgents);
@@ -48,6 +49,7 @@ export function RuntimeDefault() {
       .catch(() => {
         if (mounted) setError("Could not load Cursor default.");
       });
+
     return () => {
       mounted = false;
     };
@@ -60,8 +62,10 @@ export function RuntimeDefault() {
     setSaving(true);
     setError(null);
     composer.setInputLock(true);
+
     try {
       const value = await rpc.call("runtimeSet", { cloudAgents: !cloud });
+
       if (current === revision.current) setCloud(value.cloudAgents);
     } catch {
       setError("Could not save Cursor default. Try again.");
@@ -71,6 +75,7 @@ export function RuntimeDefault() {
       composer.setInputLock(false);
     }
   };
+
   return (
     <div className="cursor-runtime-default">
       <button

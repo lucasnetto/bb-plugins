@@ -5,25 +5,34 @@ import { sync, type createRuntime } from "./server-effects";
 import { reasonSchema } from "../shared/links-contract";
 import type { registerLinks } from "./links-server";
 
-function toolResult(value: unknown) {
+type LinkToolHandlers = Pick<
+  ReturnType<typeof registerLinks>,
+  "linkedLink" | "linkedUnlink" | "linkedList"
+>;
+
+type LinkToolResult = Effect.Success<ReturnType<LinkToolHandlers[keyof LinkToolHandlers]>>;
+
+function toolResult(value: LinkToolResult) {
   const text = JSON.stringify(value);
+
   // Match BB's documented agent-facing CLI transport ceiling.
   if (Buffer.byteLength(text) > PLUGIN_CLI_OUTPUT_MAX_BYTES)
     throw new Error(
       "Too many linked PRs to return through the agent transport. Open the Linked PRs panel.",
     );
+
   return text;
 }
+
 export function registerLinkTools(
   bb: BbPluginApi,
   runtime: ReturnType<typeof createRuntime>,
-  handlers: Pick<ReturnType<typeof registerLinks>, "linkedLink" | "linkedUnlink" | "linkedList">,
+  handlers: LinkToolHandlers,
 ) {
   // The SDK requires Zod for validated agent-tool parameters. RPC uses Standard Schema.
   bb.agents.registerTool({
     name: "link_pull_request",
-    description:
-      "Use every time you successfully create a PR to link it to the current BB thread.",
+    description: "Use every time you successfully create a PR to link it to the current BB thread.",
     parameters: z.object({ url: z.string(), reason: z.enum(reasonSchema.literals) }),
     execute: (input, ctx) =>
       runtime.runPromise(

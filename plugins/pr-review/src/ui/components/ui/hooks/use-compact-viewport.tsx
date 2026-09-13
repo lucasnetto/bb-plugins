@@ -25,8 +25,10 @@ export function CompactViewportOverrideProvider({
 export function useIsCompactViewport(): boolean {
   const override = useContext(CompactViewportOverrideContext);
   const isCompactViewport = useMediaQuery(COMPACT_VIEWPORT_QUERY);
+
   if (override !== null) {
     return override;
   }
+
   return isCompactViewport;
 }

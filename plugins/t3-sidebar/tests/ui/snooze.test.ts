@@ -10,6 +10,7 @@ test("snooze overrides pins and expiry restores the active section", () => {
     scopeProjectId: null,
     nowMs: 50,
   };
+
   expect(partitionThreads(input).snoozed).toHaveLength(1);
   expect(partitionThreads({ ...input, nowMs: 100 }).pinned).toHaveLength(1);
   expect(partitionThreads({ ...input, threads: [thread], nowMs: 200 }).active).toHaveLength(1);
@@ -22,6 +23,7 @@ test("running completion stays snoozed, pending input is visible, scopes and arc
     scopeProjectId: null,
     nowMs: 50,
   };
+
   expect(
     partitionThreads({ ...input, threads: [{ ...thread, isUnread: true, latestAttentionAt: 40 }] })
       .snoozed,
@@ -61,6 +63,7 @@ test("idle time never settles a live thread", () => {
     scopeProjectId: null,
     nowMs: Number.MAX_SAFE_INTEGER,
   });
+
   expect(result.active).toEqual([thread]);
   expect(result.settled).toEqual([]);
 });

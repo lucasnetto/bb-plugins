@@ -5,6 +5,7 @@ import type { SnoozedMap } from "../../shared/snooze-contract";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 
 export const SETTLED_TAIL_INITIAL_COUNT = 10;
+
 export const SETTLED_TAIL_PAGE_COUNT = 25;
 
 // ── Status model ─────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ export function resolveThreadStatus(thread: StatusInput): SidebarThreadStatus {
   if (thread.hasPendingInteraction || thread.indicator === "waiting-for-input") {
     return "input";
   }
+
   switch (thread.indicator) {
     case "runtime":
     case "workflow":
@@ -37,10 +39,15 @@ export function resolveThreadStatus(thread: StatusInput): SidebarThreadStatus {
     default:
       break;
   }
+
   const { workflows, backgroundAgents, backgroundCommands, planMode, goals } = thread.activity;
+
   if (workflows + backgroundAgents + backgroundCommands > 0) return "working";
+
   if (planMode > 0) return "plan";
+
   if (goals > 0) return "monitoring";
+
   return "ready";
 }
 
@@ -123,24 +130,31 @@ export function threadTitle(thread: Pick<PluginSidebarThread, "title" | "titleFa
 }
 
 const MINUTE = 60_000;
+
 const HOUR = 60 * MINUTE;
+
 const DAY = 24 * HOUR;
 
 /** Compact relative label, t3code style: "now", "5m", "3h", "2d", "Sep 1". */
 export function formatCompactTime(timestampMs: number, nowMs: number): string {
   if (!Number.isFinite(timestampMs)) return "";
   const elapsed = Math.max(0, nowMs - timestampMs);
+
   if (elapsed < MINUTE) return "now";
+
   if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)}m`;
+
   if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)}h`;
+
   if (elapsed < 7 * DAY) return `${Math.floor(elapsed / DAY)}d`;
   const date = new Date(timestampMs);
   const sameYear = date.getFullYear() === new Date(nowMs).getFullYear();
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(sameYear ? {} : { year: "numeric" }),
-  });
+
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+
+  if (!sameYear) options.year = "numeric";
+
+  return date.toLocaleDateString(undefined, options);
 }
 
 // ── Partition ────────────────────────────────────────────────────────
@@ -166,6 +180,7 @@ export function classifyThread(
 ): SidebarSection {
   if (thread.isArchived) return "settled";
   const snooze = input.snoozed?.[thread.id];
+
   if (
     snooze &&
     snooze.until > input.nowMs &&
@@ -173,6 +188,7 @@ export function classifyThread(
     thread.indicator !== "waiting-for-input"
   )
     return "snoozed";
+
   return thread.isPinned ? "pinned" : "active";
 }
 
@@ -180,10 +196,12 @@ export function partitionThreads<T extends PluginSidebarThread>(
   input: PartitionInput<T>,
 ): Partition<T> {
   const sections: Partition<T> = { pinned: [], active: [], settled: [], snoozed: [] };
+
   for (const thread of input.threads) {
     if (input.scopeProjectId !== null && thread.projectId !== input.scopeProjectId) continue;
     sections[classifyThread(thread, input)].push(thread);
   }
+
   return {
     pinned: sortByCreated(sections.pinned),
     active: sortByCreated(sections.active),
@@ -235,17 +253,22 @@ export function visibleSettledThreads<T extends Pick<PluginSidebarThread, "id">>
   expanded: boolean;
   visibleCount: number;
   activeThreadId: string | null;
-}): { rows: T[]; hiddenCount: number } {
+}) {
   if (!input.expanded) {
     const routeThread = input.settled.find((thread) => thread.id === input.activeThreadId);
+
     return { rows: routeThread ? [routeThread] : [], hiddenCount: 0 };
   }
+
   const head = input.settled.slice(0, Math.max(0, input.visibleCount));
+
   const hasActive =
     input.activeThreadId === null || head.some((thread) => thread.id === input.activeThreadId);
+
   const rows = hasActive
     ? head
     : [...head, ...input.settled.filter((thread) => thread.id === input.activeThreadId)];
+
   return { rows, hiddenCount: input.settled.length - rows.length };
 }
 
@@ -260,7 +283,10 @@ export function pullRequestBadgeClass(input: {
 }): string {
   // Match t3code's ThreadStatusIndicators.prStatusIndicator in both themes.
   if (input.state === "merged") return "text-violet-600 dark:text-violet-300/90";
+
   if (input.state === "closed") return "text-red-600 dark:text-red-300/90";
+
   if (input.state === "draft") return "text-zinc-500 dark:text-zinc-400/80";
+
   return "text-emerald-600 dark:text-emerald-300/90";
 }

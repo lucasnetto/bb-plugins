@@ -16,20 +16,25 @@ export function ResizableFilesSidebar({
   useEffect(() => {
     const element = sidebar.current;
     const parent = element?.parentElement;
+
     if (!element || !parent) return;
+
     const observer = new ResizeObserver(() =>
       setSize({
         width: element.getBoundingClientRect().width,
         available: parent.getBoundingClientRect().width,
       }),
     );
+
     observer.observe(element);
     observer.observe(parent);
+
     return () => observer.disconnect();
   }, []);
 
   function resize(next: number) {
     const available = sidebar.current?.parentElement?.getBoundingClientRect().width;
+
     if (!available) return;
     onWidthChange(Math.max(Math.min(144, available * 0.7), Math.min(next, available * 0.7)));
   }
@@ -67,6 +72,7 @@ export function ResizableFilesSidebar({
         }}
         onPointerMove={(event) => {
           const start = drag.current;
+
           if (start?.pointerId === event.pointerId) resize(start.width + start.x - event.clientX);
         }}
         onPointerUp={(event) => {
@@ -85,6 +91,7 @@ export function ResizableFilesSidebar({
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home")
             return;
           event.preventDefault();
+
           if (event.key === "Home") onWidthChange(null);
           else
             resize(

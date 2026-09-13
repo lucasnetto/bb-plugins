@@ -18,6 +18,7 @@ export function RemoveProjectDialog({
   onRemove: () => Promise<void>;
 }) {
   const portalProps = usePortalScopeProps();
+
   return (
     <Dialog.Root
       open={open}

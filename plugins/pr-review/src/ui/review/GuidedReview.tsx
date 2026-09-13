@@ -8,6 +8,7 @@ import { StyledDiffCodeView, type StyledDiffCodeViewOptions } from "./StyledDiff
 import { Button } from "../components/ui/button";
 
 type Selection = CodeViewProps<undefined, undefined>["selectedLines"];
+
 type DiffProps = {
   annotation?: CodeViewProps<undefined, undefined>["renderAnnotation"];
   options: StyledDiffCodeViewOptions<undefined>;
@@ -15,6 +16,7 @@ type DiffProps = {
   onSelection: (selection: Selection) => void;
   header: (item: CodeViewDiffItem | { id: string; type: "file" }) => ReactNode;
 };
+
 type Chapter = ReturnType<typeof guideChapters>[number];
 
 function GuideFile({
@@ -39,14 +41,18 @@ function GuideFile({
   const [near, setNear] = useState(typeof IntersectionObserver === "undefined");
   useEffect(() => {
     if (!shell.current || typeof IntersectionObserver === "undefined") return;
+
     const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), {
       rootMargin: "600px 0px",
     });
+
     observer.observe(shell.current);
+
     return () => observer.disconnect();
   }, []);
   const items = useMemo(() => (item ? [item] : []), [item]);
   const height = item?.collapsed ? 40 : 520;
+
   return (
     <div
       ref={(element) => {
@@ -120,6 +126,7 @@ function ChapterCard({
   const files = useRef(new Map<string, HTMLDivElement>());
   const collapsed = override ?? reviewed;
   const position = `${String(index + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+
   const checkbox = (
     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <input
@@ -135,6 +142,7 @@ function ChapterCard({
       Reviewed
     </label>
   );
+
   return (
     <article
       aria-label={chapter.title}
@@ -181,6 +189,7 @@ function ChapterCard({
               <div className="mt-5 space-y-2">
                 {chapter.diffs.map((file) => {
                   const slash = file.file.lastIndexOf("/");
+
                   return (
                     <button
                       key={file.file}
@@ -252,6 +261,7 @@ export function GuidedReview({
 }) {
   const chapters = useMemo(() => guideChapters(saved.guide), [saved.guide]);
   const byPath = useMemo(() => new Map(items.map((item) => [item.fileDiff.name, item])), [items]);
+
   return (
     <div
       aria-label="Guided review chapters"

@@ -9,6 +9,7 @@ export const hiddenModelSchema = Schema.Struct({
   // display name because bb's picker exposes no model-id DOM attribute.
   displayName: Schema.String.check(Schema.isMinLength(1)),
 });
+
 export type HiddenModel = Schema.Schema.Type<typeof hiddenModelSchema>;
 
 const catalogModelSchema = Schema.Struct({
@@ -17,6 +18,7 @@ const catalogModelSchema = Schema.Struct({
   description: Schema.String,
   isDefault: Schema.Boolean,
 });
+
 const catalogProviderSchema = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
@@ -25,6 +27,7 @@ const catalogProviderSchema = Schema.Struct({
   models: Schema.mutable(Schema.Array(catalogModelSchema)),
   loadError: Schema.NullOr(Schema.String),
 });
+
 export type CatalogProvider = Schema.Schema.Type<typeof catalogProviderSchema>;
 
 export const rpcContract = defineRpcContract({

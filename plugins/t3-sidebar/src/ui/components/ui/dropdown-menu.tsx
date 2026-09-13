@@ -27,8 +27,10 @@ import { Icon } from "../../components/ui/icon.js";
 
 const MENU_ITEM_NEUTRAL_STATE_CLASS =
   "focus:bg-state-hover focus:text-foreground data-[last-hovered]:bg-state-hover data-[last-hovered]:text-foreground";
+
 const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
   "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15";
+
 const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
   "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
@@ -95,6 +97,7 @@ const DropdownMenuTrigger = React.forwardRef<
         if (!open) {
           blurActiveKeyboardInputBeforeOverlayOpen();
         }
+
         preventOverlayTriggerSelection(event);
       }}
       {...props}
@@ -103,6 +106,7 @@ const DropdownMenuTrigger = React.forwardRef<
     </DropdownMenuPrimitive.Trigger>
   );
 });
+
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
 const DropdownMenuContent = React.forwardRef<
@@ -116,6 +120,7 @@ const DropdownMenuContent = React.forwardRef<
 
   if (isCompactViewport) {
     const domProps = stripRadixContentProps(props);
+
     return (
       <ResponsiveDrawerShell
         open={open}
@@ -147,6 +152,7 @@ const DropdownMenuContent = React.forwardRef<
           if (!isLastInputKeyboard()) {
             event.preventDefault();
           }
+
           onCloseAutoFocus?.(event);
         }}
         className={cn(
@@ -160,14 +166,27 @@ const DropdownMenuContent = React.forwardRef<
     </DropdownMenuPrimitive.Portal>
   );
 });
+
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
 function createSelectEvent(): Event {
   return new Event("select", { cancelable: true });
 }
 
+function useElementRef(ref: React.ForwardedRef<HTMLElement>) {
+  return React.useCallback(
+    (element: HTMLElement | null) => {
+      if (ref === null) return;
+
+      if ("current" in ref) ref.current = element;
+      else return ref(element);
+    },
+    [ref],
+  );
+}
+
 const DropdownMenuItem = React.forwardRef<
-  React.ComponentRef<typeof DropdownMenuPrimitive.Item>,
+  HTMLElement,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
     variant?: "default" | "destructive";
@@ -191,6 +210,8 @@ const DropdownMenuItem = React.forwardRef<
     ref,
   ) => {
     const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const elementRef = useElementRef(ref);
+
     const { hoverProps } = useMenuItemHover({
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
@@ -199,7 +220,7 @@ const DropdownMenuItem = React.forwardRef<
     if (isCompactViewport) {
       return (
         <button
-          ref={ref as React.RefCallback<HTMLButtonElement> | null}
+          ref={elementRef}
           type="button"
           role={role}
           disabled={disabled}
@@ -216,6 +237,7 @@ const DropdownMenuItem = React.forwardRef<
             if (disabled) return;
             const event = createSelectEvent();
             onSelect?.(event);
+
             if (!event.defaultPrevented) {
               onOpenChange(false);
             }
@@ -228,7 +250,7 @@ const DropdownMenuItem = React.forwardRef<
 
     return (
       <DropdownMenuPrimitive.Item
-        ref={ref}
+        ref={elementRef}
         className={cn(
           "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
           LIST_HOVER_TRANSITION,
@@ -251,10 +273,11 @@ const DropdownMenuItem = React.forwardRef<
     );
   },
 );
+
 DropdownMenuItem.displayName = "DropdownMenuItem";
 
 const DropdownMenuCheckboxItem = React.forwardRef<
-  React.ComponentRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  HTMLElement,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
 >(
   (
@@ -273,6 +296,8 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     ref,
   ) => {
     const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const elementRef = useElementRef(ref);
+
     const { hoverProps } = useMenuItemHover({
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
@@ -281,7 +306,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     if (isCompactViewport) {
       return (
         <button
-          ref={ref as React.RefCallback<HTMLButtonElement> | null}
+          ref={elementRef}
           type="button"
           role="menuitemcheckbox"
           aria-checked={checked === "indeterminate" ? "mixed" : checked === true}
@@ -297,6 +322,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
             const event = createSelectEvent();
             onSelect?.(event);
             onCheckedChange?.(checked === "indeterminate" ? true : !checked);
+
             if (!event.defaultPrevented) {
               onOpenChange(false);
             }
@@ -319,7 +345,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 
     return (
       <DropdownMenuPrimitive.CheckboxItem
-        ref={ref}
+        ref={elementRef}
         className={cn(
           "relative flex cursor-default select-none items-center rounded-sm py-[0.3125rem] pl-2 pr-8 text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
           LIST_HOVER_TRANSITION,
@@ -349,6 +375,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     );
   },
 );
+
 DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
 
 function DropdownMenuRadioGroup({
@@ -373,6 +400,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     ref,
   ) => {
     const { isCompactViewport } = useResponsiveMenu();
+
     const { hoverProps } = useMenuItemHover({
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
@@ -404,6 +432,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     );
   },
 );
+
 DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
 
 const DropdownMenuLabel = React.forwardRef<
@@ -443,6 +472,7 @@ const DropdownMenuLabel = React.forwardRef<
     </DropdownMenuPrimitive.Label>
   );
 });
+
 DropdownMenuLabel.displayName = "DropdownMenuLabel";
 
 const DropdownMenuSeparator = React.forwardRef<
@@ -452,12 +482,7 @@ const DropdownMenuSeparator = React.forwardRef<
   const { isCompactViewport } = useResponsiveMenu();
 
   if (isCompactViewport) {
-    return (
-      <hr
-        ref={ref as React.RefCallback<HTMLHRElement> | null}
-        className={cn("-mx-1 my-1 h-px border-0 bg-muted", className)}
-      />
-    );
+    return <hr ref={ref} className={cn("-mx-1 my-1 h-px border-0 bg-muted", className)} />;
   }
 
   return (
@@ -468,6 +493,7 @@ const DropdownMenuSeparator = React.forwardRef<
     />
   );
 });
+
 DropdownMenuSeparator.displayName = "DropdownMenuSeparator";
 
 const DropdownMenuGroup = React.forwardRef<
@@ -490,6 +516,7 @@ const DropdownMenuGroup = React.forwardRef<
     </DropdownMenuPrimitive.Group>
   );
 });
+
 DropdownMenuGroup.displayName = "DropdownMenuGroup";
 
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
@@ -537,6 +564,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     );
   },
 );
+
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
 
 const DropdownMenuSubContent = React.forwardRef<
@@ -553,6 +581,7 @@ const DropdownMenuSubContent = React.forwardRef<
     {...props}
   />
 ));
+
 DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
 
 const DropdownMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) => {
@@ -560,6 +589,7 @@ const DropdownMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTML
     <span className={cn("ml-auto text-xs tracking-widest opacity-60", className)} {...props} />
   );
 };
+
 DropdownMenuShortcut.displayName = "DropdownMenuShortcut";
 
 export {

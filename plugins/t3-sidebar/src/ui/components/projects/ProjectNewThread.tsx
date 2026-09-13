@@ -28,6 +28,7 @@ export function ProjectNewThread({ projectId }: { projectId: string }) {
         if (!cancelled) setError(String(cause));
       },
     );
+
     return () => {
       cancelled = true;
     };
@@ -55,17 +56,19 @@ export function ProjectNewThread({ projectId }: { projectId: string }) {
   }
 
   const model = settings.model;
+
   const environment: NewThreadComposerProps["defaultEnvironment"] =
     settings.workspace === "default"
       ? undefined
       : {
           type: "host",
-          ...(settings.hostId ? { hostId: settings.hostId } : {}),
           workspace:
             settings.workspace === "local"
               ? { type: "unmanaged", path: null }
               : { type: "managed-worktree", baseBranch: { kind: "default" } },
         };
+
+  if (environment && settings.hostId) environment.hostId = settings.hostId;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -86,6 +89,7 @@ export function ProjectNewThread({ projectId }: { projectId: string }) {
         defaultEnvironment={environment}
         onSubmit={async (request) => {
           setError(null);
+
           try {
             // The native composer owns subsequent edits, including project
             // switches. Preserve its visible choices and input provenance.

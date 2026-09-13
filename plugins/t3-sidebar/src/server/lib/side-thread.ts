@@ -16,21 +16,25 @@ function isLiveSideThread(thread: Thread): boolean {
 
 export function createSideThreadHandlers(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
+
   const get = (threadId: string) =>
     call("threads.get", (signal) => bb.sdk.threads.get({ threadId, signal }));
 
   const status = Effect.fn("SideThread.status")(function* (threadId: string) {
     const thread = yield* get(threadId);
+
     return { canPromote: isLiveSideThread(thread) && thread.visibility === "hidden" };
   });
 
   const promote = Effect.fn("SideThread.promote")(function* (threadId: string) {
     const thread = yield* get(threadId);
+
     if (!isLiveSideThread(thread)) {
       return yield* sync("sideThread.validate", () => {
         throw new Error("Only an unarchived side chat can be promoted");
       });
     }
+
     // Repeated clicks from another client are harmless. Keep the same thread,
     // provider session, source lineage and environment; only change placement.
     if (thread.visibility !== "visible" || thread.parentThreadId !== null) {
@@ -38,7 +42,9 @@ export function createSideThreadHandlers(bb: BbPluginApi) {
         bb.sdk.threads.update({ threadId, visibility: "visible", parentThreadId: null }),
       );
     }
+
     yield* sync("sideThread.publish", () => bb.realtime.publish(SIDE_THREAD_CHANGED, {}));
+
     return { threadId };
   });
 

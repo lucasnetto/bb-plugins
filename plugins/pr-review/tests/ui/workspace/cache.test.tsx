@@ -11,8 +11,10 @@ afterEach(() => vi.restoreAllMocks());
 it("returns from thread B to A without refetching its overview, absent stack, or timeline", async () => {
   installTestPluginRuntime();
   const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
+
   function Panel() {
     const [thread, setThread] = useState("cache-A");
+
     return (
       <>
         <button onClick={() => setThread(thread === "cache-A" ? "cache-B" : "cache-A")}>
@@ -22,10 +24,12 @@ it("returns from thread B to A without refetching its overview, absent stack, or
       </>
     );
   }
+
   const prOverview = vi.fn(({ threadId }) => ({ ...overview, title: threadId }));
   const prStack = vi.fn(() => null);
   const prTimeline = vi.fn(() => ({ entries: [], nextPage: null, truncated: false }));
   const slot = renderSlot({ component: Panel }, {}, { rpc: { prOverview, prStack, prTimeline } });
+
   try {
     await slot.findByRole("heading", { name: "cache-A" });
     await waitFor(() => expect(prTimeline).toHaveBeenCalledTimes(1));
@@ -50,8 +54,10 @@ it("shares requests across remounts and keeps old data during expired or failed 
   const { useWorkspaceData } = await import("../../../src/ui/workspace/useWorkspaceData");
   let now = 100000;
   vi.spyOn(Date, "now").mockImplementation(() => now);
+
   function Review() {
     const data = useWorkspaceData("cache-pending", overview.url, true);
+
     return (
       <>
         <span>{data.detail?.title ?? "Loading"}</span>
@@ -61,8 +67,10 @@ it("shares requests across remounts and keeps old data during expired or failed 
       </>
     );
   }
+
   function Panel() {
     const [visible, setVisible] = useState(true);
+
     return (
       <>
         <button onClick={() => setVisible(!visible)}>Switch</button>
@@ -70,8 +78,10 @@ it("shares requests across remounts and keeps old data during expired or failed 
       </>
     );
   }
+
   let resolve!: (value: Overview) => void;
   let reject!: (reason: Error) => void;
+
   const prOverview = vi.fn(
     () =>
       new Promise<Overview>((done, fail) => {
@@ -79,7 +89,9 @@ it("shares requests across remounts and keeps old data during expired or failed 
         reject = fail;
       }),
   );
+
   const prStack = vi.fn(() => null);
+
   const slot = renderSlot(
     { component: Panel },
     {},
@@ -87,7 +99,9 @@ it("shares requests across remounts and keeps old data during expired or failed 
       rpc: { prOverview, prStack, prAction: () => ({ message: "Ready", pendingMergeId: null }) },
     },
   );
+
   const toggle = () => fireEvent.click(slot.getByText("Switch"));
+
   try {
     await waitFor(() => expect(prOverview).toHaveBeenCalledTimes(1));
     toggle();

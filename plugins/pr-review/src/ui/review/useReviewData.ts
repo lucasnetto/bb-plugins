@@ -6,6 +6,7 @@ import type { LinkedDetail } from "../../shared/links-contract";
 // Keep successful and in-flight requests across panel unmounts. Bound the cache
 // because PR details include patches; Refresh explicitly replaces the entry.
 const details = new Map<string, { value?: LinkedDetail; request: Promise<LinkedDetail> }>();
+
 const cacheKey = (threadId: string | null, url: string) => JSON.stringify([threadId, url]);
 
 export function useReviewData(threadId: string | null, url: string) {
@@ -22,13 +23,16 @@ export function useReviewData(threadId: string | null, url: string) {
   useEffect(() => {
     let disposed = false;
     let entry = details.get(key);
+
     if (!entry) {
       const request = threadId
         ? rpc.call("linkedDetail", { threadId, url })
         : rpc.call("reviewDraftDetail", { url });
+
       entry = { request };
       const created = entry;
       details.set(key, entry);
+
       if (details.size > 20) details.delete(details.keys().next().value!);
       void request.then(
         (value) => {
@@ -39,6 +43,7 @@ export function useReviewData(threadId: string | null, url: string) {
         },
       );
     }
+
     setLoading(!currentDetail.current);
     refreshing.current = true;
     setError("");
@@ -47,15 +52,18 @@ export function useReviewData(threadId: string | null, url: string) {
         (value) => {
           if (disposed) return;
           const previous = currentDetail.current;
+
           if (JSON.stringify(previous) !== JSON.stringify(value)) {
             currentDetail.current = value;
             setDetail(value);
+
             if (
               previous &&
               (previous.headRefOid !== value.headRefOid || previous.baseRefOid !== value.baseRefOid)
             )
               setRevision((current) => current + 1);
           }
+
           setSelectedPath((current) =>
             value.files.some((f) => f.path === current) ? current : (value.files[0]?.path ?? null),
           );
@@ -70,6 +78,7 @@ export function useReviewData(threadId: string | null, url: string) {
           refreshing.current = false;
         }
       });
+
     return () => {
       disposed = true;
     };
@@ -80,19 +89,23 @@ export function useReviewData(threadId: string | null, url: string) {
     details.delete(key);
     setRequestRevision((value) => value + 1);
   }, [key]);
+
   useEffect(() => {
     const background = () => {
       if (document.visibilityState !== "hidden") refresh();
     };
+
     window.addEventListener("focus", background);
     document.addEventListener("visibilitychange", background);
     const timer = window.setInterval(background, 60000);
+
     return () => {
       window.removeEventListener("focus", background);
       document.removeEventListener("visibilitychange", background);
       window.clearInterval(timer);
     };
   }, [refresh]);
+
   return {
     detail,
     error,

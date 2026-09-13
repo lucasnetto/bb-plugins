@@ -1,14 +1,16 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Schema, flow } from "effect";
 
 // Reserve half of the host's 8 MiB transport limit for JSON escaping/metadata.
 export const MAX_BYTES = 4 * 1024 * 1024;
+
 export class CommandError extends Schema.TaggedError<CommandError>()("CommandError", {
   operation: Schema.String,
   message: Schema.String,
   cause: Schema.Unknown,
 }) {}
+
 export class InputError extends Schema.TaggedError<InputError>()("InputError", {
   message: Schema.String,
 }) {}
@@ -20,6 +22,7 @@ export type Command = (
   signal?: AbortSignal,
   stdin?: string,
 ) => Promise<string>;
+
 export class Commands extends Context.Service<
   Commands,
   {
@@ -33,6 +36,7 @@ export class Commands extends Context.Service<
 >()("pr-review/Commands") {}
 
 const exec = promisify(execFile);
+
 const nativeCommand: Command = async (cwd, program, args, signal, stdin) => {
   const options = {
     cwd,
@@ -46,18 +50,22 @@ const nativeCommand: Command = async (cwd, program, args, signal, stdin) => {
       GH_PROMPT_DISABLED: "1",
     },
   };
+
   if (stdin === undefined) return (await exec(program, args, options)).stdout;
+
   return new Promise<string>((resolve, reject) => {
     const child = execFile(program, args, options, (error, stdout) => {
       if (error) reject(error);
       else resolve(stdout);
     });
+
     child.stdin?.on("error", () => {
       /* execFile reports command failure. */
     });
     child.stdin?.end(stdin);
   });
 };
+
 export const commandLayer = (run: Command = nativeCommand) =>
   Layer.succeed(
     Commands,
@@ -76,7 +84,9 @@ export const commandLayer = (run: Command = nativeCommand) =>
       ),
     }),
   );
+
 const live = commandLayer();
+
 export const command = Effect.fn("Host.command")(function* (
   cwd: string,
   program: string,
@@ -85,25 +95,28 @@ export const command = Effect.fn("Host.command")(function* (
 ) {
   return yield* (yield* Commands).run(cwd, program, args, stdin);
 });
+
 // Classify failures from non-schema parsers such as PR URLs.
 export const decode = <A>(read: () => A) =>
   Effect.try({
     try: read,
     catch: (cause) => new InputError({ message: String(cause) }),
   });
+
 export const invalid = (message: string) => Effect.fail(new InputError({ message }));
+
 export const runHost = <A, E>(
   effect: Effect.Effect<A, E, Commands>,
   signal?: AbortSignal,
   run?: Command,
 ) => {
   if (signal?.aborted) return Promise.reject<A>(signal.reason);
+
   return Effect.runPromise(effect.pipe(Effect.provide(run ? commandLayer(run) : live)), { signal });
 };
 
-export const decodeSchema = Effect.fn("Host.decode")(
-  <S extends Schema.Constraint>(schema: S, input: unknown) =>
-    Schema.decodeUnknownEffect(schema)(input).pipe(
-      Effect.mapError((cause) => new InputError({ message: cause.message })),
-    ),
-);
+export const decodeSchema = <S extends Schema.Constraint>(schema: S) =>
+  flow(
+    Schema.decodeUnknownEffect(schema),
+    Effect.mapError((cause) => new InputError({ message: cause.message })),
+  );

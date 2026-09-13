@@ -17,6 +17,7 @@ export const projectModelSchema = Schema.Struct({
   ]),
   serviceTier: Schema.optionalKey(Schema.Literals(["default", "fast"])),
 }).annotate({ parseOptions: { onExcessProperty: "ignore" } });
+
 export const preferencesSchema = Schema.Struct({
   model: Schema.NullOr(projectModelSchema).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   workspace: Schema.Literals(["default", "worktree", "local"]).pipe(
@@ -24,6 +25,7 @@ export const preferencesSchema = Schema.Struct({
   ),
   autoPull: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
+
 export const projectSettingsSchema = preferencesSchema.pipe(
   Schema.fieldsAssign({
     id: Schema.String,
@@ -33,7 +35,9 @@ export const projectSettingsSchema = preferencesSchema.pipe(
     resolvedModel: Schema.NullOr(projectModelSchema),
   }),
 );
+
 export type ProjectSettings = Schema.Schema.Type<typeof projectSettingsSchema>;
+
 export const projectSettingsContract = defineRpcContract({
   project_settings_get: {
     input: standardSchema(Schema.Struct({ projectId: Schema.String.check(Schema.isMinLength(1)) })),

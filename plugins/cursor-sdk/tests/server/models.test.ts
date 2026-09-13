@@ -38,6 +38,7 @@ const opus: SDKModel = {
     ),
   ),
 };
+
 const params = (selection: ReturnType<typeof resolveModel>) =>
   Object.fromEntries(selection.params?.map((p) => [p.id, p.value]) ?? []);
 
@@ -56,12 +57,14 @@ test("thinking and speed are controls, while context sizes remain separate model
     "xhigh",
     "max",
   ]);
+
   const changed = {
     ...opus,
     variants: opus.variants?.filter(
       (v) => !v.params.some((p) => p.id === "fast" && p.value === "true"),
     ),
   };
+
   expect(modelCatalog([changed]).map((m) => m.id)).toEqual(models.map((m) => m.id));
 });
 
@@ -69,6 +72,7 @@ test.each(["none", "low", "medium", "high", "xhigh", "max"] as const)(
   "resolves Opus %s without inventing parameters",
   (level) => {
     const model = modelCatalog([opus])[1];
+
     for (const tier of ["default", "fast"] as const) {
       const selected = resolveModel(model.model, [opus], level, tier);
       expect(opus.variants?.map((v) => v.params)).toContainEqual(selected.params);
@@ -77,6 +81,7 @@ test.each(["none", "low", "medium", "high", "xhigh", "max"] as const)(
         thinking: level === "none" ? "false" : "true",
         fast: String(tier === "fast"),
       });
+
       if (level !== "none") expect(params(selected).effort).toBe(level);
       else expect(params(selected).effort).not.toBe("none");
     }
@@ -93,6 +98,7 @@ test("legacy preset IDs accept the separate controls and preserve settings when 
       { id: "fast", value: "true" },
     ],
   };
+
   const id = encodeModel(legacy);
   const catalog = modelCatalog([opus]);
   expect(catalog.some((row) => row.id === id)).toBe(false);
@@ -117,6 +123,7 @@ test("boolean-only thinking is None or High and unsupported speed keeps the avai
       params: [{ id: "thinking", value: String(thinking) }],
     })),
   };
+
   const [row] = modelCatalog([model]);
   expect(row.displayName).toBe("Haiku");
   expect(row.defaultReasoningEffort).toBe("high");
@@ -140,6 +147,7 @@ test("numeric reasoning and fast mode resolve independently", () => {
       })),
     ),
   };
+
   const [row] = modelCatalog([model]);
   expect(modelCatalog([model])).toHaveLength(1);
   expect(params(resolveModel(row.model, [model], "high", "fast"))).toEqual({
@@ -163,6 +171,7 @@ test("models with only speed ignore an inherited reasoning setting", () => {
       params: [{ id: "fast", value: String(fast) }],
     })),
   };
+
   const [row] = modelCatalog([model]);
   expect(row.displayName).toBe("Composer");
   expect(params(resolveModel(row.model, [model], "medium", "default"))).toEqual({ fast: "false" });

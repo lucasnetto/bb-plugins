@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "../server";
-import { snapshotSchema } from "../contract";
+import { listInput, snapshotSchema } from "../contract";
 
 it("persists list pages across reloads, skips fresh fetches, and preserves data on failure", async () => {
   let fail = false;
@@ -10,6 +10,7 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
   let requests = 0;
   let release: (() => void) | undefined;
   let gate: Promise<void> | undefined;
+
   const row = (number: number) => ({
     url: `https://github.com/acme/api/pull/${number}`,
     repository: "acme/api",
@@ -19,6 +20,7 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
     isDraft: false,
     updatedAt: "2026-09-07",
   });
+
   let { bb, harness } = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -26,9 +28,12 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
     },
     experimental_callHostRpc: async ({ input }) => {
       requests++;
+
       if (gate) await gate;
+
       if (fail) throw new Error("GitHub unavailable");
-      const page = (input as { page: number }).page;
+      const page = listInput.parse(input).page;
+
       return {
         viewer: "lucas",
         rows: closed ? [] : [row(page)],
@@ -38,10 +43,13 @@ it("persists list pages across reloads, skips fresh fetches, and preserves data 
       };
     },
   });
+
   const read = async (view = "authored") =>
     snapshotSchema.parse(await harness.behavior.callRpc("savedList", { view }));
+
   const refresh = (force = true, loadMore = false) =>
     harness.behavior.callRpc("refreshList", { view: "authored", force, loadMore });
+
   try {
     await plugin(bb);
     expect((await read()).result).toBeNull();

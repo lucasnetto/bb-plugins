@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Match } from "effect";
 import { z } from "zod";
 import { command, decode, invalid } from "./host-effects";
 import { matchingCheckout } from "./checkout";
@@ -11,7 +11,26 @@ import {
   type Check,
 } from "../shared/workspace-contract";
 
-export const api = (root: string, path: string, method = "GET", body?: unknown) =>
+type RepositoryVariables = {
+  owner: string | undefined;
+  name: string | undefined;
+  number?: number;
+  sha?: string | null;
+  ids?: string[];
+};
+
+type BranchVariables = { id: string; head: string; method: string };
+
+type GraphqlVariables = RepositoryVariables | BranchVariables;
+
+type WorkspaceApiBody =
+  | { query: string; variables: GraphqlVariables }
+  | { sha: string; merge_method: "merge" | "squash" | "rebase"; merge_action: "default" }
+  | { title: string; body: string }
+  | { labels: string[] }
+  | { reviewers: string[]; team_reviewers: string[] };
+
+export const api = (root: string, path: string, method = "GET", body?: WorkspaceApiBody) =>
   command(
     root,
     "gh",
@@ -30,9 +49,16 @@ export const api = (root: string, path: string, method = "GET", body?: unknown) 
 export function json<A>(schema: z.ZodType<A>, raw: string) {
   return decode(() => schema.parse(JSON.parse(raw)));
 }
-export function graphql<A>(root: string, query: string, variables: object, schema: z.ZodType<A>) {
+
+export function graphql<A>(
+  root: string,
+  query: string,
+  variables: GraphqlVariables,
+  schema: z.ZodType<A>,
+) {
   return Effect.gen(function* () {
     const raw = yield* api(root, "graphql", "POST", { query, variables });
+
     const result = yield* json(
       z.object({
         data: z.unknown().optional(),
@@ -40,17 +66,23 @@ export function graphql<A>(root: string, query: string, variables: object, schem
       }),
       raw,
     );
+
     if (result.errors?.length)
       return yield* invalid(result.errors.map((e) => e.message).join("; "));
+
     return yield* decode(() => schema.parse(result.data));
   });
 }
+
 export const repositoryVariables = (url: string) => {
   const ref = parsePrUrl(url);
   const [owner, name] = ref.repository.split("/");
+
   return { ...ref, owner, name };
 };
+
 const nodes = <T extends z.ZodType>(schema: T) => z.object({ nodes: z.array(schema) });
+
 const rawCheck = z.object({
   __typename: z.string(),
   name: z.string().optional(),
@@ -61,8 +93,10 @@ const rawCheck = z.object({
   detailsUrl: z.string().nullable().optional(),
   targetUrl: z.string().nullable().optional(),
 });
+
 export function checkState(value: string | null | undefined): Check["state"] {
   if (value === "SUCCESS") return "success";
+
   if (
     [
       "FAILURE",
@@ -75,9 +109,12 @@ export function checkState(value: string | null | undefined): Check["state"] {
     ].includes(value ?? "")
   )
     return "failure";
+
   if (["NEUTRAL", "SKIPPED"].includes(value ?? "")) return "skipped";
+
   return "pending";
 }
+
 export const OVERVIEW_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   viewer{login}
   repository(owner:$owner,name:$name){viewerPermission mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
@@ -93,6 +130,7 @@ export const OVERVIEW_QUERY = `query($owner:String!,$name:String!,$number:Int!){
     }
   }
 }`;
+
 const overviewRaw = z.object({
   viewer: z.object({ login: z.string() }),
   repository: z.object({
@@ -154,8 +192,10 @@ const overviewRaw = z.object({
     }),
   }),
 });
+
 export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: string, url: string) {
   const ref = yield* decode(() => repositoryVariables(url));
+
   const [data, checkoutRoot] = yield* Effect.all(
     [
       graphql(
@@ -168,8 +208,10 @@ export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: str
     ],
     { concurrency: 2 },
   );
+
   const { pullRequest: pr, ...repo } = data.repository;
   const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts;
+
   return yield* decode(() =>
     overviewSchema.parse({
       ...pr,
@@ -216,7 +258,7 @@ export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: str
 
 const rawStack = z.object({
   number: z.number().int().positive(),
-  base: z.union([z.string(), z.object({ ref: z.string() })]),
+  base: z.union([z.string(), z.object({ ref: z.string() }).transform((base) => base.ref)]),
   pull_requests: z.array(
     z.object({
       number: z.number().int().positive(),
@@ -228,6 +270,7 @@ const rawStack = z.object({
     }),
   ),
 });
+
 // Native stacks are ordered bottom to top. A preview-unavailable 404 means no stack;
 // auth/network failures remain errors so a merge can never silently lose its scope.
 export const prStack = Effect.fn("PrWorkspace.stack")(function* (
@@ -236,16 +279,21 @@ export const prStack = Effect.fn("PrWorkspace.stack")(function* (
   hydrate = true,
 ) {
   const ref = yield* decode(() => parsePrUrl(url));
+
   const raw = yield* api(root, `repos/${ref.repository}/stacks?pull_request=${ref.number}`).pipe(
     Effect.catchTag("CommandError", (error) =>
       /\b404\b/.test(error.message) ? Effect.succeed("[]") : Effect.fail(error),
     ),
   );
+
   const first = (yield* json(z.array(rawStack), raw))[0];
+
   if (!first) return null;
   const titles = new Map<number, string>();
+
   if (hydrate && first.pull_requests.some((pr) => !pr.title)) {
     const { owner, name } = repositoryVariables(url);
+
     const data = yield* graphql(
       root,
       `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${first.pull_requests.map((pr) => `p${pr.number}:pullRequest(number:${pr.number}){number title}`).join(" ")}}}`,
@@ -257,12 +305,14 @@ export const prStack = Effect.fn("PrWorkspace.stack")(function* (
         ),
       }),
     );
+
     for (const pr of Object.values(data.repository)) if (pr) titles.set(pr.number, pr.title);
   }
+
   return yield* decode(() =>
     stackSchema.parse({
       number: first.number,
-      base: typeof first.base === "string" ? first.base : first.base.ref,
+      base: first.base,
       layers: first.pull_requests.map((pr) => ({
         number: pr.number,
         title: pr.title ?? titles.get(pr.number) ?? `Pull request #${pr.number}`,
@@ -286,6 +336,7 @@ export const prCandidates = Effect.fn("PrWorkspace.candidates")(function* (
   url: string,
 ) {
   const { owner, name } = yield* decode(() => repositoryVariables(url));
+
   return yield* graphql(
     root,
     `
@@ -323,6 +374,7 @@ const restActor = z
   .object({ login: z.string(), avatar_url: z.string().nullable().optional() })
   .nullable()
   .optional();
+
 const rawActivity = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   event: z.string().optional(),
@@ -349,28 +401,32 @@ const rawActivity = z.object({
   commit_url: z.string().nullish(),
   dismissed_review: z.object({ state: z.string().nullish() }).nullish(),
 });
+
 export const prTimeline = Effect.fn("PrWorkspace.timeline")(function* (
   root: string,
   url: string,
   page = 1,
 ) {
   const ref = yield* decode(() => parsePrUrl(url));
+
   const raw = yield* api(
     root,
     `repos/${ref.repository}/issues/${ref.number}/timeline?per_page=100&page=${page}`,
   );
+
   const rows = yield* json(z.array(rawActivity), raw);
+
   return {
     entries: rows.map((entry, index) => {
       const actor = entry.actor ?? entry.user ?? entry.author;
-      const kind =
-        entry.event === "commented"
-          ? ("comment" as const)
-          : entry.event === "reviewed"
-            ? ("review" as const)
-            : entry.event === "committed"
-              ? ("commit" as const)
-              : ("event" as const);
+
+      const kind = Match.value(entry.event).pipe(
+        Match.when("commented", () => "comment" as const),
+        Match.when("reviewed", () => "review" as const),
+        Match.when("committed", () => "commit" as const),
+        Match.orElse(() => "event" as const),
+      );
+
       return {
         id: String(entry.id ?? entry.sha ?? `${page}:${entry.event}:${index}`),
         kind,
@@ -385,14 +441,19 @@ export const prTimeline = Effect.fn("PrWorkspace.timeline")(function* (
         url:
           entry.html_url ??
           (entry.sha ? `https://github.com/${ref.repository}/commit/${entry.sha}` : null),
-        title:
-          kind === "commit"
-            ? (entry.message?.split("\n")[0] ?? "Pushed a commit")
-            : kind === "review"
-              ? (entry.state ?? "reviewed").toLowerCase().replaceAll("_", " ")
-              : kind === "comment"
-                ? "commented"
-                : `${(entry.event ?? "updated").replaceAll("_", " ")}${entry.label ? ` ${entry.label.name}` : ""}`,
+        title: Match.value(kind).pipe(
+          Match.when("commit", () => entry.message?.split("\n")[0] ?? "Pushed a commit"),
+          Match.when("review", () =>
+            (entry.state ?? "reviewed").toLowerCase().replaceAll("_", " "),
+          ),
+          Match.when("comment", () => "commented"),
+          Match.when(
+            "event",
+            () =>
+              `${(entry.event ?? "updated").replaceAll("_", " ")}${entry.label ? ` ${entry.label.name}` : ""}`,
+          ),
+          Match.exhaustive,
+        ),
         state: entry.state ?? null,
       };
     }),

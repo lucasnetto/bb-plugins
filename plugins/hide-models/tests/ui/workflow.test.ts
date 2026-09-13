@@ -26,6 +26,7 @@ test("settings update the provider-scoped picker filter and disposal restores ro
   const row = picker.querySelector<HTMLButtonElement>("#picker-model")!;
   const providerTab = picker.querySelector("[data-provider-logo]")!;
   const scripts = await mountPluginContentScripts(app, { pluginId: "hide-models", generation: 1 });
+
   const slot = renderSlot(
     app.settingsSections[0]!,
     {},
@@ -53,13 +54,16 @@ test("settings update the provider-scoped picker filter and disposal restores ro
         hidden_get: () => ({ hidden }),
         hidden_set: async (input) => {
           const result = await rpcContract.hidden_set.input["~standard"].validate(input);
+
           if (result.issues) throw new Error("Invalid hidden models");
           hidden = result.value.hidden;
+
           return { hidden };
         },
       },
     },
   );
+
   try {
     fireEvent.click(await slot.findByText("Work", { selector: "h3" }));
     fireEvent.click(await slot.findByRole("checkbox", { name: "Hide Example Model" }));

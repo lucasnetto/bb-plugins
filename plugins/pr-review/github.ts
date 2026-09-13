@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
 import { z } from "zod";
+import { Match } from "effect";
 import { listInput, prUrl, type ListResult, type View, type PrState } from "./contract";
 
-export type Gh = (args: string[]) => Promise<unknown>;
+export type Gh = (args: string[]) => Promise<string>;
+
 const viewerSchema = z.object({ login: z.string().regex(/^[\w-]+$/) });
+
 const searchSchema = z.object({
   total_count: z.number().int().nonnegative(),
   incomplete_results: z.boolean(),
@@ -27,8 +30,12 @@ const searchSchema = z.object({
 export function githubQuery(view: View, viewer: string, state: PrState = "all") {
   // review-requested includes direct requests AND requests to the viewer's teams.
   // Omitting a draft qualifier includes both draft and ready PRs.
-  const status =
-    state === "merged" ? "is:merged" : state === "closed" ? "is:closed is:unmerged" : "is:open";
+  const status = Match.value(state).pipe(
+    Match.when("merged", () => "is:merged"),
+    Match.when("closed", () => "is:closed is:unmerged"),
+    Match.orElse(() => "is:open"),
+  );
+
   return `is:pr ${status} ${view === "authored" ? "author" : "review-requested"}:${viewer}${state === "ready" ? " draft:false" : ""}`;
 }
 
@@ -37,41 +44,56 @@ export async function listPullRequests(
   input: { view: View; page: number; state?: PrState },
 ): Promise<ListResult> {
   const { view, page, state } = listInput.parse(input);
-  const { login } = viewerSchema.parse(await gh(["api", "--hostname", "github.com", "user"]));
-  const result = searchSchema.parse(
-    await gh([
-      "api",
-      "--hostname",
-      "github.com",
-      "--method",
-      "GET",
-      "search/issues",
-      "-f",
-      `q=${githubQuery(view, login, state)}`,
-      "-f",
-      "sort=updated",
-      "-f",
-      "order=desc",
-      "-f",
-      "per_page=50",
-      "-f",
-      `page=${page}`,
-    ]),
+
+  const { login } = viewerSchema.parse(
+    JSON.parse(await gh(["api", "--hostname", "github.com", "user"])),
   );
-  const rows: ListResult["rows"] = result.items.map((item) => ({
-    url: item.html_url,
-    repository: new URL(item.html_url).pathname.split("/").slice(1, 3).join("/"),
-    number: item.number,
-    title: item.title,
-    author: item.user?.login ?? "ghost",
-    isDraft: item.draft,
-    updatedAt: item.updated_at,
-    ...(item.created_at ? { createdAt: item.created_at } : {}),
-    avatarUrl: item.user?.avatar_url ?? null,
-    labels: item.labels ?? [],
-  }));
+
+  const result = searchSchema.parse(
+    JSON.parse(
+      await gh([
+        "api",
+        "--hostname",
+        "github.com",
+        "--method",
+        "GET",
+        "search/issues",
+        "-f",
+        `q=${githubQuery(view, login, state)}`,
+        "-f",
+        "sort=updated",
+        "-f",
+        "order=desc",
+        "-f",
+        "per_page=50",
+        "-f",
+        `page=${page}`,
+      ]),
+    ),
+  );
+
+  const rows: ListResult["rows"] = result.items.map((item) => {
+    const row: ListResult["rows"][number] = {
+      url: item.html_url,
+      repository: new URL(item.html_url).pathname.split("/").slice(1, 3).join("/"),
+      number: item.number,
+      title: item.title,
+      author: item.user?.login ?? "ghost",
+      isDraft: item.draft,
+      updatedAt: item.updated_at,
+
+      avatarUrl: item.user?.avatar_url ?? null,
+      labels: item.labels ?? [],
+    };
+
+    if (item.created_at) row.createdAt = item.created_at;
+
+    return row;
+  });
+
   let metadataError: string | undefined;
   const ids = result.items.flatMap((item) => (item.node_id ? [item.node_id] : []));
+
   if (ids.length) {
     try {
       const query = (stacks: boolean) =>
@@ -84,9 +106,12 @@ export async function listPullRequests(
             }
           }
         }`;
+
       const read = (stacks: boolean) =>
         gh(["api", "--hostname", "github.com", "graphql", "-f", `query=${query(stacks)}`]);
-      let enriched: unknown;
+
+      let enriched: string;
+
       try {
         enriched = await read(true);
       } catch (error) {
@@ -94,6 +119,7 @@ export async function listPullRequests(
         if (!/stack|stackEntry/.test(String(error))) throw error;
         enriched = await read(false);
       }
+
       const decoded = z
         .object({
           data: z.object({
@@ -126,12 +152,15 @@ export async function listPullRequests(
             ),
           }),
         })
-        .parse(enriched);
+        .parse(JSON.parse(enriched));
+
       const metadata = new Map(
         decoded.data.nodes.flatMap((pr) => (pr ? [[pr.url, pr] as const] : [])),
       );
+
       for (const row of rows) {
         const extra = metadata.get(row.url);
+
         if (extra)
           Object.assign(row, {
             additions: extra.additions,
@@ -157,14 +186,18 @@ export async function listPullRequests(
         "Some PR checks, line counts, and stack information could not be loaded. Refresh to retry.";
     }
   }
-  return {
+
+  const response: ListResult = {
     viewer: login,
     rows,
     total: result.total_count,
     nextPage: page < 20 && page * 50 < result.total_count && rows.length > 0 ? page + 1 : null,
     incomplete: result.incomplete_results || result.total_count > 1000,
-    ...(metadataError ? { metadataError } : {}),
   };
+
+  if (metadataError) response.metadataError = metadataError;
+
+  return response;
 }
 
 export function ghClient(root: string, signal: AbortSignal): Gh {
@@ -187,10 +220,13 @@ export function ghClient(root: string, signal: AbortSignal): Gh {
                 `GitHub request failed. Check gh auth status on BB’s primary machine. ${stderr.trim().slice(0, 2000) || error.message}`,
               ),
             );
+
             return;
           }
+
           try {
-            resolve(JSON.parse(stdout));
+            JSON.parse(stdout);
+            resolve(stdout);
           } catch {
             reject(new Error("GitHub returned invalid JSON."));
           }

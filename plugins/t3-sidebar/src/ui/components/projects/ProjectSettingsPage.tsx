@@ -3,7 +3,8 @@ import {
   experimental_ProviderModelPicker as ProviderModelPicker,
   useBbNavigate,
 } from "@get-bb/plugin-sdk/app";
-import type { ProjectSettings } from "@/shared/project-settings-contract";
+import { preferencesSchema } from "@/shared/project-settings-contract";
+import { Schema } from "effect";
 import { Button } from "@/ui/components/ui/button";
 import { Icon } from "@/ui/components/ui/icon";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -32,6 +33,7 @@ function SettingsRow({
 export function ProjectSettingsPage({ projectId }: { projectId: string }) {
   const navigate = useBbNavigate();
   const [confirmRemove, setConfirmRemove] = useState(false);
+
   const {
     settings,
     name,
@@ -45,7 +47,9 @@ export function ProjectSettingsPage({ projectId }: { projectId: string }) {
     save,
     remove,
   } = useProjectSettings(projectId);
+
   const model = settings?.model ?? settings?.resolvedModel;
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex items-center gap-3 border-b px-5 py-3 text-sm">
@@ -104,6 +108,7 @@ export function ProjectSettingsPage({ projectId }: { projectId: string }) {
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.currentTarget.blur();
+
                     if (event.key === "Escape") setName(settings.name);
                   }}
                   className="h-9 w-full rounded-lg border bg-muted/40 px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-60"
@@ -154,7 +159,9 @@ export function ProjectSettingsPage({ projectId }: { projectId: string }) {
                   disabled={pending}
                   onChange={(event) =>
                     void save({
-                      workspace: event.target.value as ProjectSettings["workspace"],
+                      workspace: Schema.decodeUnknownSync(preferencesSchema.fields.workspace)(
+                        event.target.value,
+                      ),
                     })
                   }
                   className="h-9 w-full rounded-lg border bg-muted/40 px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"

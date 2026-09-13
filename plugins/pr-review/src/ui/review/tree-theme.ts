@@ -14,10 +14,14 @@ export const PIERRE_TREE_UNSAFE_CSS = `
   button[data-type='item'] { border-radius: 5px; }
 `;
 
+interface PierreTreeStyle extends CSSProperties {
+  "--trees-fg-override": string;
+}
+
 /** Host styles that keep a Pierre tree on the active color scheme and foreground. */
-export function pierreTreeStyle(colorScheme: "light" | "dark"): CSSProperties {
+export function pierreTreeStyle(colorScheme: "light" | "dark"): PierreTreeStyle {
   return {
     colorScheme,
-    ["--trees-fg-override" as string]: "var(--foreground)",
+    "--trees-fg-override": "var(--foreground)",
   };
 }

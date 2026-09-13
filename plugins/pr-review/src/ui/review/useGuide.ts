@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useRealtime } from "@get-bb/plugin-sdk/app";
-import { GUIDE_CHANGED } from "../../shared/guide-contract";
+import { Schema } from "effect";
+import { GUIDE_CHANGED, guideTarget } from "../../shared/guide-contract";
 import { useSavedGuide } from "./useSavedGuide";
 import { useGuideGeneration } from "./useGuideGeneration";
 
@@ -9,17 +10,11 @@ export function useGuide(threadId: string | null, url: string, revision: number)
   const [refreshRevision, setRefreshRevision] = useState(0);
   const refresh = useCallback(() => setRefreshRevision((value) => value + 1), []);
   useRealtime(GUIDE_CHANGED, (payload) => {
-    if (
-      typeof payload === "object" &&
-      payload !== null &&
-      "threadId" in payload &&
-      payload.threadId === threadId &&
-      "url" in payload &&
-      payload.url === url
-    )
+    if (Schema.is(guideTarget)(payload) && payload.threadId === threadId && payload.url === url)
       refresh();
   });
   const saved = useSavedGuide(threadId, url, revision, refreshRevision, refresh);
+
   const generation = useGuideGeneration(
     threadId,
     url,
@@ -27,7 +22,9 @@ export function useGuide(threadId: string | null, url: string, revision: number)
     refresh,
     saved.savingProgress,
   );
+
   const mutationPending = saved.savingProgress || generation.starting || generation.cancelling;
+
   return {
     ...saved,
     generation,

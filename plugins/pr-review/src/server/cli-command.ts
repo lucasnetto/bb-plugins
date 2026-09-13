@@ -9,6 +9,7 @@ export type PrReviewCommand =
 
 export function parsePrReviewCommand(argv: readonly string[]): PrReviewCommand {
   const [command, ...args] = argv.filter((arg) => arg !== "--json");
+
   switch (command) {
     case undefined:
     case "--help":
@@ -19,11 +20,15 @@ export function parsePrReviewCommand(argv: readonly string[]): PrReviewCommand {
     case "unlink":
     case "guide-context": {
       const [url, reason = "manual"] = args;
+
       if (!url) return { command: "invalid", message: "A pull request URL is required." };
+
       return command === "link" ? { command, url, reason } : { command, url };
     }
+
     case "guide-save": {
       const [url, base, head, guideJson] = args;
+
       return url && base && head && guideJson
         ? { command, url, base, head, guideJson }
         : {
@@ -31,6 +36,7 @@ export function parsePrReviewCommand(argv: readonly string[]): PrReviewCommand {
             message: "Usage: bb pr-review guide-save <url> <base> <head> '<JSON>'",
           };
     }
+
     default:
       return { command: "help", exitCode: 1 };
   }

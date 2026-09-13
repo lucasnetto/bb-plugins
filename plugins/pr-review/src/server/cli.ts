@@ -17,10 +17,13 @@ export function registerPrReviewCli(
     ctx: { threadId?: string | null },
   ) {
     const input = parsePrReviewCommand(argv);
+
     // Context validation belongs here; parsing is independent of a running BB thread.
     const requireThread = () =>
       ctx.threadId ? Effect.succeed(ctx.threadId) : fail("Run this command inside a BB thread.");
+
     let result: unknown;
+
     switch (input.command) {
       case "invalid":
         return yield* fail(input.message);
@@ -37,7 +40,7 @@ export function registerPrReviewCli(
         result = yield* links.linkedLink({
           threadId: yield* requireThread(),
           url: input.url,
-          reason: yield* decodeSchema("link reason", reasonSchema, input.reason),
+          reason: yield* decodeSchema("link reason", reasonSchema)(input.reason),
         });
         break;
       case "unlink":
@@ -58,9 +61,12 @@ export function registerPrReviewCli(
         });
         break;
     }
+
     const stdout = yield* sync("CLI output", () => JSON.stringify(result, null, 2));
+
     if (Buffer.byteLength(stdout) > PLUGIN_CLI_OUTPUT_MAX_BYTES)
       return yield* fail("Result exceeds bb's CLI output limit. Open the PR review panel.");
+
     return { exitCode: 0, stdout };
   });
 

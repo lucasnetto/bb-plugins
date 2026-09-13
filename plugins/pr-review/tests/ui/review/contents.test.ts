@@ -8,6 +8,7 @@ test("inline composers anchor below the last selected row, including reversed an
     { name: "file.ts", contents: "context\nold\nafter\n" },
     { name: "file.ts", contents: "context\nnew\nextra\nafter\n" },
   );
+
   assert.deepEqual(selectedFileEnd(diff, { start: 3, end: 2, side: "additions" }), {
     side: "additions",
     lineNumber: 3,
@@ -57,11 +58,14 @@ test("selections across separate hunks preserve context and old/new ordering in 
   const changed = [...lines];
   changed[2] = "first change\n";
   changed[35] = "last change\n";
+
   const diff = parseDiffFromFile(
     { name: "file.ts", contents: lines.join("") },
     { name: "file.ts", contents: changed.join("") },
   );
+
   assert.ok(diff.hunks.length > 1);
+
   const expected = [
     "-line 3",
     "+first change",
@@ -69,6 +73,7 @@ test("selections across separate hunks preserve context and old/new ordering in 
     "-line 36",
     "+last change",
   ].join("\n");
+
   assert.equal(
     selectedFilePatch(diff, { start: 3, side: "deletions", end: 36, endSide: "additions" }),
     expected,
@@ -83,16 +88,23 @@ test("a small selection in a large unchanged gap does not scan the whole file", 
   const lines = Array.from({ length: 10_000 }, (_, index) => `line ${index + 1}\n`);
   const changed = [...lines];
   changed[0] = "changed\n";
+
   const diff = parseDiffFromFile(
     { name: "file.ts", contents: lines.join("") },
     { name: "file.ts", contents: changed.join("") },
   );
+
   let reads = 0;
-  diff.additionLines = new Proxy(diff.additionLines, {
-    get(target, property, receiver) {
-      if (typeof property === "string" && /^\d+$/.test(property)) reads += 1;
-      return Reflect.get(target, property, receiver);
-    },
+  const additionLines = diff.additionLines;
+  diff.additionLines = additionLines.map((line) => line);
+  additionLines.forEach((line, index) => {
+    Object.defineProperty(diff.additionLines, index, {
+      get() {
+        reads += 1;
+
+        return line;
+      },
+    });
   });
   assert.equal(
     selectedFilePatch(diff, { start: 9000, end: 9001, side: "additions" }),
@@ -118,6 +130,7 @@ test("partial diffs omit unavailable gaps and reject endpoints outside their hun
       "",
     ].join("\n"),
   );
+
   const diff = patch.files[0];
   assert.equal(diff.isPartial, true);
   assert.equal(

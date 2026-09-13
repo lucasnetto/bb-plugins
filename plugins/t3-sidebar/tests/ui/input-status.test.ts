@@ -37,6 +37,7 @@ test("reading or leaving Input never dims it; answering restores the current sta
       });
     }
   }
+
   expect(resolveThreadStatus(thread)).toBe("ready");
   expect(resolveTopStatus({ status: "ready", isUnread: false, isActive: false })).toBeNull();
   expect(shouldRecede({ status: "working", isUnread: false, isActive: false })).toBe(true);

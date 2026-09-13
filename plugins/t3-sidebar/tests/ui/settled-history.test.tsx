@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { settledContract } from "../../src/shared/settled-contract";
 import { expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -19,12 +20,14 @@ const history = {
 
 test("all archives stay settled despite attention or snooze, and restored live rows win", () => {
   const archived = { ...thread, isArchived: true, isUnread: true, latestAttentionAt: 999 };
+
   const result = partitionThreads({
     threads: [archived, { ...archived, id: "unrelated" }],
     snoozed: { one: { at: 1000, until: 2000 } },
     scopeProjectId: null,
     nowMs: 1000,
   });
+
   expect(result.settled).toHaveLength(2);
   expect(mergeSettledHistory([thread], [history])).toEqual([thread]);
 });
@@ -37,6 +40,7 @@ test("archived history opens through navigation and Un-settle calls native resto
   window.localStorage.clear();
   const app = await loadPluginApp(() => import("../../src/ui/app"));
   let dismissed = false;
+
   const slot = renderSlot(
     app.threadLists[0]!,
     {
@@ -56,12 +60,14 @@ test("archived history opens through navigation and Un-settle calls native resto
         settled_set: (input) => {
           expect(input).toEqual({ threadId: "one", settled: false });
           dismissed = true;
+
           return null;
         },
         snoozed_list: () => ({ snoozed: {} }),
       },
     },
   );
+
   try {
     fireEvent.click(await slot.findByRole("button", { name: "Settled (1)" }));
     const row = await slot.findByRole("link", { name: "Reminder" });
@@ -88,6 +94,7 @@ test("settled history sorts by native archive time rather than later title edits
     [],
     [history, { ...history, id: "earlier", archivedAt: 5, updatedAt: 9999 }],
   );
+
   const result = partitionThreads({ threads, scopeProjectId: null, nowMs: 10000 });
   expect(result.settled.map((thread) => thread.id)).toEqual(["one", "earlier"]);
 });
@@ -105,10 +112,12 @@ for (const outcome of ["success", "failure"] as const) {
     let archived = false;
     let resolve!: (value: null) => void;
     let reject!: (error: Error) => void;
+
     const pending = new Promise<null>((yes, no) => {
       resolve = yes;
       reject = no;
     });
+
     const slot = renderSlot(
       app.threadLists[0]!,
       {
@@ -128,12 +137,14 @@ for (const outcome of ["success", "failure"] as const) {
         },
       },
     );
+
     try {
       fireEvent.click(await slot.findByRole("button", { name: "Settle thread" }));
       expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
       expect(slot.getByRole("button", { name: "Settled (1)" })).toBeTruthy();
       await slot.behavior.emitRealtime("settled-changed", {});
       expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
+
       if (outcome === "failure") {
         await act(async () => reject(new Error("Archive failed")));
         await slot.findByRole("button", { name: "Settle thread" });
@@ -168,10 +179,13 @@ test("Un-settle responds immediately while a previous Settle finishes in order",
   window.localStorage.clear();
   const app = await loadPluginApp(() => import("../../src/ui/app"));
   let resolve!: (value: null) => void;
+
   const pending = new Promise<null>((yes) => {
     resolve = yes;
   });
+
   const mutations: boolean[] = [];
+
   const slot = renderSlot(
     app.threadLists[0]!,
     {
@@ -186,15 +200,20 @@ test("Un-settle responds immediately while a previous Settle finishes in order",
       sidebarThreads: { status: "ready", threads: [thread], projects: [] },
       rpc: {
         settled_list: () => ({ archivedThreads: [] }),
-        settled_set: (input) => {
-          const { settled } = input as { settled: boolean };
+        settled_set: async (input) => {
+          const parsed = await settledContract.settled_set.input["~standard"].validate(input);
+
+          if (parsed.issues) throw new Error("Invalid settled mutation");
+          const { settled } = parsed.value;
           mutations.push(settled);
+
           return settled ? pending : null;
         },
         snoozed_list: () => ({ snoozed: {} }),
       },
     },
   );
+
   try {
     fireEvent.click(await slot.findByRole("button", { name: "Settle thread" }));
     fireEvent.click(slot.getByRole("button", { name: "Settled (1)" }));

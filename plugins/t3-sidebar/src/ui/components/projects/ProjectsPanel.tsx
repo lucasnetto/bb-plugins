@@ -12,9 +12,12 @@ export function ProjectsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const parts = subPath.split("/").filter(Boolean);
   const projectId = parts[0];
+
   if (projectId && parts[1] === "new")
     return <ProjectNewThread key={projectId} projectId={projectId} />;
+
   if (projectId) return <ProjectSettingsPage key={projectId} projectId={projectId} />;
+
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-10">
       <h1 className="mb-6 text-lg font-medium">Projects</h1>

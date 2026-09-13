@@ -1,8 +1,11 @@
 import { Schema } from "effect";
 
 const id = Schema.Number.check(Schema.isInt()).check(Schema.isGreaterThan(0));
+
 const body = Schema.String.check(Schema.isMaxLength(65000));
+
 const side = Schema.Literals(["LEFT", "RIGHT"]);
+
 export const githubCommentSchema = Schema.Struct({
   id,
   node_id: Schema.String,
@@ -18,6 +21,7 @@ export const githubCommentSchema = Schema.Struct({
   html_url: Schema.String,
   pull_request_review_id: id,
 });
+
 export const githubPendingSchema = Schema.Struct({
   id,
   node_id: Schema.String,
@@ -25,6 +29,7 @@ export const githubPendingSchema = Schema.Struct({
   commit_id: Schema.String,
   html_url: Schema.String,
 });
+
 export const githubReviewStateSchema = Schema.Struct({
   login: Schema.String,
   author: Schema.String,
@@ -32,13 +37,18 @@ export const githubReviewStateSchema = Schema.Struct({
   pending: Schema.NullOr(githubPendingSchema),
   comments: Schema.mutable(Schema.Array(githubCommentSchema)),
 });
+
 export type GithubReviewState = Schema.Schema.Type<typeof githubReviewStateSchema>;
+
 export type GithubComment = Schema.Schema.Type<typeof githubCommentSchema>;
+
 export const githubReviewTarget = Schema.Struct({
   url: Schema.String,
   threadId: Schema.NullOr(Schema.String),
 });
+
 const expected = { login: Schema.String, reviewId: Schema.NullOr(id) };
+
 export const githubReviewAction = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("add"),
@@ -69,11 +79,14 @@ export const githubReviewAction = Schema.Union([
     event: Schema.Literals(["COMMENT", "APPROVE", "REQUEST_CHANGES"]),
   }),
 ]);
+
 export type GithubReviewAction = Schema.Schema.Type<typeof githubReviewAction>;
+
 export const githubReviewMutation = Schema.Struct({
   ...githubReviewTarget.fields,
   action: githubReviewAction,
 });
+
 // A snapshot check prevents submitting/discarding comments the user has not seen.
 export function reviewFingerprint(state: GithubReviewState) {
   return JSON.stringify([

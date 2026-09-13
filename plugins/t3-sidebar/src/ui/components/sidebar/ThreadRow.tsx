@@ -63,12 +63,14 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const handleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
+
       if (rename.draft !== null || isTrailingDoubleClick(event.detail)) return;
       const wantsSplit = (event.metaKey || event.ctrlKey) && splitAvailable;
       actions.open(thread.id, wantsSplit ? { split: true } : undefined);
     },
     [actions, rename, splitAvailable, thread.id],
   );
+
   const handleDoubleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
@@ -76,9 +78,11 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     },
     [rename],
   );
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLAnchorElement>) => {
       if (rename.draft !== null) return;
+
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         actions.open(thread.id);
@@ -145,8 +149,9 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     onClick: handleClick,
     onDoubleClick: handleDoubleClick,
     onKeyDown: handleKeyDown,
-    ...(thread.isArchived ? {} : splitProps),
   };
+
+  if (!thread.isArchived) Object.assign(anchorProps, splitProps);
 
   const layout = isCard ? (
     <CardThreadLayout

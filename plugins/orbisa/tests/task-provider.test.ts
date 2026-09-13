@@ -2,15 +2,23 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createFakePluginHost, makeHostResponse } from "@get-bb/plugin-sdk/testing";
 import { registerTaskProvider } from "../task-provider.ts";
-import { taskOwner, taskResource, ownedResource, type TaskDriver } from "../task-vms.ts";
+import {
+  taskOwner,
+  taskResource,
+  ownedResource,
+  resourceSchema,
+  type TaskDriver,
+} from "../task-vms.ts";
 
 void test("task resources cannot target shared slots, templates, or another instance", () => {
   const owner = taskOwner("/Users/example/.bb");
   const resource = taskResource(owner, "thr_task");
   assert.deepEqual(ownedResource(owner, resource), resource);
+
   for (const name of ["cursor-base", "180seg-orbisa-01", "ubuntu", "--all"]) {
     assert.throws(() => ownedResource(owner, { ...resource, name }));
   }
+
   assert.throws(() => ownedResource(taskOwner("/Users/example/.bb-work"), resource));
   assert.notEqual(resource.name, taskResource(owner, "thr_other").name);
   assert.equal(resource.name, taskResource(owner, "thr_task").name);
@@ -18,10 +26,12 @@ void test("task resources cannot target shared slots, templates, or another inst
 
 void test("creation checkpoints allocation before clone and VM identity before bootstrap", async () => {
   const events: string[] = [];
+
   const driver: TaskDriver = {
     available: async () => true,
     allocate: async (resource) => {
       events.push("allocate");
+
       return { ...resource, vmId: "vm_1" };
     },
     prepare: async () => {
@@ -35,18 +45,22 @@ void test("creation checkpoints allocation before clone and VM identity before b
       events.push("remove");
     },
   };
+
   const host = makeHostResponse({ id: "host_task", machineProviderId: "orbisa-task" });
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "orbisa",
     dataDir: "/tmp/task-provider/.bb",
     machineBootstrap: {
       bootstrap: async () => {
         events.push("bootstrap");
+
         return { hostId: host.id };
       },
     },
     sdk: { hosts: { get: async () => ({ ...host, connectMachineId: null }) } },
   });
+
   try {
     registerTaskProvider(
       bb,
@@ -60,18 +74,19 @@ void test("creation checkpoints allocation before clone and VM identity before b
         ?.environmentProviderId,
       "orbisa-checkout",
     );
-    const context = {
+
+    const context: Parameters<typeof provider.create>[0] = {
       key: "thr_task",
       attempt: 1,
       inputs: null,
       signal: new AbortController().signal,
       report: { step() {}, log() {} },
-      checkpoint: async (resource: unknown) => {
-        events.push(
-          (resource as { vmId: string | null }).vmId ? "checkpoint-vm" : "checkpoint-intent",
-        );
+      checkpoint: async (value) => {
+        const resource = resourceSchema.parse(value);
+        events.push(resource.vmId ? "checkpoint-vm" : "checkpoint-intent");
       },
     };
+
     const result = await provider.create(context);
     assert.equal(result.status, "created");
     const timings = await bb.storage.kv.get<string[]>(`task-timings/${host.id}`);
@@ -84,6 +99,7 @@ void test("creation checkpoints allocation before clone and VM identity before b
       "prepare",
       "bootstrap",
     ]);
+
     if (result.status !== "created") throw new Error("Expected created");
     events.length = 0;
     await provider.suspend!({ ...context, hostId: host.id, resource: result.resource });
@@ -93,8 +109,10 @@ void test("creation checkpoints allocation before clone and VM identity before b
     assert.deepEqual(events, ["prepare", "checkpoint-vm", "bootstrap"]);
     driver.startDaemon = async () => {
       events.push("start-daemon");
+
       return true;
     };
+
     events.length = 0;
     await provider.resume!({ ...context, hostId: host.id, resource: result.resource });
     assert.deepEqual(events, ["prepare", "checkpoint-vm", "start-daemon"]);

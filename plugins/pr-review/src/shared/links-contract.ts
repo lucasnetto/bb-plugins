@@ -1,14 +1,18 @@
 import { Schema, Struct } from "effect";
 
 export { LINKS_CHANGED } from "./links-events";
+
 export const reasonSchema = Schema.Literals([
   "created-here",
   "requested-review",
   "requested-work",
   "manual",
 ]);
+
 export const linkInput = Schema.Struct({ url: Schema.String, reason: reasonSchema });
+
 export const threadInput = Schema.Struct({ threadId: Schema.String.check(Schema.isMinLength(1)) });
+
 export const linkedPrSchema = Schema.Struct({
   url: Schema.String,
   repository: Schema.String,
@@ -22,9 +26,11 @@ export const linkedPrSchema = Schema.Struct({
   reason: reasonSchema,
   linkedAt: Schema.Finite,
 });
+
 export const prSummarySchema = Schema.Struct(
   Struct.omit(linkedPrSchema.fields, ["reason", "linkedAt"]),
 );
+
 export const linkedDetailSchema = Schema.Struct({
   pr: prSummarySchema,
   body: Schema.String,
@@ -44,13 +50,18 @@ export const linkedDetailSchema = Schema.Struct({
     ),
   ),
 });
+
 export type LinkedPr = Schema.Schema.Type<typeof linkedPrSchema>;
+
 export type LinkedDetail = Schema.Schema.Type<typeof linkedDetailSchema>;
+
 export function parsePrUrl(value: string) {
   const url = new URL(value.trim());
+
   const match = url.pathname.match(
     /^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)(?:\/(?:files|commits|checks))?\/?$/,
   );
+
   if (
     url.protocol !== "https:" ||
     url.hostname !== "github.com" ||
@@ -61,8 +72,10 @@ export function parsePrUrl(value: string) {
   )
     throw new Error("Enter a GitHub pull request URL: https://github.com/owner/repo/pull/123");
   const number = Number(match[3]);
+
   if (!Number.isSafeInteger(number)) throw new Error("Invalid pull request number");
   const repository = `${match[1]}/${match[2]}`.toLowerCase();
+
   return { url: `https://github.com/${repository}/pull/${number}`, repository, number };
 }
 
@@ -74,6 +87,7 @@ export const linkedContentsInput = Schema.Struct({
   head: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
   changeType: Schema.Literals(["new", "deleted", "change", "rename-changed", "rename-pure"]),
 });
+
 export const linkedContentsSchema = Schema.Struct({
   oldContents: Schema.String,
   newContents: Schema.String,

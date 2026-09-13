@@ -16,14 +16,28 @@ import {
   experimental_formatConformanceReport,
   experimental_assembleCapturedThreadEvents,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import { threadDeltaSchema } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  threadDeltaSchema,
+  threadStartParamsSchema,
+  turnStartParamsSchema,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { Deferred, Effect } from "effect";
 import { z } from "zod";
 import { createSdkBridge } from "../../src/server/bridge.js";
-import { RunEvents } from "../../src/server/events.js";
+import { boundedValue, RunEvents, runStatus } from "../../src/server/events.js";
 import { modelCatalog } from "../../src/server/models.js";
-import { SdkError } from "../../src/server/operations.js";
+import { safeMessage, SdkError } from "../../src/server/operations.js";
 import type { SdkModule } from "../../src/server/runtime.js";
+
+type StartInput = z.input<typeof threadStartParamsSchema>;
+
+type TurnInput = z.input<typeof turnStartParamsSchema>;
+
+type TurnOverrides = Partial<
+  Pick<TurnInput["options"], "model" | "reasoningLevel" | "serviceTier" | "providerOptions">
+>;
+
+type WireParams = z.infer<ReturnType<typeof z.json>>;
 
 const options = {
   model: "test-model",
@@ -32,8 +46,10 @@ const options = {
   approvalReviewer: null,
   permissionEscalation: null,
   providerOptions: { profile: "personal" },
-};
+} satisfies StartInput["options"];
+
 const cleanups: Array<() => void> = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -41,10 +57,12 @@ afterEach(() => {
 function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }], cloud = false) {
   const dataDir = mkdtempSync(join(tmpdir(), "bb-cursor-sdk-unit-"));
   const providerThreadId = cloud ? "bc-1" : "agent-1";
+
   const executionOptions = {
     ...options,
     providerOptions: { profile: "personal", runtime: cloud ? "cloud" : "local" },
   };
+
   let remoteStatus: "running" | "finished" = "finished";
   let remoteMissing = false;
   let sourceCalls = 0;
@@ -61,15 +79,22 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const disposal = Deferred.makeUnsafe<void>();
   const cancellation = Deferred.makeUnsafe<void>();
   let sequence = 0;
+
   const makeAgent = (agentId: string): SDKAgent => {
     const detach = new Set<() => void>();
+
     return {
       agentId,
       model: undefined,
       async send(message, sendOptions) {
-        const text = typeof message === "string" ? message : message.text;
+        const text = z
+          .union([z.string(), z.object({ text: z.string() }).transform((input) => input.text)])
+          .parse(message);
+
         sent.push({ text, options: sendOptions });
+
         if (text === "send-failure") throw new Error("Could not send");
+
         if (text.includes("slow-send"))
           await new Promise<void>((resolve) => {
             completeSend = resolve;
@@ -77,10 +102,12 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
         const id = `run-${++sequence}`;
         let interrupted = false;
         let release: (() => void) | undefined;
+
         const block = new Promise<void>((resolve) => {
           release = resolve;
           detach.add(resolve);
         });
+
         const run: Run = {
           id,
           agentId,
@@ -91,9 +118,12 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           unsupportedReason: () => undefined,
           async *stream(): AsyncGenerator<SDKMessage, void> {
             if (text === "stream-failure") throw new Error("Connection dropped");
+
             if (text.includes("hold")) await block;
+
             if (text.includes("call-tool"))
               await sendOptions?.local?.customTools?.testTool?.execute({ value: "hello" }, {});
+
             if (!interrupted && !text.includes("zero")) {
               yield {
                 type: "assistant",
@@ -121,12 +151,14 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           },
           onDidChangeStatus: () => () => {},
         };
+
         return run;
       },
       close() {},
       async reload() {},
       async [Symbol.asyncDispose]() {
         disposed++;
+
         for (const release of detach) release();
         detach.clear();
         await Effect.runPromise(Deferred.succeed(disposal, undefined));
@@ -142,11 +174,13 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       },
     };
   };
+
   const sdk: SdkModule = {
     JsonlLocalAgentStore,
     Agent: {
       async get(id) {
         if (remoteMissing) throw Object.assign(new Error("Missing"), { code: "agent_not_found" });
+
         return {
           agentId: id,
           name: "Test",
@@ -158,13 +192,16 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       },
       async create(value) {
         created.push(value);
+
         return makeAgent(
           value.agentId ?? (value.cloud ? `bc-${created.length}` : `agent-${created.length}`),
         );
       },
       async resume(id, value) {
         resumed.push(id);
+
         if (value) resumedOptions.push(value);
+
         return makeAgent(id);
       },
     },
@@ -179,12 +216,14 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       },
     },
   };
+
   const bridge = createSdkBridge(
     {
       load: () => Effect.succeed(sdk),
       key: () => Effect.succeed("test-key"),
       source: () => {
         sourceCalls++;
+
         return Effect.succeed({
           repository: "https://github.com/example/repo",
           ref: "a".repeat(40),
@@ -193,15 +232,19 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     },
     (line) => {
       messages.push(JSON.parse(line));
+
       if (JSON.parse(line).error) errors.push(JSON.parse(line));
+
       for (const listener of listeners) listener();
     },
   );
+
   bridge.start?.({ pluginId: "cursor-sdk", dataDir, tempDir: "/tmp" });
   cleanups.push(() => {
     bridge.onClose?.();
     rmSync(dataDir, { recursive: true, force: true });
   });
+
   const messageSchema = z.object({
     id: z.union([z.string(), z.number()]).optional(),
     method: z.string().optional(),
@@ -209,39 +252,49 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     error: z.object({ code: z.number(), message: z.string() }).optional(),
     params: z.unknown().optional(),
   });
+
   const waitFor = (predicate: (message: z.infer<typeof messageSchema>) => boolean) =>
     new Promise<z.infer<typeof messageSchema>>((resolve, reject) => {
       const timeout = setTimeout(() => {
         listeners.delete(check);
         reject(new Error("Timed out waiting for bridge output"));
       }, 5000);
+
       function check() {
         for (const raw of messages) {
           const message = messageSchema.parse(raw);
+
           if (predicate(message)) {
             clearTimeout(timeout);
             listeners.delete(check);
             resolve(message);
+
             return;
           }
         }
       }
+
       listeners.add(check);
       check();
     });
+
   let requestId = 0;
-  const request = (method: string, params: unknown) => {
+
+  const request = (method: string, params: WireParams | StartInput | TurnInput) => {
     const id = ++requestId;
     bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+
     return waitFor((message) => message.id === id);
   };
+
   const init = () =>
     request("initialize", {
       protocolVersion: 2,
       client: { name: "test", version: "1" },
       grammarVersions: [2, 3],
     });
-  const start = (extra: Record<string, unknown> = {}) =>
+
+  const start = (extra: Partial<StartInput> = {}) =>
     request("thread/start", {
       threadId: "thread",
       cwd: "/tmp",
@@ -249,7 +302,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       options: executionOptions,
       ...extra,
     });
-  const turn = (text: string, execution: Record<string, unknown> = {}) =>
+
+  const turn = (text: string, execution: TurnOverrides = {}) =>
     request("turn/start", {
       threadId: "thread",
       providerThreadId,
@@ -257,14 +311,18 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       input: [{ type: "text", text, mentions: [] }],
       options: { ...executionOptions, ...execution },
     });
+
   const deltas = () =>
     messages.flatMap((raw) => {
       const message = messageSchema.parse(raw);
+
       return message.method === "thread/delta"
         ? z.object({ deltas: z.array(threadDeltaSchema) }).parse(message.params).deltas
         : [];
     });
+
   const settled = () => waitFor(() => deltas().some((d) => d.kind === "turn.boundary"));
+
   return {
     bridge,
     executionOptions,
@@ -299,6 +357,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
 describe("provider bridge", () => {
   test("passes the public provider conformance suite", async () => {
     const f = fixture();
+
     const report = await experimental_runBridgeConformance({
       providerId: "cursor-sdk",
       timeoutMs: 3000,
@@ -311,6 +370,7 @@ describe("provider bridge", () => {
         interruptiblePromptInput: [{ type: "text", text: "hold", mentions: [] }],
       },
     });
+
     expect(
       report.passed,
       experimental_formatConformanceReport(report) + JSON.stringify(f.errors),
@@ -330,10 +390,12 @@ describe("provider bridge", () => {
         .map((d) => ("text" in d ? d.text : ""))
         .join(""),
     ).toBe("Hello");
+
     const assembled = experimental_assembleCapturedThreadEvents(
       z.array(z.record(z.string(), z.unknown())).parse(f.messages),
       "cursor-sdk",
     );
+
     expect(assembled).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
@@ -488,17 +550,57 @@ test("tool event order and usage follow BB's delta grammar", () => {
   });
 });
 
+test("tool values retain JSON data and bound oversized payloads", () => {
+  expect(boundedValue(undefined)).toBeUndefined();
+  expect(boundedValue({ stdout: "ok", count: 1, missing: null })).toEqual({
+    stdout: "ok",
+    count: 1,
+    missing: null,
+  });
+  expect(boundedValue("x".repeat(50_000))).toHaveLength(48_000 + "… [truncated]".length);
+  const events = new RunEvents(() => {});
+  expect(() =>
+    events.accept({
+      type: "tool_call",
+      agent_id: "agent",
+      run_id: "run",
+      call_id: "tool",
+      name: "shell",
+      status: "completed",
+      result: { invalid: 1n },
+    }),
+  ).toThrow();
+});
+
+test("normalizes and redacts foreign errors before reporting them", () => {
+  expect(safeMessage(new Error("crsr_secret Bearer token"))).toBe("[redacted] Bearer [redacted]");
+  expect(safeMessage("crsr_secret")).toBe("[redacted]");
+  expect(safeMessage(null)).toBe("null");
+  expect(safeMessage("x".repeat(3000))).toHaveLength(2000);
+});
+
+test.each([
+  ["cancelled", "interrupted"],
+  ["error", "failed"],
+  ["finished", "completed"],
+] as const)("maps run status %s to %s", (status, expected) => {
+  expect(runStatus(status)).toBe(expected);
+});
+
 test("credential errors remain readable", () => {
   expect(new SdkError({ message: "Missing key" }).message).toBe("Missing key");
 });
 
 test("text item identities stay distinct across turns", () => {
   const deltas: unknown[] = [];
+
   for (let turn = 0; turn < 2; turn++)
     new RunEvents((batch) => deltas.push(...batch)).append("Hello", "agentMessage");
+
   const keys = deltas.map(
     (d) => z.object({ key: z.object({ providerItemId: z.string() }) }).parse(d).key.providerItemId,
   );
+
   expect(new Set(keys).size).toBe(2);
 });
 
@@ -521,9 +623,16 @@ const controlledCatalog: SDKModel[] = [
 test("applies reasoning and speed on create, resume, and subsequent sends", async () => {
   const f = fixture(controlledCatalog);
   const [model] = modelCatalog(controlledCatalog);
-  const execution = { model: model.model, reasoningLevel: "high", serviceTier: "fast" };
+
+  const execution = {
+    model: model.model,
+    reasoningLevel: "high",
+    serviceTier: "fast",
+  } satisfies Partial<TurnInput["options"]>;
+
   await f.init();
   expect((await f.start({ options: { ...options, ...execution } })).error).toBeUndefined();
+
   const fastHigh = {
     id: "controlled",
     params: [
@@ -531,6 +640,7 @@ test("applies reasoning and speed on create, resume, and subsequent sends", asyn
       { id: "reasoning", value: "high" },
     ],
   };
+
   expect(f.created[0].model).toEqual(fastHigh);
   expect((await f.turn("hello", execution)).error).toBeUndefined();
   await f.settled();
@@ -572,6 +682,7 @@ describe("cloud bridge", () => {
     activeTurnId: null,
     intent: "release",
   };
+
   test("uses a pinned remote repository, preserves local secrets, and emits native run text", async () => {
     const f = fixture(undefined, true);
     const before = process.env.BB_CLOUD_TEST_SECRET;
@@ -600,10 +711,12 @@ describe("cloud bridge", () => {
     await f.settled();
     expect(f.sent[0].options?.local).toBeUndefined();
     expect(f.sent[0].text).toContain("bb_cloud_runtime");
+
     const assembled = experimental_assembleCapturedThreadEvents(
       z.array(z.record(z.string(), z.unknown())).parse(f.messages),
       "cursor-cloud",
     );
+
     expect(assembled).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
@@ -640,6 +753,7 @@ describe("cloud bridge", () => {
     await f.start();
     await f.turn("hold");
     await f.waitFor(() => f.deltas().some((d) => d.kind === "turn.open"));
+
     if (operation === "release") await f.request("thread/stop", stop);
     else f.bridge.onClose?.();
     await f.waitForDisposal();
@@ -650,6 +764,7 @@ describe("cloud bridge", () => {
   test("rejects an invalid cloud agent ID before contacting the SDK", async () => {
     const f = fixture(undefined, true);
     await f.init();
+
     const response = await f.request("thread/resume", {
       threadId: "thread",
       providerThreadId: "bc-../invalid",
@@ -657,6 +772,7 @@ describe("cloud bridge", () => {
       instructionMode: "append",
       options: f.executionOptions,
     });
+
     expect(response.error?.message).toBe("Invalid Cursor Cloud agent ID.");
     expect(f.created).toHaveLength(0);
     expect(f.resumed).toHaveLength(0);
@@ -682,6 +798,7 @@ describe("cloud bridge", () => {
     await f.settled();
     await f.request("thread/stop", stop);
     f.remoteStatus("running");
+
     const result = await f.request("thread/resume", {
       threadId: "thread",
       providerThreadId: "bc-1",
@@ -689,6 +806,7 @@ describe("cloud bridge", () => {
       instructionMode: "append",
       options: f.executionOptions,
     });
+
     expect(result.error?.message).toContain("still running");
     expect(f.created).toHaveLength(1);
     expect(f.resumed).toHaveLength(0);
@@ -700,6 +818,7 @@ describe("cloud bridge", () => {
     await f.start();
     await f.request("thread/stop", stop);
     f.remoteMissing();
+
     const resume = () =>
       f.request("thread/resume", {
         threadId: "thread",
@@ -708,6 +827,7 @@ describe("cloud bridge", () => {
         instructionMode: "append",
         options: f.executionOptions,
       });
+
     expect((await resume()).error).toBeUndefined();
     expect(f.created[1].agentId).toBe("bc-1");
     expect(f.sourceCalls()).toBe(1);
@@ -718,7 +838,7 @@ describe("cloud bridge", () => {
     expect(f.created).toHaveLength(2);
   });
 
-  test.each([{ disallowedTools: ["shell"] }, { instructionMode: "replace" }])(
+  test.each<Partial<StartInput>>([{ disallowedTools: ["shell"] }, { instructionMode: "replace" }])(
     "rejects unsupported cloud policies: %j",
     async (extra) => {
       const f = fixture(undefined, true);
@@ -762,10 +882,12 @@ test.each([false, true])(
       activeTurnId: null,
       intent: "release",
     });
+
     const changedOptions = {
       ...f.executionOptions,
       providerOptions: { profile: "personal", runtime: cloud ? "local" : "cloud" },
     };
+
     const result = await f.request("thread/resume", {
       threadId: "thread",
       providerThreadId,
@@ -773,6 +895,7 @@ test.each([false, true])(
       instructionMode: "append",
       options: changedOptions,
     });
+
     expect(result.error).toBeUndefined();
     expect(f.resumed).toEqual([providerThreadId]);
     expect(Boolean(f.resumedOptions[0].local)).toBe(!cloud);

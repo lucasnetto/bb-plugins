@@ -8,6 +8,7 @@ import { migrateLegacyReview } from "../../src/server/legacy-migration";
 import { initializeReviewDatabase } from "../../src/server/database";
 
 const url = "https://github.com/org/repo/pull/1";
+
 function fixture() {
   const dataDir = mkdtempSync(join(tmpdir(), "pr-review-migration-"));
   mkdirSync(join(dataDir, "plugins", "multirepo"), { recursive: true });
@@ -50,6 +51,7 @@ function fixture() {
     .run("multirepo", "guide-model:project", JSON.stringify(model));
   core.close();
   const host = createFakePluginHost({ pluginId: "pr-review", dataDir });
+
   return {
     ...host,
     legacy,
@@ -64,6 +66,7 @@ function fixture() {
 
 test("imports review data and preferences while preserving the shipped list cache and destination values", async () => {
   const h = fixture();
+
   try {
     const db = h.bb.storage.database();
     // The original PR Review installation has only this shipped migration.
@@ -77,6 +80,7 @@ test("imports review data and preferences while preserving the shipped list cach
     await migrateLegacyReview(h.bb);
     expect(db.prepare("SELECT data FROM list_snapshots").get()).toEqual({ data: "cached PRs" });
     expect(db.prepare("SELECT data FROM linked_prs").get()).toEqual({ data: '{"title":"newer"}' });
+
     for (const table of ["review_guides", "review_guide_jobs", "pr_auto_settled"])
       expect(db.prepare(`SELECT * FROM ${table}`).all()).toEqual(
         h.legacy.prepare(`SELECT * FROM ${table}`).all(),
@@ -97,6 +101,7 @@ test("imports review data and preferences while preserving the shipped list cach
 
 test("normalizes older imported guide jobs before recovery and rolls back an incomplete migration", async () => {
   const h = fixture();
+
   try {
     h.legacy.prepare("UPDATE review_guide_jobs SET data = ?").run(
       JSON.stringify({

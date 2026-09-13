@@ -4,15 +4,19 @@ import { cn } from "@/ui/lib/utils";
 /** Inline rename: row double-click, F2 and the context menu all start the same edit. */
 export function useThreadRename(title: string, onRename: (title: string) => void) {
   const [draft, setDraft] = useState<string | null>(null);
+
   const inputRef = useCallback((input: HTMLInputElement | null) => {
     input?.select();
   }, []);
+
   const commit = useCallback(() => {
     if (draft === null) return;
     const next = draft.trim();
+
     if (next !== "" && next !== title) onRename(next);
     setDraft(null);
   }, [draft, title, onRename]);
+
   return {
     draft,
     setDraft,
@@ -53,7 +57,9 @@ export function EditableThreadTitle({
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         event.stopPropagation();
+
         if (event.key === "Enter") rename.commit();
+
         if (event.key === "Escape") rename.cancel();
       }}
       className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"

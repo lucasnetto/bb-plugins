@@ -27,6 +27,7 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
     />
   );
 }
+
 export function StandalonePrReview({ url, active = true }: { url: string; active?: boolean }) {
   return (
     <PullRequestDetail
@@ -38,25 +39,31 @@ export function StandalonePrReview({ url, active = true }: { url: string; active
     />
   );
 }
+
 function PrReviewContent({ threadId, url }: { threadId: string | null; url: string }) {
   const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
     useReviewData(threadId, url);
+
   const github = useGithubReview(threadId, url);
   const [notice, setNotice] = useState("");
   const [noticeRevision, setNoticeRevision] = useState(revision);
+
   if (noticeRevision !== revision) {
     setNoticeRevision(revision);
     setNotice("");
   }
+
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
   const guide = useGuide(threadId, url, revision);
   const [guideRequestOpen, setGuideRequestOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+
   const staleGuide =
     !!guide.data &&
     !!detail &&
     (guide.data.base !== detail.baseRefOid || guide.data.head !== detail.headRefOid);
+
   const diff = useReviewDiff({
     comments: github.state?.head === detail?.headRefOid ? github.state?.comments : undefined,
     pendingReviewId: github.state?.pending?.id,
@@ -69,6 +76,7 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
     setNotice,
     setError,
   });
+
   const draft = useReviewComposer({
     threadId,
     url,
@@ -80,11 +88,14 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
     setNotice,
     setError,
   });
+
   const { clear: clearSelection, selectLines } = diff.selection;
   const guideId = guide.data?.id;
   const [previousGuideId, setPreviousGuideId] = useState(guideId);
+
   if (guideId !== previousGuideId) {
     setPreviousGuideId(guideId);
+
     // These hooks own local state; invalidate it before rendering a replacement
     // guide, while preserving code selection when a guide arrives in the background.
     if (guideOpen) {
@@ -92,13 +103,16 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
       setSelectedPath(null);
     }
   }
+
   function toggleGuide() {
     clearSelection();
     setSelectedPath(null);
     setGuideOpen(!guideOpen);
     diff.files.expandAll();
   }
+
   const unavailable = selectedPath && !diff.files.hasReadablePatch(selectedPath);
+
   const commentForm = diff.selection.lines ? (
     <ReviewCommentForm
       threadId={threadId}
@@ -111,9 +125,11 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
       onAddToReview={async () => {
         if (!github.state || !diff.selection.lines || !diff.selection.path || !detail?.headRefOid)
           return;
+
         try {
           const body = draft.comment;
           const position = githubSelection(diff.selection.lines.range);
+
           if (
             await github.mutate({
               kind: "add",
@@ -134,19 +150,24 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
       }}
     />
   ) : null;
+
   const renderAnnotation: ReviewAnnotationRenderer = (anchor, item) =>
     diff.viewer.annotation(anchor, item, commentForm);
+
+  const codeStyle = {
+    "--code-background": "var(--background)",
+    "--code-foreground": "var(--foreground)",
+    colorScheme: diff.viewer.mode,
+  } satisfies CSSProperties & {
+    "--code-background": string;
+    "--code-foreground": string;
+  };
+
   return (
     <section
       aria-label="Pull request code review"
       className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
-      style={
-        {
-          "--code-background": "var(--background)",
-          "--code-foreground": "var(--foreground)",
-          colorScheme: diff.viewer.mode,
-        } as CSSProperties
-      }
+      style={codeStyle}
     >
       <ReviewToolbar
         fileCount={detail?.files.length ?? 0}

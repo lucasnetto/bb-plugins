@@ -1,4 +1,5 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+
 export const thread: PluginSidebarThread = {
   id: "one",
   projectId: "project",

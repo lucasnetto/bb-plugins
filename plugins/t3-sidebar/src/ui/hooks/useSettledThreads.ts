@@ -18,18 +18,24 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
   const revision = useRef(0);
   const [optimistic, setOptimistic] = useState<Record<string, OptimisticSettlement>>({});
   const requests = useRef(new Map<string, Promise<unknown>>());
+
   const authoritative = useMemo(
     () => mergeSettledHistory(liveThreads, archivedThreads),
     [liveThreads, archivedThreads],
   );
+
   const threads = useMemo(() => {
     const rows = new Map(authoritative.map((thread) => [thread.id, thread]));
+
     for (const [id, update] of Object.entries(optimistic)) rows.set(id, update.thread);
+
     return [...rows.values()];
   }, [authoritative, optimistic]);
+
   useEffect(() => {
     setOptimistic((current) => {
       const next = { ...current };
+
       for (const [id, update] of Object.entries(current)) {
         if (
           update.confirmed &&
@@ -39,9 +45,11 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
         )
           delete next[id];
       }
+
       return Object.keys(next).length === Object.keys(current).length ? current : next;
     });
   }, [authoritative, optimistic]);
+
   const refetch = useCallback(() => {
     const request = ++revision.current;
     rpc.call("settled_list").then(
@@ -54,10 +62,13 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
       },
     );
   }, [rpc]);
+
   useRealtime(SETTLED_CHANGED, refetch);
+
   const set = useCallback(
     (threadId: string, settled: boolean) => {
       const thread = threads.find((row) => row.id === threadId);
+
       const update = thread
         ? {
             thread: {
@@ -68,12 +79,15 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
             confirmed: false,
           }
         : undefined;
+
       if (update) setOptimistic((current) => ({ ...current, [threadId]: update }));
       // Serialize rapid Settle / Un-settle clicks so the server ends in the same state.
       const previous = requests.current.get(threadId) ?? Promise.resolve();
+
       const request = previous
         .catch(() => {})
         .then(() => rpc.call("settled_set", { threadId, settled }));
+
       requests.current.set(threadId, request);
       void request.then(
         () => {
@@ -92,6 +106,7 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
           setOptimistic((current) => {
             const next = { ...current };
             delete next[threadId];
+
             return next;
           });
           toast.error(settled ? "Could not settle thread" : "Could not un-settle thread");
@@ -102,5 +117,6 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
     },
     [rpc, refetch, threads],
   );
+
   return { archivedThreads, threads, set, refetch };
 }

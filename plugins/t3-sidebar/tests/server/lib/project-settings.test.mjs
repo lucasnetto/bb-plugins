@@ -19,38 +19,46 @@ test("project settings persist independently, rename through BB, and serialize c
       sources: [],
     },
   };
+
   const model = {
     providerId: "codex",
     model: "gpt-5",
     reasoningLevel: "high",
     serviceTier: "default",
   };
+
   const renamed = [];
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: {
       projects: {
         get: async ({ projectId }) => {
           if (!projects[projectId]) throw new Error("Missing");
+
           return projects[projectId];
         },
         defaultExecutionOptions: async () => model,
         update: async ({ projectId, name }) => {
           renamed.push({ projectId, name });
           projects[projectId].name = name;
+
           return projects[projectId];
         },
       },
     },
   });
+
   try {
     await plugin(bb);
     const get = (projectId) => harness.behavior.callRpc("project_settings_get", { projectId });
+
     const update = (patch) =>
       harness.behavior.callRpc("project_settings_update", {
         projectId: "one",
         ...patch,
       });
+
     const before = await get("one");
     assert.equal(before.workspace, "default");
     assert.equal(before.autoPull, false);

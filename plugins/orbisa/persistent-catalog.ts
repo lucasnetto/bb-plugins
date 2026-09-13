@@ -10,10 +10,12 @@ import { foreign, PersistentError } from "./persistent-effects.ts";
 import type { PersistentResource } from "./persistent-resource.ts";
 
 export const WORKSPACE = "/workspace/180seg";
+
 export const remoteUserConfig = Config.schema(
   Schema.String.check(Schema.isPattern(/^[a-z_][a-z0-9_-]*$/)),
   "ORBISA_REMOTE_USER",
 ).pipe(Config.withDefault("lucas_netto"));
+
 export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(function* (
   resource: PersistentResource,
   cache: string,
@@ -24,11 +26,14 @@ export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(functio
       () => new PersistentError({ message: "Invalid ORBISA_REMOTE_USER configuration." }),
     ),
   );
+
   const root = join(homedir(), "Developer/180seg");
   const run = (args: string[]) => ["orbctl", "run", "-m", resource.name, "-u", user, ...args];
+
   const repositories = yield* foreign("Could not discover the 180seg repositories.", (signal) =>
     discoverCatalog(root, signal),
   );
+
   for (const repository of repositories) {
     report(`Preparing ${repository.relative} from committed local Git history`);
     yield* foreign(`Could not seed ${repository.relative}.`, (signal) =>
@@ -50,6 +55,7 @@ export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(functio
       ),
     );
   }
+
   for (const [source, filename] of [
     ["orbisa-agents.md", "AGENTS.md"],
     ["orbisa-topology.md", "VM-TOPOLOGY.md"],
@@ -57,6 +63,7 @@ export const seedPersistentCatalog = Effect.fn("Persistent.seedCatalog")(functio
     const contents = yield* foreign("Could not read VM workspace instructions.", () =>
       readFile(join(homedir(), ".local/libexec", source), "utf8"),
     );
+
     yield* foreign("Could not install VM workspace instructions.", (signal) =>
       checked(
         run([

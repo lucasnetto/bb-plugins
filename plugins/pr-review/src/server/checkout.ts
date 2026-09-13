@@ -17,7 +17,9 @@ export const matchingCheckout = Effect.fn("PrReview.checkout")(
   function* (cwd: string, repository: string) {
     const git = (args: string[]) => command(cwd, "git", ["--no-pager", ...args]);
     const remote = yield* git(["remote", "get-url", "origin"]);
+
     if (githubRemote(remote) !== repository.toLowerCase()) return null;
+
     return (yield* git(["rev-parse", "--show-toplevel"])).trim() || null;
   },
   (effect) => effect.pipe(Effect.catchTag("CommandError", () => Effect.succeed(null))),

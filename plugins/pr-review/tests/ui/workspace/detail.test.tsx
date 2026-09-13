@@ -13,6 +13,7 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
   const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
   let current = overview;
   let merges = 0;
+
   const slot = renderSlot(
     { component: PullRequestDetail },
     {
@@ -44,11 +45,13 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
           });
           merges++;
           current = { ...overview, state: "MERGED" };
+
           return { message: "Stack merged.", pendingMergeId: null };
         },
       },
     },
   );
+
   try {
     await slot.findByRole("heading", { name: "Fix API" });
     expect(slot.queryByRole("textbox", { name: "Draft review" })).toBeNull();
@@ -58,7 +61,9 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Summary" }), { button: 0, ctrlKey: false });
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
     expect(slot.getByRole("textbox", { name: "Draft review" })).toBe(draft);
-    expect((draft as HTMLTextAreaElement).value).toBe("Unsaved review");
+
+    if (!(draft instanceof HTMLTextAreaElement)) throw new Error("Expected draft textarea");
+    expect(draft.value).toBe("Unsaved review");
     fireEvent.click(slot.getByRole("button", { name: /^Merge/ }));
     const dialog = await slot.findByRole("dialog");
     expect(dialog.textContent).toContain("Merge 2 pull requests");
@@ -76,6 +81,7 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
 it("renders HTML and Markdown in the conversation, timeline, description and comment preview", async () => {
   installTestPluginRuntime();
   const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
+
   const slot = renderSlot(
     { component: PullRequestDetail },
     { threadId: null, url: overview.url, code: null },
@@ -101,6 +107,7 @@ it("renders HTML and Markdown in the conversation, timeline, description and com
       },
     },
   );
+
   try {
     expect((await slot.findByText("description")).closest("sup")).toBeTruthy();
     const summary = within(slot.getByRole("tabpanel", { name: "Summary" }));

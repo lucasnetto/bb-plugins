@@ -26,6 +26,7 @@ test("malformed GitHub JSON and payloads remain typed input failures", async () 
       undefined,
       async () => payload,
     );
+
     expect(result).toBe("InputError");
   }
 });
@@ -37,6 +38,7 @@ test("guide job responses require the fields guaranteed by each lifecycle stage"
   expect(await validate({ ...identity, status: "preparing" })).toEqual({
     value: { ...identity, status: "preparing" },
   });
+
   const running = {
     ...identity,
     status: "running",
@@ -44,7 +46,9 @@ test("guide job responses require the fields guaranteed by each lifecycle stage"
     base: "a".repeat(40),
     head: "b".repeat(40),
   };
+
   expect(await validate(running)).toEqual({ value: running });
+
   for (const invalid of [
     { ...running, workerId: null },
     { ...running, base: "" },

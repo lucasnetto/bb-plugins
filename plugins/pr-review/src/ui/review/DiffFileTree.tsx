@@ -55,10 +55,12 @@ export function DiffFileTree({
   const { mode: resolvedTheme } = experimental_useCodeTheme();
   const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
   const directoryPaths = useMemo(() => collectDirectoryPaths(paths), [paths]);
+
   const gitStatus = useMemo<ReadonlyArray<GitStatusEntry>>(
     () => entries.map((entry) => ({ path: entry.path, status: entry.status })),
     [entries],
   );
+
   const filePathsRef = useRef<ReadonlySet<string>>(new Set(paths));
   const onSelectFileRef = useRef(onSelectFile);
   // Selection driven by `selectedPath` below is an echo of a file already on screen, not a
@@ -79,55 +81,72 @@ export function DiffFileTree({
     onSelectionChange: (selectedPaths) => {
       if (syncingSelectionRef.current) return;
       const path = selectedPaths.at(-1)?.replace(/\/$/, "");
+
       if (path && filePathsRef.current.has(path)) onSelectFileRef.current(path);
     },
     paths: [],
     search: false,
     unsafeCSS: PIERRE_TREE_UNSAFE_CSS,
   });
+
   const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
     areAllDirectoriesExpanded(currentModel, directoryPaths),
   );
 
   useEffect(() => {
     const mountedPaths = mountedPathsRef.current;
+
     if (mountedPaths === paths) return;
     mountedPathsRef.current = paths;
+
     if (mountedPaths === null) {
       model.resetPaths(paths);
     } else {
       const updates = buildDiffFileTreeUpdates(mountedPaths, paths);
+
       if (updates.length > 0) model.batch(updates);
     }
+
     model.setGitStatus(gitStatus);
   }, [gitStatus, model, paths]);
 
   useEffect(() => {
     if (selectedPath === null) {
       handledRevealRef.current = null;
+
       return;
     }
+
     // A path list that changes under an already-revealed file (a refresh, a later slice) must
     // not pull the tree back to it over whatever the reader has picked since.
     const item = model.getItem(selectedPath);
+
     if (item === null || item.isDirectory()) {
       // A file that left the diff has to be revealed again when it comes back.
       handledRevealRef.current = null;
+
       return;
     }
+
     const handled = handledRevealRef.current;
+
     if (handled?.path === selectedPath && handled.revealRequestId === revealRequestId) return;
     handledRevealRef.current = { path: selectedPath, revealRequestId };
     syncingSelectionRef.current = true;
+
     for (const path of model.getSelectedPaths()) {
       if (path !== selectedPath) model.getItem(path)?.deselect();
     }
+
     let ancestor = "";
+
     for (const segment of selectedPath.split("/").slice(0, -1)) {
       ancestor += `${segment}/`;
       const directory = model.getItem(ancestor);
+
       if (directory !== null && "expand" in directory) directory.expand();
     }
+
     item.select();
     model.scrollToPath(selectedPath, { offset: "nearest" });
     queueMicrotask(() => {

@@ -9,6 +9,7 @@ const available = {
   hasPendingInteraction: false,
   queuedWork: "none",
 };
+
 test("snoozes persist across reload; wake events and manual wake consume the timer", async () => {
   let { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
@@ -16,6 +17,7 @@ test("snoozes persist across reload; wake events and manual wake consume the tim
       threads: { list: async () => [available, { ...available, id: "two" }] },
     },
   });
+
   try {
     await plugin(bb);
     const until = Date.now() + 3_600_000;
@@ -48,15 +50,20 @@ test("snoozes persist across reload; wake events and manual wake consume the tim
 
 test("rejects past times, unavailable threads, input requests and queued work without writes", async () => {
   const list = vi.fn(async () => [available]);
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "t3-sidebar",
     sdk: { threads: { list } },
   });
+
   try {
     await plugin(bb);
+
     const snooze = (until = Date.now() + 3_600_000) =>
       harness.behavior.callRpc("snoozed_set", { threadId: "one", until });
+
     await expect(snooze(0)).rejects.toThrow();
+
     for (const change of [
       { hasPendingInteraction: true },
       { queuedWork: "waiting" },
@@ -65,6 +72,7 @@ test("rejects past times, unavailable threads, input requests and queued work wi
       list.mockResolvedValue([{ ...available, ...change }]);
       await expect(snooze()).rejects.toThrow();
     }
+
     expect((await harness.behavior.callRpc("snoozed_list", null)).snoozed).toEqual({});
   } finally {
     await harness.lifecycle.dispose();

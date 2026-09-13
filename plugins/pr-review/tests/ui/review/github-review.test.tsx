@@ -4,6 +4,7 @@ import { fireEvent, waitFor } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GithubReviewState } from "../../../src/shared/github-review-contract";
 import { githubSelection } from "../../../src/ui/review/githubSelection";
+
 const initial: GithubReviewState = {
   login: "reviewer",
   author: "author",
@@ -17,6 +18,7 @@ const initial: GithubReviewState = {
   },
   comments: [],
 };
+
 test("normalizes upward multiline selections and rejects cross-side ranges", () => {
   expect(githubSelection({ start: 8, end: 4, side: "deletions" })).toEqual({
     side: "LEFT",
@@ -32,17 +34,23 @@ test("normalizes upward multiline selections and rejects cross-side ranges", () 
     githubSelection({ start: 4, end: 4, side: "deletions", endSide: "additions" }),
   ).toThrow("one side");
 });
+
 test("background refresh preserves visible state and typed summary, including after failure", async () => {
   installTestPluginRuntime();
   const { useGithubReview } = await import("../../../src/ui/review/useGithubReview");
   const { GithubReviewPanel } = await import("../../../src/ui/review/GithubReviewPanel");
+
   function Panel() {
     const review = useGithubReview(null, "https://github.com/org/repo/pull/1");
+
     return <GithubReviewPanel head={initial.head} review={review} onReveal={() => {}} />;
   }
+
   let calls = 0;
   let resolve: (value: GithubReviewState) => void = () => {};
+
   let reject: (error: Error) => void = () => {};
+
   const slot = renderSlot(
     { component: Panel },
     {},
@@ -50,7 +58,9 @@ test("background refresh preserves visible state and typed summary, including af
       rpc: {
         githubReview: () => {
           calls++;
+
           if (calls === 1) return initial;
+
           return new Promise<GithubReviewState>((done, fail) => {
             resolve = done;
             reject = fail;
@@ -59,6 +69,7 @@ test("background refresh preserves visible state and typed summary, including af
       },
     },
   );
+
   try {
     fireEvent.click(slot.getByRole("button", { name: "GitHub review" }));
     const summary = await slot.findByRole("textbox", { name: "Review summary" });
@@ -84,11 +95,14 @@ test("background refresh preserves visible state and typed summary, including af
     slot.lifecycle.unmount();
   }
 });
+
 test("a successful write is not retried when readback fails; stale reads cannot replace its state", async () => {
   installTestPluginRuntime();
   const { useGithubReview } = await import("../../../src/ui/review/useGithubReview");
+
   function Panel() {
     const r = useGithubReview(null, "https://github.com/org/repo/pull/2");
+
     return (
       <>
         <span>{r.state?.head}</span>
@@ -111,10 +125,14 @@ test("a successful write is not retried when readback fails; stale reads cannot 
       </>
     );
   }
+
   let reads = 0,
     writes = 0;
+
   let resolveStale: (value: GithubReviewState) => void = () => {};
+
   let resolveWrite: (value: { url: string }) => void = () => {};
+
   const slot = renderSlot(
     { component: Panel },
     {},
@@ -122,7 +140,9 @@ test("a successful write is not retried when readback fails; stale reads cannot 
       rpc: {
         githubReview: () => {
           reads++;
+
           if (reads === 1) return initial;
+
           if (reads === 2)
             return new Promise<GithubReviewState>((done) => {
               resolveStale = done;
@@ -131,6 +151,7 @@ test("a successful write is not retried when readback fails; stale reads cannot 
         },
         githubReviewMutate: () => {
           writes++;
+
           return new Promise((done) => {
             resolveWrite = done;
           });
@@ -138,6 +159,7 @@ test("a successful write is not retried when readback fails; stale reads cannot 
       },
     },
   );
+
   try {
     await slot.findByText(initial.head);
     fireEvent.focus(window);

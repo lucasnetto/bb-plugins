@@ -28,6 +28,7 @@ export default function plugin(bb: BbPluginApi) {
       experimental_schema: z.number().int().min(0).max(1440),
     },
   });
+
   const taskPolicy = registerTaskProvider(bb, () => settings.get());
   registerPersistentProvider(bb, () => settings.get());
   bb.cli.register({
@@ -46,6 +47,7 @@ export default function plugin(bb: BbPluginApi) {
           const hosts = (await bb.sdk.hosts.list({ includeCreating: true })).filter(
             (host) => host.machineProviderId === "orbisa-task",
           );
+
           return {
             exitCode: 0,
             stdout: JSON.stringify(
@@ -66,6 +68,7 @@ export default function plugin(bb: BbPluginApi) {
             ),
           };
         }
+
         throw new Error("Usage: bb orbisa tasks");
       } catch (error) {
         return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };

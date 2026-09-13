@@ -8,12 +8,14 @@ const providers = Array.from({ length: 5 }, (_, i) => ({
   displayName: `Provider ${i}`,
   available: true,
 }));
+
 test("catalog bounds provider reads, preserves order, and isolates provider failures", async () => {
   const ready = Promise.withResolvers();
   const release = Promise.withResolvers();
   let active = 0;
   let peak = 0;
   let started = 0;
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "hide-models",
     sdk: {
@@ -22,10 +24,14 @@ test("catalog bounds provider reads, preserves order, and isolates provider fail
         models: async ({ providerId }) => {
           started++;
           peak = Math.max(peak, ++active);
+
           if (started === 4) ready.resolve();
+
           try {
             await release.promise;
+
             if (providerId === "2") throw new Error("Provider unavailable");
+
             return { models: [], modelLoadError: null };
           } finally {
             active--;
@@ -34,6 +40,7 @@ test("catalog bounds provider reads, preserves order, and isolates provider fail
       },
     },
   });
+
   try {
     plugin(bb);
     const pending = harness.behavior.callRpc("catalog", null);
@@ -53,9 +60,11 @@ test("catalog bounds provider reads, preserves order, and isolates provider fail
     await harness.lifecycle.dispose();
   }
 });
+
 test("disposing the plugin interrupts a pending catalog instead of returning partial rows", async () => {
   const ready = Promise.withResolvers();
   const release = Promise.withResolvers();
+
   const { bb, harness } = createFakePluginHost({
     pluginId: "hide-models",
     sdk: {
@@ -64,11 +73,13 @@ test("disposing the plugin interrupts a pending catalog instead of returning par
         models: async () => {
           ready.resolve();
           await release.promise;
+
           return { models: [] };
         },
       },
     },
   });
+
   try {
     plugin(bb);
     const rejected = assert.rejects(harness.behavior.callRpc("catalog", null));
@@ -98,11 +109,14 @@ test("CLI mutations compose with storage effects and preserve concurrent hides",
       },
     },
   });
+
   try {
     plugin(bb);
+
     const results = await Promise.all(
       ["one", "two"].map((model) => harness.behavior.runCli(["hide", "test", model, "--json"])),
     );
+
     assert.ok(results.every((result) => result.exitCode === 0));
     const { hidden } = await harness.behavior.callRpc("hidden_get", null);
     assert.deepEqual(hidden.map((entry) => entry.model).sort(), ["one", "two"]);

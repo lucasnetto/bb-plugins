@@ -9,6 +9,7 @@ async function renderRow(threadOverrides: Partial<typeof thread> = {}) {
   installTestPluginRuntime();
   const { ThreadRow } = await import("../../src/ui/components/sidebar/ThreadRow");
   const { TooltipProvider } = await import("../../src/ui/components/ui/tooltip");
+
   const actions = {
     open: vi.fn(),
     setPinned: vi.fn(),
@@ -18,6 +19,7 @@ async function renderRow(threadOverrides: Partial<typeof thread> = {}) {
     setSnoozed: vi.fn(),
     setSettled: vi.fn(),
   };
+
   const slot = renderSlot(
     {
       component: (props: ThreadRowProps) => (
@@ -37,11 +39,13 @@ async function renderRow(threadOverrides: Partial<typeof thread> = {}) {
       actions,
     },
   );
+
   return { slot, actions };
 }
 
 test.each([false, true])("pending input stays prominent when unread is %s", async (isUnread) => {
   const { slot } = await renderRow({ hasPendingInteraction: true, indicator: "runtime", isUnread });
+
   try {
     expect(slot.getByRole("status").textContent).toBe("Input");
     const row = slot.getByRole("link", { name: "Reminder" });
@@ -56,13 +60,17 @@ test.each([false, true])("pending input stays prominent when unread is %s", asyn
 
 test.each(["Enter", "blur"])("F2 renames on %s without navigating the row", async (commit) => {
   const { slot, actions } = await renderRow();
+
   try {
     fireEvent.keyDown(slot.getByRole("link", { name: "Reminder" }), { key: "F2" });
-    const input = slot.getByRole("textbox", { name: "Thread title" }) as HTMLInputElement;
+    const input = slot.getByRole("textbox", { name: "Thread title" });
+
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected thread title input");
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe("Reminder".length);
     fireEvent.change(input, { target: { value: "  New title  " } });
+
     if (commit === "blur") fireEvent.blur(input);
     else fireEvent.keyDown(input, { key: "Enter" });
     expect(actions.rename).toHaveBeenCalledExactlyOnceWith("one", "New title");
@@ -75,6 +83,7 @@ test.each(["Enter", "blur"])("F2 renames on %s without navigating the row", asyn
 
 test("double-click rename cancels with Escape without committing or navigating", async () => {
   const { slot, actions } = await renderRow();
+
   try {
     fireEvent.doubleClick(slot.getByRole("link", { name: "Reminder" }));
     const input = slot.getByRole("textbox", { name: "Thread title" });
@@ -90,6 +99,7 @@ test("double-click rename cancels with Escape without committing or navigating",
 
 test("context menu rename focuses the same inline editor", async () => {
   const { slot, actions } = await renderRow();
+
   try {
     fireEvent.contextMenu(slot.getByRole("link", { name: "Reminder" }));
     fireEvent.click(await slot.findByRole("menuitem", { name: "Rename" }));

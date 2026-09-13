@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import { useEffect, useState } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import { GithubMarkdown } from "../components/GithubMarkdown";
@@ -32,6 +33,7 @@ export type DialogAction =
   | "draft"
   | "disable-auto-merge"
   | "checkout";
+
 export function expectedStack(
   stack: PrStack | null,
   number: number,
@@ -39,17 +41,21 @@ export function expectedStack(
 ): StackHeads | null {
   if (!stack) return null;
   const index = stack.layers.findIndex((pr) => pr.number === number);
+
   const layers = (whole ? stack.layers : stack.layers.slice(0, index + 1)).filter(
     (pr) => pr.state !== "MERGED",
   );
+
   if (index < 0 || layers.some((pr) => !pr.headRefOid))
     throw new Error("Stack revisions are unavailable. Refresh before trying again.");
+
   return {
     number: stack.number,
     base: stack.base,
     heads: layers.map((pr) => ({ number: pr.number, headRefOid: pr.headRefOid! })),
   };
 }
+
 const TITLES: Record<DialogAction, string> = {
   merge: "Merge pull request",
   "auto-merge": "Enable auto-merge",
@@ -65,6 +71,7 @@ const TITLES: Record<DialogAction, string> = {
   "disable-auto-merge": "Disable auto-merge",
   checkout: "Check out pull request",
 };
+
 export function ActionDialog({
   action,
   data,
@@ -82,9 +89,11 @@ export function ActionDialog({
   const [snapshot] = useState(detail);
   const [confirmedStack] = useState(data.stack);
   const [updateMethod, setUpdateMethod] = useState<"merge" | "rebase">("merge");
+
   const [method, setMethod] = useState<"merge" | "squash" | "rebase">(
     detail.mergeMethods.includes("squash") ? "squash" : (detail.mergeMethods[0] ?? "merge"),
   );
+
   const [title, setTitle] = useState(detail.title);
   const [body, setBody] = useState(detail.body);
   const [preview, setPreview] = useState(false);
@@ -92,10 +101,12 @@ export function ActionDialog({
   const [users, setUsers] = useState<string[]>([]);
   const [teams, setTeams] = useState("");
   const [query, setQuery] = useState("");
+
   const [candidates, setCandidates] = useState<{
     labels: { name: string; color: string }[];
     users: { login: string; avatarUrl: string | null }[];
   } | null>(null);
+
   const [error, setError] = useState("");
   useEffect(() => {
     if (action !== "labels" && action !== "reviewers") return;
@@ -108,21 +119,25 @@ export function ActionDialog({
         if (!disposed) setError(String(reason));
       },
     );
+
     return () => {
       disposed = true;
     };
   }, [rpc, threadId, detail.url, action]);
   const stack = confirmedStack;
   const merging = action === "merge" || action === "auto-merge";
+
   const layers = stack
     ? (action === "rebase-stack"
         ? stack.layers
         : stack.layers.slice(0, stack.layers.findIndex((pr) => pr.number === detail.number) + 1)
       ).filter((pr) => pr.state !== "MERGED")
     : [];
+
   const submit = async () => {
     setError("");
     let request: WorkspaceAction;
+
     try {
       if (merging)
         request = {
@@ -152,12 +167,14 @@ export function ActionDialog({
           remove: false,
         };
       else request = { kind: action };
+
       if (await data.mutate(request, { head: snapshot.headRefOid, base: snapshot.baseRefName }))
         onClose();
     } catch (reason) {
       setError(String(reason));
     }
   };
+
   return (
     <Dialog
       open
@@ -205,15 +222,22 @@ export function ActionDialog({
                 <select
                   className="pr-text-input"
                   value={method}
-                  onChange={(event) => setMethod(event.target.value as typeof method)}
+                  onChange={(event) => {
+                    const selected = detail.mergeMethods.find(
+                      (value) => value === event.target.value,
+                    );
+
+                    if (selected) setMethod(selected);
+                  }}
                 >
                   {detail.mergeMethods.map((value) => (
                     <option key={value} value={value}>
-                      {value === "squash"
-                        ? "Squash and merge"
-                        : value === "rebase"
-                          ? "Rebase and merge"
-                          : "Create a merge commit"}
+                      {Match.value(value).pipe(
+                        Match.when("squash", () => "Squash and merge"),
+                        Match.when("rebase", () => "Rebase and merge"),
+                        Match.when("merge", () => "Create a merge commit"),
+                        Match.exhaustive,
+                      )}
                     </option>
                   ))}
                 </select>
@@ -236,7 +260,11 @@ export function ActionDialog({
               <select
                 className="pr-text-input"
                 value={updateMethod}
-                onChange={(event) => setUpdateMethod(event.target.value as "merge" | "rebase")}
+                onChange={(event) => {
+                  const value = event.target.value;
+
+                  if (value === "merge" || value === "rebase") setUpdateMethod(value);
+                }}
               >
                 <option value="merge">Merge base branch</option>
                 <option value="rebase">Rebase onto base branch</option>

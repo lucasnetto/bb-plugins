@@ -1,4 +1,5 @@
 // Adapted from T3 Code reviewCommentContext.ts. See T3-LICENSE.
+import { Match } from "effect";
 import type {
   DiffLineAnnotation,
   FileDiffMetadata,
@@ -40,10 +41,12 @@ function diffReviewSegments(fileDiff: FileDiffMetadata): DiffReviewSegment[] {
   let rowIndex = 0;
   let oldContextStart = 1;
   let newContextStart = 1;
+
   const append = (segment: Omit<DiffReviewSegment, "rowStart">) => {
     segments.push({ ...segment, rowStart: rowIndex });
     rowIndex += segment.count;
   };
+
   const appendContextGap = (count: number) => {
     append({
       change: "context",
@@ -65,10 +68,12 @@ function diffReviewSegments(fileDiff: FileDiffMetadata): DiffReviewSegment[] {
         ),
       );
     }
+
     let oldLineNumber = hunk.deletionStart;
     let newLineNumber = hunk.additionStart;
     let deletionIndex = hunk.deletionLineIndex;
     let additionIndex = hunk.additionLineIndex;
+
     for (const segment of hunk.hunkContent) {
       if (segment.type === "context") {
         append({
@@ -106,9 +111,11 @@ function diffReviewSegments(fileDiff: FileDiffMetadata): DiffReviewSegment[] {
         additionIndex += segment.additions;
       }
     }
+
     oldContextStart = firstLineAfterHunk(hunk.deletionStart, hunk.deletionCount);
     newContextStart = firstLineAfterHunk(hunk.additionStart, hunk.additionCount);
   }
+
   if (!fileDiff.isPartial) {
     appendContextGap(
       Math.min(
@@ -117,6 +124,7 @@ function diffReviewSegments(fileDiff: FileDiffMetadata): DiffReviewSegment[] {
       ),
     );
   }
+
   return segments;
 }
 
@@ -128,14 +136,18 @@ function findReviewRowIndex(
   const findOnSide = (coordinate: "oldStart" | "newStart") => {
     for (const segment of segments) {
       const start = segment[coordinate];
+
       if (start !== null && lineNumber >= start && lineNumber < start + segment.count) {
         return segment.rowStart + lineNumber - start;
       }
     }
+
     return -1;
   };
+
   const coordinate = side === "deletions" ? "oldStart" : "newStart";
   const preferredIndex = findOnSide(coordinate);
+
   return preferredIndex >= 0
     ? preferredIndex
     : findOnSide(coordinate === "oldStart" ? "newStart" : "oldStart");
@@ -148,7 +160,9 @@ export function selectedFileEnd(
   const segments = diffReviewSegments(fileDiff);
   const start = findReviewRowIndex(segments, range.start, range.side);
   const end = findReviewRowIndex(segments, range.end, range.endSide ?? range.side);
+
   if (start < 0 || end < 0) return null;
+
   return start > end
     ? { lineNumber: range.start, side: range.side ?? "additions" }
     : { lineNumber: range.end, side: range.endSide ?? range.side ?? "additions" };
@@ -158,28 +172,39 @@ export function selectedFilePatch(fileDiff: FileDiffMetadata, range: SelectedLin
   const segments = diffReviewSegments(fileDiff);
   const start = findReviewRowIndex(segments, range.start, range.side);
   const end = findReviewRowIndex(segments, range.end, range.endSide ?? range.side);
+
   if (start < 0 || end < 0)
     throw new Error("Selection is no longer in this diff. Select the lines again.");
 
   const firstRow = Math.min(start, end);
   const lastRow = Math.max(start, end);
   const rows: string[] = [];
+
   for (const segment of segments) {
     const firstOffset = Math.max(0, firstRow - segment.rowStart);
     const lastOffset = Math.min(segment.count - 1, lastRow - segment.rowStart);
-    const prefix = segment.change === "add" ? "+" : segment.change === "delete" ? "-" : " ";
+
+    const prefix = Match.value(segment.change).pipe(
+      Match.when("add", () => "+"),
+      Match.when("delete", () => "-"),
+      Match.orElse(() => " "),
+    );
+
     // Read only selected rows, including when a small selection is inside a large context gap.
     for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
       const addition =
         segment.additionIndex === null
           ? undefined
           : fileDiff.additionLines[segment.additionIndex + offset];
+
       const deletion =
         segment.deletionIndex === null
           ? undefined
           : fileDiff.deletionLines[segment.deletionIndex + offset];
+
       rows.push(prefix + stripTrailingNewline(addition ?? deletion ?? ""));
     }
   }
+
   return rows.join("\n");
 }

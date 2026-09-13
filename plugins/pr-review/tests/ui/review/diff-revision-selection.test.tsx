@@ -9,6 +9,7 @@ import type { useReviewDiff as UseReviewDiff } from "../../../src/ui/review/useR
 test("revision changes invalidate every selection consumer without resetting display state", async () => {
   installTestPluginRuntime();
   const { useReviewDiff } = await import("../../../src/ui/review/useReviewDiff");
+
   const detail: LinkedDetail = {
     pr: {
       url: "https://github.com/org/api/pull/8",
@@ -24,9 +25,11 @@ test("revision changes invalidate every selection consumer without resetting dis
     repositoryRoot: null,
     files: [{ path: "api.ts", patch: "@@ -1 +1 @@\n-old\n+new" }],
   };
+
   let current!: ReturnType<typeof UseReviewDiff>;
   let refresh!: () => void;
   const renders: Array<ReturnType<typeof UseReviewDiff>> = [];
+
   function Probe() {
     const [revision, setRevision] = useState(0);
     const [, setSelectedPath] = useState<string | null>(null);
@@ -43,9 +46,12 @@ test("revision changes invalidate every selection consumer without resetting dis
       setNotice,
     });
     renders.push(current);
+
     return null;
   }
+
   const slot = renderSlot({ component: Probe }, {});
+
   try {
     const lines = { id: "0:api.ts", range: { start: 1, end: 1, side: "additions" as const } };
     act(() => current.selection.selectLines(lines));
@@ -63,17 +69,21 @@ test("revision changes invalidate every selection consumer without resetting dis
     const viewerRef = current.viewer.ref;
     const beforeRefresh = renders.length;
     act(refresh);
+
     for (const render of renders.slice(beforeRefresh)) {
       expect(render.selection.lines).toBeNull();
       expect(render.selection.path).toBeNull();
       expect(render.viewer.items[0].annotations).toHaveLength(0);
     }
+
     expect(current.viewer.ref).toBe(viewerRef);
     expect(current.display.style).toBe("split");
     expect(current.display.wrap).toBe(true);
     expect(current.display.allFilesCollapsed).toBe(true);
     act(() => {
-      // The hook's drag handler takes no arguments; no virtualized DOM is mounted here.
+      // SAFETY: useReviewDiff installs a zero-argument closure that only updates the
+      // selecting revision; the CodeView signature adds context unused by this handler.
+      // No virtualized viewer exists in this hook test to supply that context.
       (current.viewer.options.onLineSelectionStart as () => void)();
       current.selection.selectLines(lines);
     });

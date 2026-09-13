@@ -13,25 +13,31 @@ export function useHiddenModels() {
   const [catalog, setCatalog] = useState<CatalogProvider[] | null>(null);
   const [hidden, setHidden] = useState<HiddenModel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const lifecycle = useRef<{
     hiddenRequest: number;
     catalogRequest: number;
     pendingSaves: number;
     refetchPending: boolean;
   } | null>(null);
+
   const report = useCallback((cause: unknown) => {
     setError(cause instanceof Error ? cause.message : String(cause));
   }, []);
 
   const refetchHidden = useCallback(() => {
     const current = lifecycle.current;
+
     if (!current) return;
+
     // Realtime publishes before hidden_set responds. Read only after every
     // pending write settles so that it cannot replace an optimistic update.
     if (current.pendingSaves > 0) {
       current.refetchPending = true;
+
       return;
     }
+
     current.refetchPending = false;
     const request = ++current.hiddenRequest;
     const isCurrent = () => lifecycle.current === current && request === current.hiddenRequest;
@@ -50,6 +56,7 @@ export function useHiddenModels() {
 
   const refetchCatalog = useCallback(() => {
     const current = lifecycle.current;
+
     if (!current) return;
     const request = ++current.catalogRequest;
     const isCurrent = () => lifecycle.current === current && request === current.catalogRequest;
@@ -76,6 +83,7 @@ export function useHiddenModels() {
     };
     refetchHidden();
     refetchCatalog();
+
     return () => {
       lifecycle.current = null;
     };
@@ -85,6 +93,7 @@ export function useHiddenModels() {
   const save = useCallback(
     (next: HiddenModel[]) => {
       const current = lifecycle.current;
+
       if (!current) return;
       const request = ++current.hiddenRequest;
       current.pendingSaves++;
@@ -106,6 +115,7 @@ export function useHiddenModels() {
         )
         .finally(() => {
           current.pendingSaves--;
+
           if (
             lifecycle.current === current &&
             current.pendingSaves === 0 &&

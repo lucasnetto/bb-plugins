@@ -8,7 +8,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 
 | Plugin                | Purpose                                                       |
 | --------------------- | ------------------------------------------------------------- |
-| cursor-sdk            | Run Cursor locally with BB tools or on Cursor Cloud.             |
+| cursor-sdk            | Run Cursor locally with BB tools or on Cursor Cloud.          |
 | cursor-account-labels | Distinguish work and personal Cursor providers.               |
 | bb-fonts           | Choose interface and code fonts with live previews.           |
 | hide-models           | Hide selected models from the model picker.                   |

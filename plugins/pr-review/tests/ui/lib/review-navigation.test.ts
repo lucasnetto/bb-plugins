@@ -9,6 +9,7 @@ test("review handoff consumes once on mount or event, isolates threads, and remo
   sessionStorage.setItem("bb:pr-review:open-review:t1", url);
   sessionStorage.setItem("bb:pr-review:open-review:t2", url);
   const stop = listenForReviewRequests("t1", (request) => opened.push(request));
+
   try {
     expect(opened).toEqual([{ url, title: "org/api #42" }]);
     expect(sessionStorage.getItem("bb:pr-review:open-review:t1")).toBeNull();
@@ -40,20 +41,27 @@ test("PR links open the panel, preserve modified clicks, and fall back when unav
   document.body.append(anchor);
   const opened: unknown[] = [];
   let available = true;
+
   const stop = listenForPrLinks((request) => {
     opened.push(request);
+
     return available;
   });
+
   // Avoid jsdom attempting browser navigation after testing the capture handler.
   anchor.addEventListener("click", (event) => event.preventDefault());
+
   const click = (options: MouseEventInit = {}) => {
     const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...options });
     child.dispatchEvent(event);
+
     return event;
   };
+
   try {
     expect(click().defaultPrevented).toBe(true);
     expect(opened).toEqual([{ url: "https://github.com/org/api/pull/42", title: "org/api #42" }]);
+
     for (const options of [
       { metaKey: true },
       { ctrlKey: true },
