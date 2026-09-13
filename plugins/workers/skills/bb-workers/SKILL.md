@@ -14,20 +14,16 @@ workflow is required.
 
 ## Spawn
 
-Get the current project, thread, and environment IDs from `bb status --json`.
+Call `bb_worker_thread` with `title` and `prompt` (the task and relevant context).
+It automatically creates a hidden child in your project and environment, with
+your permission mode. Save the returned `threadId` for follow-ups.
 
-```sh
-bb thread spawn --project <project-id> --parent-self \
-  --environment <environment-id> --visibility hidden \
-  --title '<short title>' --prompt '<task and relevant context>' --json
-```
+A new worker does not inherit this conversation, so give it the context it needs.
+Include your thread ID in the prompt if it should message you directly.
 
-Save the returned thread ID. A new worker does not inherit this conversation,
-so give it the context it needs. Include the parent thread ID if it should
-message you directly.
-
-Execution flags can be omitted for BB's defaults. To select a model, add
-`--provider <provider-id> --model <model-id> --reasoning-level <level>`.
+Omit execution options for BB's defaults, or supply `providerId`, `model`, and
+`reasoningLevel` to select them explicitly.
+Get your thread and environment IDs with `bb status --json`.
 Find available IDs with `bb provider list --environment <environment-id> --json`
 and `bb provider models <provider-id> --environment <environment-id> --json`.
 Honor any user-requested model; don't silently substitute one.
@@ -51,9 +47,8 @@ stopping it preserves its conversation.
 
 ## Things to know
 
-- The same environment shares files. Coordinate overlapping edits, or replace
-  `--environment` with `--new-environment worktree` for isolation. Worktree
-  changes must be integrated into the target workspace.
+- Workers share your environment and files. Coordinate overlapping edits; this
+  tool does not create isolated worktrees.
 - Workers inherit parent permissions. Delegation does not expand the user's
   authorization or bypass approvals.
 - A created thread may still be queued, and idle does not mean successful.

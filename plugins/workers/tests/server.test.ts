@@ -23,10 +23,13 @@ function setup() {
             }),
             hasPendingInteraction: index === 0,
           })),
-        defaultExecutionOptions: async () => ({ model: "gpt-5.6-luna", reasoningLevel: "low" }),
+        defaultExecutionOptions: async () => ({ model: "gpt-5.6-luna", reasoningLevel: "low", permissionMode: "accept-edits" }),
+        spawn: async () => makeThreadResponse({ id: "new-worker", visibility: "hidden" }),
         get: async ({ threadId }) =>
           makeThreadResponse({
             id: threadId,
+            projectId: "parent-project",
+            environmentId: "parent-environment",
             parentThreadId: threadId === "foreign" ? "another-parent" : "parent",
           }),
         update: async ({ threadId }) => makeThreadResponse({ id: threadId }),
@@ -77,6 +80,46 @@ test("publishes worker changes to their parent and ignores root lifecycle events
     lastAssistantText: "done",
   });
   expect(harness.realtimeSignals).toHaveLength(1);
+});
+
+test("spawns hidden children using the caller's environment and permissions", async () => {
+  const harness = setup();
+  await harness.behavior.callAgentTool("bb_worker_thread", {
+    title: "Research", prompt: "Investigate the issue",
+  }, { threadId: "parent" });
+  expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+    title: "Research", prompt: "Investigate the issue",
+    projectId: "parent-project", parentThreadId: "parent",
+    environment: { type: "reuse", environmentId: "parent-environment" },
+    permissionMode: "accept-edits", visibility: "hidden",
+    startedOnBehalfOf: { initiator: "agent", senderThreadId: "parent" },
+  });
+  expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty("model");
+});
+
+test("passes explicit execution options and supports nested workers", async () => {
+  const harness = setup();
+  await harness.behavior.callAgentTool("bb_worker_thread", {
+    title: "Research", prompt: "Investigate", providerId: "pi", model: "chosen-model", reasoningLevel: "high",
+  }, { threadId: "worker" });
+  expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+    parentThreadId: "worker", visibility: "hidden",
+    providerId: "pi", model: "chosen-model", reasoningLevel: "high",
+  });
+});
+
+test("rejects empty tasks and caller overrides of worker safety fields", async () => {
+  const harness = setup();
+  for (const input of [
+    { title: " ", prompt: "Task" },
+    { title: "Task", prompt: " " },
+    ...["visibility", "parentThreadId", "projectId", "environment", "permissionMode"].map((key) => ({
+      title: "Task", prompt: "Task", [key]: "override",
+    })),
+  ]) {
+    await expect(harness.behavior.callAgentTool("bb_worker_thread", input)).rejects.toThrow();
+  }
+  expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
 });
 
 test("rejects invalid paging input at the RPC boundary", async () => {
