@@ -44,7 +44,7 @@ export default function plugin(bb: BbPluginApi) {
     if (!allowedProviders.has(requestedExecution.providerId)) {
       return {
         action: "reject",
-        message: `This ${profile} instance supports Codex and Cursor with its own accounts. Select one of those providers.`,
+        message: `This ${profile} instance supports Codex, Cursor, and Pi. Select one of those providers.`,
       };
     }
     return { action: "proceed" };

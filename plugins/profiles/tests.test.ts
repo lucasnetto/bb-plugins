@@ -33,6 +33,12 @@ for (const profile of ["personal", "work"] as const) {
       const ids = registrations.providerRegistrations.map(p => p.id);
       assert.deepEqual(ids, profile === "work" ? ["acp-cursor"] : ["acp-cursor", "acp-cursor-personal"]);
       const hook = registrations.hooks["message.dispatch"]!;
+      for (const providerId of ["codex", "pi"]) {
+        assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId } }))).action, "proceed");
+      }
+      const rejected = await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "unsupported-provider" } }));
+      assert.equal(rejected.action, "reject");
+      if (rejected.action === "reject") assert.match(rejected.message, /Codex, Cursor, and Pi/);
       assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor" } }))).action, "proceed");
       assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "cursor-sdk" } }))).action, "proceed");
       assert.equal((await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId: "acp-cursor-work" } }))).action, "reject");
