@@ -1,20 +1,12 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-  type KeyboardEvent,
-} from "react";
+import { useCallback, useState, type MouseEvent, type KeyboardEvent } from "react";
 import { cn } from "@/ui/lib/utils";
 
 /** Inline rename: row double-click, F2 and the context menu all start the same edit. */
 export function useThreadRename(title: string, onRename: (title: string) => void) {
   const [draft, setDraft] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (draft !== null) inputRef.current?.select();
-  }, [draft]);
+  const inputRef = useCallback((input: HTMLInputElement | null) => {
+    input?.select();
+  }, []);
   const commit = useCallback(() => {
     if (draft === null) return;
     const next = draft.trim();

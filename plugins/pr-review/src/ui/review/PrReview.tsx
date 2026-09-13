@@ -2,7 +2,7 @@ import { useGithubReview } from "./useGithubReview";
 import { GithubReviewPanel } from "./GithubReviewPanel";
 import { githubSelection } from "./githubSelection";
 // BB adapter for T3 Code's PR code tab. Ported components retain T3-LICENSE.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "../components/ui/button";
 import { StyledDiffCodeView } from "./StyledDiffCodeView";
@@ -43,6 +43,11 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
     useReviewData(threadId, url);
   const github = useGithubReview(threadId, url);
   const [notice, setNotice] = useState("");
+  const [noticeRevision, setNoticeRevision] = useState(revision);
+  if (noticeRevision !== revision) {
+    setNoticeRevision(revision);
+    setNotice("");
+  }
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
   const guide = useGuide(threadId, url, revision);
@@ -76,11 +81,20 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
     setError,
   });
   const { clear: clearSelection, selectLines } = diff.selection;
-  useEffect(() => {
+  const guideId = guide.data?.id;
+  const [previousGuideId, setPreviousGuideId] = useState(guideId);
+  if (guideId !== previousGuideId) {
+    setPreviousGuideId(guideId);
+    // These hooks own local state; invalidate it before rendering a replacement
+    // guide, while preserving code selection when a guide arrives in the background.
+    if (guideOpen) {
+      clearSelection();
+      setSelectedPath(null);
+    }
+  }
+  function toggleGuide() {
     clearSelection();
     setSelectedPath(null);
-  }, [guideOpen, guide.data?.id, clearSelection, setSelectedPath]);
-  function toggleGuide() {
     setGuideOpen(!guideOpen);
     diff.files.expandAll();
   }

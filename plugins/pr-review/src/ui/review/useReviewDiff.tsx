@@ -1,7 +1,6 @@
 import type { GithubComment } from "../../shared/github-review-contract";
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -54,14 +53,16 @@ export function useReviewDiff({
   const [contextRevision, setContextRevision] = useState(0);
   const [wrap, setWrap] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [selection, setSelection] = useState<ReviewSelection | null>(null);
-  const [selecting, setSelecting] = useState(false);
+  const [selectedLines, setSelectedLines] = useState<{
+    revision: number;
+    lines: ReviewSelection;
+  } | null>(null);
+  const [selectingRevision, setSelectingRevision] = useState<number | null>(null);
+  // PR identity is scoped by PullRequestDetail's key. Only line interaction
+  // belongs to a revision; display preferences and the viewer survive refreshes.
+  const selection = selectedLines?.revision === revision ? selectedLines.lines : null;
+  const selecting = selectingRevision === revision;
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
-  useEffect(() => {
-    setSelection(null);
-    setSelecting(false);
-    setNotice("");
-  }, [rpc, threadId, url, revision, setNotice]);
   const { fullDiffs, loadedContentsRevision, loadDiffFiles } = useReviewContents({
     detail,
     rpc,
@@ -163,13 +164,13 @@ export function useReviewDiff({
       overflow: wrap ? "wrap" : "scroll",
       diffIndicators: "classic",
       enableLineSelection: true,
-      onLineSelectionStart: () => setSelecting(true),
-      onLineSelectionEnd: () => setSelecting(false),
+      onLineSelectionStart: () => setSelectingRevision(revision),
+      onLineSelectionEnd: () => setSelectingRevision(null),
       lineHoverHighlight: "both",
       hunkSeparators: "line-info",
       expandUnchanged,
     }),
-    [mode, style, wrap, expandUnchanged],
+    [mode, style, wrap, expandUnchanged, revision],
   );
   const toggle = useCallback(
     (id: string) =>
@@ -248,11 +249,11 @@ export function useReviewDiff({
     : null;
   const allFilesCollapsed = parsed.length > 0 && collapsed.size === parsed.length;
   const clearSelection = useCallback(() => {
-    setSelection(null);
-    setSelecting(false);
+    setSelectedLines(null);
+    setSelectingRevision(null);
   }, []);
   function selectLines(next: ReviewSelection | null | undefined) {
-    setSelection(next ?? null);
+    setSelectedLines(next ? { revision, lines: next } : null);
     if (next) setSelectedPath(items.find((item) => item.id === next.id)?.fileDiff.name ?? null);
     setNotice("");
   }
@@ -273,12 +274,12 @@ export function useReviewDiff({
     setExpandUnchanged(false);
     setContextRevision((value) => value + 1);
     viewer.current?.scrollTo({ type: "position", position: 0 });
-    setSelection(null);
+    setSelectedLines(null);
   }
   function expandContext() {
     setExpandUnchanged(true);
     setCollapsed(new Set());
-    setSelection(null);
+    setSelectedLines(null);
   }
   function reveal(path: string) {
     setSelectedPath(path);

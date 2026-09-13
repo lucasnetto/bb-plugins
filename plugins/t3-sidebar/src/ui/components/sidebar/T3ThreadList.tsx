@@ -89,16 +89,26 @@ function T3ThreadListContent(props: PluginThreadListProps) {
 
   const [scopeProjectId, setScopeProjectId] = useLocalStorageState<string | null>(SCOPE_KEY, null);
   const [settledExpanded, setSettledExpanded] = useLocalStorageState(SETTLED_EXPANDED_KEY, false);
-  const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
 
   // A scope pointing at a project that no longer exists falls back to all.
   const effectiveScope =
     scopeProjectId !== null && projects.some((project) => project.id === scopeProjectId)
       ? scopeProjectId
       : null;
-  useEffect(() => {
-    setSettledVisibleCount(SETTLED_TAIL_INITIAL_COUNT);
-  }, [effectiveScope]);
+  const [settledPagination, setSettledPagination] = useState({
+    scope: effectiveScope,
+    visibleCount: SETTLED_TAIL_INITIAL_COUNT,
+  });
+  if (settledPagination.scope !== effectiveScope) {
+    setSettledPagination({
+      scope: effectiveScope,
+      visibleCount: SETTLED_TAIL_INITIAL_COUNT,
+    });
+  }
+  const settledVisibleCount =
+    settledPagination.scope === effectiveScope
+      ? settledPagination.visibleCount
+      : SETTLED_TAIL_INITIAL_COUNT;
 
   const partition = useMemo(
     () =>
@@ -231,7 +241,12 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             <li className="list-none">
               <button
                 type="button"
-                onClick={() => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT)}
+                onClick={() =>
+                  setSettledPagination((pagination) => ({
+                    ...pagination,
+                    visibleCount: pagination.visibleCount + SETTLED_TAIL_PAGE_COUNT,
+                  }))
+                }
                 className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-muted-foreground/55 hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="Plus" className="size-4 shrink-0" />
