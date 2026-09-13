@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export const DARK_COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -54,7 +54,7 @@ export function getMediaQuerySnapshot(query: string): boolean {
 
 export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
-    (notify) => subscribeMediaQuery(query, notify),
+    useCallback((notify: () => void) => subscribeMediaQuery(query, notify), [query]),
     () => getMediaQuerySnapshot(query),
     () => false,
   );

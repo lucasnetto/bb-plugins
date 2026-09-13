@@ -48,6 +48,21 @@ function LinkedPrReview({ threadId, url }: { threadId: string; url: string }) {
 }
 
 export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
+  const selectedUrl =
+    typeof params === "object" &&
+    params !== null &&
+    !Array.isArray(params) &&
+    typeof params.url === "string"
+      ? params.url
+      : null;
+  return selectedUrl ? (
+    <LinkedPrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
+  ) : (
+    <LinkedPrPicker key={threadId} threadId={threadId} />
+  );
+}
+
+function LinkedPrPicker({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
   const connection = useRealtimeConnectionState();
@@ -81,13 +96,6 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
     )
       reload();
   });
-  const selectedUrl =
-    typeof params === "object" &&
-    params !== null &&
-    !Array.isArray(params) &&
-    typeof params.url === "string"
-      ? params.url
-      : null;
   async function link() {
     setPending(true);
     setError("");
@@ -127,10 +135,6 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
       params: { url: pr.url },
     });
   }
-  if (selectedUrl)
-    return (
-      <LinkedPrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
-    );
   return (
     <section
       className="flex h-full flex-col gap-4 overflow-auto p-4"

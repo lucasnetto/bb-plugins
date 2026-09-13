@@ -55,20 +55,23 @@ export function LinkedPrProvider({ children }: { children: ReactNode }) {
     let controller: AbortController | undefined;
     const refresh = () => {
       controller?.abort();
-      controller = new AbortController();
+      const request = new AbortController();
+      controller = request;
       fetch("/api/v1/plugins/pr-review/http/linked-prs", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ threadIds: JSON.parse(ids) }),
-        signal: controller.signal,
+        signal: request.signal,
       })
         .then(async (response) => {
           if (!response.ok) throw new Error("Linked PRs unavailable");
           return parseLinks(await response.json());
         })
-        .then(setLinks)
+        .then((value) => {
+          if (!request.signal.aborted) setLinks(value);
+        })
         .catch((error) => {
-          if (error?.name !== "AbortError") setLinks({});
+          if (!request.signal.aborted && error?.name !== "AbortError") setLinks({});
         });
     };
     refresh();
