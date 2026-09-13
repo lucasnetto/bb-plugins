@@ -61,6 +61,7 @@ test("settings update the provider-scoped picker filter and disposal restores ro
     },
   );
   try {
+    fireEvent.click(await slot.findByText("Work", { selector: "h3" }));
     fireEvent.click(await slot.findByRole("checkbox", { name: "Hide Example Model" }));
     await waitFor(() => expect(row.style.display).toBe("none"));
     expect(hidden).toEqual([

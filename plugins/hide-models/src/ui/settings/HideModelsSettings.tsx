@@ -20,9 +20,14 @@ function ProviderCard({
     hiddenKeys.has(keyOf(provider.id, m.model)),
   ).length;
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <div className="min-w-0">
+    <details className="group/provider rounded-lg border border-border bg-card">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-4 py-2.5 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-open/provider:rounded-b-none group-open/provider:border-b group-open/provider:border-border [&::-webkit-details-marker]:hidden">
+        <Icon
+          name="ChevronRight"
+          className="size-4 shrink-0 text-muted-foreground group-open/provider:rotate-90"
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium">{provider.displayName}</h3>
           <p className="truncate font-mono text-xs text-muted-foreground">{provider.id}</p>
         </div>
@@ -31,7 +36,7 @@ function ProviderCard({
             ? `${provider.models.length} visible`
             : `${hiddenCount} of ${provider.models.length} hidden`}
         </span>
-      </header>
+      </summary>
       {provider.models.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">
           {provider.loadError ? `No models (${provider.loadError}).` : "No models discovered."}
@@ -71,7 +76,7 @@ function ProviderCard({
           })}
         </ul>
       )}
-    </section>
+    </details>
   );
 }
 
