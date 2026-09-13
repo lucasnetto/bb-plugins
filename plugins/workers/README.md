@@ -65,6 +65,6 @@ The plugin bundles the [bb-workers skill](skills/bb-workers/SKILL.md). Ask an
 agent to “use bb workers” or invoke `$bb-workers` to use
 hidden child threads as persistent, messageable subagents. The skill explains
 spawning and communication without prescribing how agents divide or manage work.
-It does not turn on delegation for ordinary coding requests. Model choices are
-limited to inheritance and the worker presets configured in this BB profile.
+Agents decide when delegation is useful. Model choices are limited to
+inheritance and the worker presets configured in this BB profile.
 New agent sessions discover the skill after the plugin is refreshed.
