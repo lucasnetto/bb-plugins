@@ -19,6 +19,13 @@ t3code's inbox model:
 - **Status vocabulary** (t3code hues): `Working` (sky), `Monitoring` (sky),
   `Input` (indigo), `Plan Ready` (violet), `Failed` (red), `Done` (emerald,
   unread only). Read, idle threads recede.
+- **Input needs attention.** An unresolved question or approval takes priority
+  over Working, Monitoring, and Done. Its indigo label and question icon stay
+  at full prominence even after the thread is read or you navigate away.
+  Answering clears Input through BB's live sidebar state. Pending input also
+  brings snoozed threads back into view. BB exposes questions and approvals as
+  one pending-interaction flag, so both use Input; idle threads and questions
+  written only in assistant prose do not imply this state.
 - **Settled shelf.** Settled means archived in BB. _Settle_ archives the thread,
   ends its active work through BB's lifecycle, and requests managed-worktree
   cleanup when no live threads use the environment. All visible archived

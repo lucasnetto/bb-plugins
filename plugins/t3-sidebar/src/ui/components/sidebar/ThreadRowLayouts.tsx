@@ -114,6 +114,8 @@ export function CardThreadLayout({
                     name="Spinner"
                     className="size-4 shrink-0 animate-spin [animation-duration:2.5s]"
                   />
+                ) : topStatus.icon === "input" ? (
+                  <Icon name="MessageQuestion" className="size-4 shrink-0" />
                 ) : topStatus.icon === "done" ? (
                   <Icon name="CircleCheck" className="size-4 shrink-0" />
                 ) : topStatus.icon === "monitoring" ? (

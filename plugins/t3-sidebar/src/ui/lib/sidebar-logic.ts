@@ -45,12 +45,12 @@ export function resolveThreadStatus(thread: StatusInput): SidebarThreadStatus {
 }
 
 export function isInFlightStatus(status: SidebarThreadStatus): boolean {
-  return status === "working" || status === "monitoring" || status === "input";
+  return status === "working" || status === "monitoring";
 }
 
 export interface TopStatus {
   label: string;
-  icon: "working" | "done" | "monitoring" | null;
+  icon: "working" | "done" | "monitoring" | "input" | null;
   /** Tailwind classes; hues follow t3code (indigo input, sky working, red failed, emerald done, violet plan). */
   className: string;
 }
@@ -78,7 +78,7 @@ export function resolveTopStatus(input: {
     case "input":
       return {
         label: "Input",
-        icon: null,
+        icon: "input",
         className: "text-indigo-600 dark:text-indigo-300",
       };
     case "plan":

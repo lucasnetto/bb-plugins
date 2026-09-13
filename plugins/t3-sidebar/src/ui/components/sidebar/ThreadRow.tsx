@@ -11,6 +11,7 @@ import { Icon } from "@/ui/components/ui/icon";
 import { cn } from "@/ui/lib/utils";
 import {
   formatCompactTime,
+  isInFlightStatus,
   isTrailingDoubleClick,
   resolveThreadStatus,
   resolveTopStatus,
@@ -127,9 +128,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       : recede
         ? "text-muted-foreground/75 hover:bg-state-hover hover:text-foreground"
         : "bg-transparent text-foreground hover:bg-state-hover",
-    !isActive &&
-      (status === "working" || status === "monitoring" || status === "input") &&
-      "opacity-70 transition-opacity hover:opacity-100",
+    !isActive && isInFlightStatus(status) && "opacity-70 transition-opacity hover:opacity-100",
   );
 
   const timeLabel =

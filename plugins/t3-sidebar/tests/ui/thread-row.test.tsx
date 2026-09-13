@@ -5,7 +5,7 @@ import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing
 import type { ThreadRowProps } from "../../src/ui/components/sidebar/ThreadRow";
 import { thread } from "./thread-fixture";
 
-async function renderRow() {
+async function renderRow(threadOverrides: Partial<typeof thread> = {}) {
   installTestPluginRuntime();
   const { ThreadRow } = await import("../../src/ui/components/sidebar/ThreadRow");
   const { TooltipProvider } = await import("../../src/ui/components/ui/tooltip");
@@ -27,7 +27,7 @@ async function renderRow() {
       ),
     },
     {
-      thread,
+      thread: { ...thread, ...threadOverrides },
       section: "active",
       isActive: false,
       projectName: null,
@@ -39,6 +39,20 @@ async function renderRow() {
   );
   return { slot, actions };
 }
+
+test.each([false, true])("pending input stays prominent when unread is %s", async (isUnread) => {
+  const { slot } = await renderRow({ hasPendingInteraction: true, indicator: "runtime", isUnread });
+  try {
+    expect(slot.getByRole("status").textContent).toBe("Input");
+    const row = slot.getByRole("link", { name: "Reminder" });
+    expect(row.classList.contains("opacity-70")).toBe(false);
+    expect(row.classList.contains("text-muted-foreground/75")).toBe(false);
+    expect(slot.queryByText("Working")).toBeNull();
+    expect(slot.queryByText("Done")).toBeNull();
+  } finally {
+    slot.lifecycle.unmount();
+  }
+});
 
 test.each(["Enter", "blur"])("F2 renames on %s without navigating the row", async (commit) => {
   const { slot, actions } = await renderRow();
