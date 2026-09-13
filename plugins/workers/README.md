@@ -23,6 +23,21 @@ overrides are not accepted. The result contains the worker's `threadId`, preset
 name (or null for inheritance), and resolved execution settings; the spawn also
 records that snapshot in Workers thread metadata.
 
+## Convert a sidebar thread
+
+`bb_convert_to_worker({ threadId })` hides an existing direct child without
+restarting it or changing its conversation, execution settings, or archive state.
+The caller is taken from BB's tool context; no caller/parent override is accepted.
+The thread remains accessible in its parent's Workers panel.
+
+The plugin persistently records each thread's parent on `thread.created` and
+requires both that original parent and its current parent to be the caller.
+Self-conversion, unrelated threads, grandchildren, deleted threads, and ownership
+claimed by reparenting are rejected. Already-hidden eligible children are a no-op.
+Older threads, or threads created while this plugin was disabled, lack verified
+creation ownership and cannot be converted. This is a plugin-tool restriction,
+not a global access-control rule for BB's independent thread-update APIs.
+
 ## Worker presets
 
 Open **Settings → Workers → Worker presets** to optionally configure names,

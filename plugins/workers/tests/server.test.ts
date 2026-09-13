@@ -111,8 +111,15 @@ test("spawns hidden children using the caller's resolved execution, environment 
     environment: { type: "reuse", environmentId: "parent-environment" },
     permissionMode: "accept-edits",
     visibility: "hidden",
-    startedOnBehalfOf: { initiator: "agent", senderThreadId: "parent" },
+    origin: "plugin",
+    originPluginId: "workers",
   });
+  // BB rejects startedOnBehalfOf without a fork origin. Workers must remain
+  // fresh child sessions instead of cloning the parent's provider session.
+  const spawn = harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0];
+  expect(spawn).not.toHaveProperty("startedOnBehalfOf");
+  expect(spawn).not.toHaveProperty("originKind");
+  expect(spawn).not.toHaveProperty("sourceThreadId");
   expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
     providerId: "pi",
     model: "gpt-5.6-luna",

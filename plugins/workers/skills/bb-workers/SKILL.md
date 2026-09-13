@@ -25,6 +25,20 @@ Omit `preset` to inherit. If the user has configured worker presets in
 explaining when to use them. Select one by name when appropriate.
 Get your thread and environment IDs with `bb status --json`.
 
+## Convert an existing sidebar thread
+
+Call `bb_convert_to_worker({ threadId })` from the thread that created it.
+This hides the existing thread from the sidebar and keeps it in your Workers
+panel without restarting it or changing its conversation, environment, model,
+permissions, or archive state. Already-hidden eligible workers are a no-op.
+
+Conversion requires the creation-time parent recorded by this plugin and the
+current parent to both match the calling thread. You cannot convert yourself,
+unrelated threads, grandchildren, or threads merely reparented to you. Threads
+created before ownership tracking was installed (or while the plugin was disabled)
+are rejected because their original ownership cannot be verified. Do not bypass
+this restriction with direct visibility or parent updates.
+
 ## Communicate
 
 ```sh

@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import { PAGE_SIZE, WORKERS_CHANGED, rpcContract } from "./contract";
 import { advertisedParameters, configurationSchema, toolSchema, validatePreset } from "./presets";
 
@@ -9,7 +10,10 @@ export default async function plugin(bb: BbPluginApi) {
 
   let saveQueue: Promise<unknown> = Promise.resolve();
   bb.agents.configure(() => ({
-    tools: [{ name: "bb_worker_thread", parameters: advertisedParameters(configuration.presets) }],
+    tools: [
+      { name: "bb_worker_thread", parameters: advertisedParameters(configuration.presets) },
+      "bb_convert_to_worker",
+    ],
     skills: ["bb-workers"],
   }));
   bb.agents.registerTool({
@@ -62,7 +66,7 @@ export default async function plugin(bb: BbPluginApi) {
         environment: { type: "reuse", environmentId: parent.environmentId },
         permissionMode: execution.permissionMode,
         visibility: "hidden",
-        startedOnBehalfOf: { initiator: "agent", senderThreadId: threadId },
+        // Fresh children use parentThreadId; startedOnBehalfOf requires a fork origin.
       });
 
       return JSON.stringify({
@@ -74,6 +78,56 @@ export default async function plugin(bb: BbPluginApi) {
       });
     },
   });
+  // Snapshot creation-time ownership: the current parent link is editable and
+  // must never be used to backfill authorization for existing threads.
+  const ownershipSchema = z.object({ parentThreadId: z.string().nullable() }).strict();
+  const ownershipKey = (id: string) => `creation-parent:${id}`;
+  bb.events.on("thread.created", async ({ thread }) => {
+    if ((await bb.storage.kv.get(ownershipKey(thread.id))) == null) {
+      await bb.storage.kv.set(ownershipKey(thread.id), { parentThreadId: thread.parentThreadId });
+    }
+  });
+
+  bb.agents.registerTool({
+    name: "bb_convert_to_worker",
+    description:
+      "Convert an existing sidebar thread created by this calling thread into a hidden worker, preserving its conversation and execution. Requires verified creation-time ownership.",
+    parameters: z.object({ threadId: z.string().trim().min(1).max(200) }).strict(),
+    async execute(input, { threadId }) {
+      if (input.threadId === threadId) throw new Error("A thread cannot convert itself.");
+
+      const ownership = ownershipSchema.safeParse(
+        await bb.storage.kv.get(ownershipKey(input.threadId)),
+      );
+
+      if (!ownership.success || ownership.data.parentThreadId !== threadId) {
+        throw new Error(
+          "Only threads verified as created by the calling thread can be converted. Older threads without a creation record are not eligible.",
+        );
+      }
+
+      const target = await bb.sdk.threads.get({ threadId: input.threadId });
+
+      if (target.deletedAt !== null || target.parentThreadId !== threadId) {
+        throw new Error(
+          "The target must still be a non-deleted direct child of the calling thread.",
+        );
+      }
+
+      if (target.visibility !== "hidden") {
+        await bb.sdk.threads.update({ threadId: target.id, visibility: "hidden" });
+      }
+
+      bb.realtime.publish(WORKERS_CHANGED, { threadId });
+
+      return JSON.stringify({
+        threadId: target.id,
+        parentThreadId: threadId,
+        visibility: "hidden",
+      });
+    },
+  });
+
   bb.rpc.register(rpcContract, {
     async getConfiguration() {
       return configuration;
