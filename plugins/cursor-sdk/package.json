@@ -32,9 +32,7 @@
     },
     "server": "./src/server/server.ts",
     "host": "./src/server/host.ts",
-    "skills": [
-      "skills/cursor-sdk"
-    ],
+    "skills": [],
     "app": "./src/ui/app.tsx"
   }
 }

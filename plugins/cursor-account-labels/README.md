@@ -7,8 +7,6 @@ A BB plugin that keeps a todo list. It shows every surface a plugin can own:
   that keeps every open page current.
 - `src/ui/app.tsx` — the frontend: an **Example todos** page in the left sidebar
   (`app.slots.navPanel`) built from the vendored components.
-- `skills/example-todos/SKILL.md` — a skill that tells agents how to keep the list
-  with `bb cursor-account-labels`. BB imports it into agent threads automatically.
 
 Try it: install the plugin, open **Example todos** in the sidebar, then run
 `bb cursor-account-labels add "Ship it"` in a terminal. The page updates at once.
@@ -42,8 +40,7 @@ distribution requirements.
 - `bb.server` — backend entry (required).
 - `bb.app` — frontend entry. Delete it, `src/ui/app.tsx`, `src/ui/components/`,
   `src/ui/hooks/`, and `src/ui/lib/` for a headless plugin.
-- `bb.skills` — skill roots; omitted here, so BB reads `skills/`. Each
-  directory with a `SKILL.md` is one skill, named after the directory.
+- `bb.skills` — explicitly empty; this plugin does not publish agent skills.
 - `bb.name` and `bb.description` — required human-facing identity.
 - `bb.branding` — required; declare `icon` as a BB icon name or a
   plugin-relative compact SVG, or declare `logo.light` (with optional
