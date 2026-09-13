@@ -1,5 +1,6 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { configurationSchema } from "./presets";
 
 export { WORKERS_CHANGED, PAGE_SIZE } from "./events";
 
@@ -20,6 +21,14 @@ export const workerSchema = z.object({
 export type Worker = z.infer<typeof workerSchema>;
 
 export const rpcContract = defineRpcContract({
+  getConfiguration: {
+    input: z.object({}).strict(),
+    output: configurationSchema,
+  },
+  saveConfiguration: {
+    input: configurationSchema,
+    output: configurationSchema,
+  },
   list: {
     input: z.object({ threadId: id, offset: z.number().int().min(0) }),
     output: z.object({ workers: z.array(workerSchema), hasMore: z.boolean() }),

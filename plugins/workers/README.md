@@ -17,9 +17,35 @@ Idle means the thread is idle; it does not imply the task succeeded.
 
 Agents delegate with `bb_worker_thread({ title, prompt })`. The tool fixes the
 parent to the calling thread, reuses its project and environment, inherits its
-permission mode, and always creates a hidden worker. Optional `providerId`,
-`model`, and `reasoningLevel` select execution options; otherwise BB defaults
-apply. The result contains the worker's `threadId` for follow-up commands.
+permission mode, and always creates a hidden worker. Omitting `preset` snapshots
+its immediate parent's resolved provider, model, and thinking level. Raw execution
+overrides are not accepted. The result contains the worker's `threadId`, preset
+name (or null for inheritance), and resolved execution settings; the spawn also
+records that snapshot in Workers thread metadata.
+
+## Worker presets
+
+Open **Settings → Workers → Worker presets** to optionally configure names,
+short descriptions (when an agent should use each), and provider/model/thinking
+combinations through BB's native picker. Presets are stored separately in each
+BB profile; there are no built-in presets. Save explicitly to apply edits.
+
+With no presets, agents see only `title` and `prompt`. Otherwise the tool adds
+an optional `preset` enum with the configured names and descriptions. Omission
+always inherits; `inherit` is reserved and cannot be a preset name. Names are
+lowercase letters, digits, and hyphens (up to 64 characters); descriptions are
+required and capped at 300 characters, with up to 20 presets.
+
+New or changed presets are validated against the current profile's primary-host
+catalog at save time, and selected presets are revalidated in the parent's
+execution environment before spawning. Removed or unavailable presets fail
+explicitly—no model substitution. Removing stale presets remains possible even
+when their provider is offline. Concurrent settings edits fail rather than
+silently overwriting another window; reload saved presets before retrying.
+
+Tool schema updates apply when BB next starts/resumes the agent session, not
+mid-session. Existing workers retain their spawn settings; subsequent explicit
+user changes to a worker affect what its own children inherit.
 
 This plugin uses the public SDK, including the host-owned `ThreadChat`. It does
 not copy transcripts or change worker permissions. It adds no navigation page
@@ -36,10 +62,9 @@ bb plugin reload workers
 ## Agent delegation
 
 The plugin bundles the [bb-workers skill](skills/bb-workers/SKILL.md). Ask an
-agent to “use bb workers,” “delegate to Fable,” or invoke `$bb-workers` to use
+agent to “use bb workers” or invoke `$bb-workers` to use
 hidden child threads as persistent, messageable subagents. The skill explains
 spawning and communication without prescribing how agents divide or manage work.
-It does not turn on delegation for ordinary coding requests. Model preferences
-come from your request, project instructions, or BB defaults, not a fixed model
-in the skill.
+It does not turn on delegation for ordinary coding requests. Model choices are
+limited to inheritance and the worker presets configured in this BB profile.
 New agent sessions discover the skill after the plugin is refreshed.

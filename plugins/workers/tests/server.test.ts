@@ -9,9 +9,10 @@ afterEach(async () => {
   await Promise.all(disposers.splice(0).map((dispose) => dispose()));
 });
 
-function setup() {
+async function setup() {
   const host = createFakePluginHost({
     pluginId: "workers",
+    agentSkillIds: ["bb-workers"],
     sdk: {
       threads: {
         list: async ({ archived } = {}) =>
@@ -33,6 +34,7 @@ function setup() {
         get: async ({ threadId }) =>
           makeThreadResponse({
             id: threadId,
+            providerId: "pi",
             projectId: "parent-project",
             environmentId: "parent-environment",
             parentThreadId: threadId === "foreign" ? "another-parent" : "parent",
@@ -42,14 +44,14 @@ function setup() {
     },
   });
 
-  plugin(host.bb);
+  await plugin(host.bb);
   disposers.push(() => host.harness.lifecycle.dispose());
 
   return host.harness;
 }
 
 test("queries direct children including hidden workers, bounds metadata reads, and retains paging", async () => {
-  const harness = setup();
+  const harness = await setup();
 
   const result = rpcContract.list.output.parse(
     await harness.behavior.callRpc("list", { threadId: "parent", offset: 0 }),
@@ -79,7 +81,7 @@ test("queries direct children including hidden workers, bounds metadata reads, a
 });
 
 test("publishes worker changes to their parent and ignores root lifecycle events", async () => {
-  const harness = setup();
+  const harness = await setup();
   await harness.behavior.emitThreadEvent("thread.idle", {
     thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }),
     lastAssistantText: "done",
@@ -91,8 +93,8 @@ test("publishes worker changes to their parent and ignores root lifecycle events
   expect(harness.realtimeSignals).toHaveLength(1);
 });
 
-test("spawns hidden children using the caller's environment and permissions", async () => {
-  const harness = setup();
+test("spawns hidden children using the caller's resolved execution, environment and permissions", async () => {
+  const harness = await setup();
   await harness.behavior.callAgentTool(
     "bb_worker_thread",
     {
@@ -111,19 +113,26 @@ test("spawns hidden children using the caller's environment and permissions", as
     visibility: "hidden",
     startedOnBehalfOf: { initiator: "agent", senderThreadId: "parent" },
   });
-  expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty("model");
+  expect(harness.inspection.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+    providerId: "pi",
+    model: "gpt-5.6-luna",
+    reasoningLevel: "low",
+    pluginMetadata: {
+      preset: null,
+      providerId: "pi",
+      model: "gpt-5.6-luna",
+      reasoningLevel: "low",
+    },
+  });
 });
 
-test("passes explicit execution options and supports nested workers", async () => {
-  const harness = setup();
+test("supports inheritance from the immediate parent worker", async () => {
+  const harness = await setup();
   await harness.behavior.callAgentTool(
     "bb_worker_thread",
     {
       title: "Research",
       prompt: "Investigate",
-      providerId: "pi",
-      model: "chosen-model",
-      reasoningLevel: "high",
     },
     { threadId: "worker" },
   );
@@ -131,24 +140,31 @@ test("passes explicit execution options and supports nested workers", async () =
     parentThreadId: "worker",
     visibility: "hidden",
     providerId: "pi",
-    model: "chosen-model",
-    reasoningLevel: "high",
+    model: "gpt-5.6-luna",
+    reasoningLevel: "low",
   });
 });
 
 test("rejects empty tasks and caller overrides of worker safety fields", async () => {
-  const harness = setup();
+  const harness = await setup();
 
   for (const input of [
     { title: " ", prompt: "Task" },
     { title: "Task", prompt: " " },
-    ...["visibility", "parentThreadId", "projectId", "environment", "permissionMode"].map(
-      (key) => ({
-        title: "Task",
-        prompt: "Task",
-        [key]: "override",
-      }),
-    ),
+    ...[
+      "visibility",
+      "parentThreadId",
+      "projectId",
+      "environment",
+      "permissionMode",
+      "providerId",
+      "model",
+      "reasoningLevel",
+    ].map((key) => ({
+      title: "Task",
+      prompt: "Task",
+      [key]: "override",
+    })),
   ]) {
     await expect(harness.behavior.callAgentTool("bb_worker_thread", input)).rejects.toThrow();
   }
@@ -157,7 +173,7 @@ test("rejects empty tasks and caller overrides of worker safety fields", async (
 });
 
 test("rejects invalid paging input at the RPC boundary", async () => {
-  const harness = setup();
+  const harness = await setup();
   await expect(
     harness.behavior.callRpc("list", { threadId: "parent", offset: -1 }),
   ).rejects.toThrow();

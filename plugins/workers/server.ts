@@ -1,25 +1,24 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
 import { PAGE_SIZE, WORKERS_CHANGED, rpcContract } from "./contract";
+import { advertisedParameters, configurationSchema, toolSchema, validatePreset } from "./presets";
 
-export default function plugin(bb: BbPluginApi) {
+export default async function plugin(bb: BbPluginApi) {
+  let configuration = configurationSchema.parse(
+    (await bb.storage.kv.get("presets")) ?? { revision: 0, presets: [] },
+  );
+
+  let saveQueue: Promise<unknown> = Promise.resolve();
+  bb.agents.configure(() => ({
+    tools: [{ name: "bb_worker_thread", parameters: advertisedParameters(configuration.presets) }],
+    skills: ["bb-workers"],
+  }));
   bb.agents.registerTool({
     name: "bb_worker_thread",
     description:
       "Spawn a hidden child worker in the current project and environment. Returns its thread ID for messaging and waiting.",
     instructions:
       "For delegation, use bb_worker_thread and follow the bb-workers skill. Never create visible threads unless the user explicitly requests them. This applies to workers delegating further too.",
-    parameters: z
-      .object({
-        title: z.string().trim().min(1).max(200),
-        prompt: z.string().trim().min(1).max(100_000),
-        providerId: z.string().trim().min(1).optional(),
-        model: z.string().trim().min(1).optional(),
-        reasoningLevel: z
-          .enum(["none", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"])
-          .optional(),
-      })
-      .strict(),
+    parameters: toolSchema,
     async execute(input, { threadId }) {
       const parent = await bb.sdk.threads.get({ threadId });
       const execution = await bb.sdk.threads.defaultExecutionOptions({ threadId });
@@ -28,8 +27,36 @@ export default function plugin(bb: BbPluginApi) {
         throw new Error("Worker creation requires a parent environment and execution options.");
       }
 
+      const preset =
+        input.preset === undefined
+          ? undefined
+          : configuration.presets.find((preset) => preset.name === input.preset);
+
+      if (input.preset !== undefined && !preset) {
+        throw new Error(
+          `Unknown worker preset "${input.preset}". Use a configured preset or omit preset to inherit.`,
+        );
+      }
+
+      if (preset) await validatePreset(bb, preset, parent.environmentId);
+
+      const resolved = preset
+        ? {
+            providerId: preset.providerId,
+            model: preset.model,
+            reasoningLevel: preset.reasoningLevel,
+          }
+        : {
+            providerId: parent.providerId,
+            model: execution.model,
+            reasoningLevel: execution.reasoningLevel,
+          };
+
       const worker = await bb.sdk.threads.spawn({
-        ...input,
+        title: input.title,
+        prompt: input.prompt,
+        ...resolved,
+        pluginMetadata: { preset: preset?.name ?? null, ...resolved },
         projectId: parent.projectId,
         parentThreadId: threadId,
         environment: { type: "reuse", environmentId: parent.environmentId },
@@ -42,10 +69,41 @@ export default function plugin(bb: BbPluginApi) {
         threadId: worker.id,
         parentThreadId: threadId,
         visibility: "hidden",
+        preset: preset?.name ?? null,
+        ...resolved,
       });
     },
   });
   bb.rpc.register(rpcContract, {
+    async getConfiguration() {
+      return configuration;
+    },
+    async saveConfiguration(input) {
+      const save = saveQueue.then(async () => {
+        if (input.revision !== configuration.revision) {
+          throw new Error(
+            "Worker presets changed in another window. Reload settings before saving.",
+          );
+        }
+
+        // Allow removing stale presets without requiring their providers online.
+        const changed = input.presets.filter(
+          (preset) =>
+            !configuration.presets.some((old) => JSON.stringify(old) === JSON.stringify(preset)),
+        );
+
+        await Promise.all(changed.map((preset) => validatePreset(bb, preset)));
+        const next = { revision: configuration.revision + 1, presets: input.presets };
+        await bb.storage.kv.set("presets", next);
+        configuration = next;
+
+        return next;
+      });
+
+      saveQueue = save.catch(() => undefined);
+
+      return save;
+    },
     async list({ threadId, offset }) {
       // BB filters archived and unarchived threads separately. Merge both before
       // paging so archiving a worker never removes it from this browser.
