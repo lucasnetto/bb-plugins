@@ -24,9 +24,6 @@
     "branding": {
       "icon": "Zap"
     },
-    "server": "./server.ts",
-    "skills": [
-      "./skills/orbisa-tasks"
-    ]
+    "server": "./server.ts"
   }
 }

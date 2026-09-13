@@ -20,4 +20,4 @@ VMs consume local disk and compute; this does not provision cloud resources.
 
 Use `bb orbisa tasks` for lifecycle and deletion deadlines. The **Task VM
 template** and **Suspend task VMs after idle** settings control provisioning
-and idle behavior. Agents discover the focused `orbisa-tasks` skill.
+and idle behavior.
