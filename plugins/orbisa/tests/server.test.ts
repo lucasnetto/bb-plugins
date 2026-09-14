@@ -14,7 +14,7 @@ void test("task lifecycle remains available and retired commands are rejected", 
   plugin(bb);
 
   try {
-    assert.equal(harness.inspection.registrations.hooks["message.dispatch"], null);
+    assert.ok(harness.inspection.registrations.hooks["message.dispatch"]);
     const tasks = await harness.behavior.runCli(["tasks"]);
     assert.equal(tasks.exitCode, 0);
     assert.deepEqual(JSON.parse(tasks.stdout!), { total: 0, machines: [] });

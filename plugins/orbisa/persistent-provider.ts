@@ -16,6 +16,7 @@ import {
   type PersistentResource,
 } from "./persistent-resource.ts";
 import { seedPersistentCatalog } from "./persistent-catalog.ts";
+import { createPersistentRuntimeCleanup } from "./persistent-runtime-cleanup.ts";
 import { createPersistentPolicy } from "./persistent-policy.ts";
 
 type Definition = PluginMachineProviderDeclaration<ReturnType<typeof persistentInputs>>;
@@ -24,6 +25,7 @@ const fail = (message: string) => Effect.fail(new PersistentError({ message }));
 
 export interface PersistentSettings {
   persistentIdleMinutes: number;
+  persistentRuntimeIdleMinutes?: number;
 }
 
 export interface PersistentAdapters {
@@ -78,6 +80,12 @@ export function registerPersistentProvider(
 
   const lock = Semaphore.makeUnsafe(1);
   const policy = createPersistentPolicy(bb, async () => (await settings()).persistentIdleMinutes);
+
+  const cleanup = createPersistentRuntimeCleanup(
+    bb,
+    async () => (await settings()).persistentRuntimeIdleMinutes ?? 15,
+  );
+
   bb.onDispose(() => runtime.dispose());
   const slotKey = (slot: string) => `persistent-slot/${slot}`;
   const launchKey = (key: string) => `persistent-launch/${key}`;
@@ -286,6 +294,9 @@ export function registerPersistentProvider(
   });
   const sweep = () => runtime.runPromise(policy.sweep());
   bb.background.schedule("persistent-machine-idle", "* * * * *", sweep);
+  bb.background.schedule("persistent-runtime-cleanup", "* * * * *", () =>
+    runtime.runPromise(cleanup.sweep()),
+  );
   bb.events.on("experimental_terminal.input", ({ terminal }) =>
     runtime.runPromise(policy.bump(terminal.hostId)),
   );

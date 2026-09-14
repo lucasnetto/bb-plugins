@@ -5,11 +5,18 @@ import { registerTaskProvider } from "./task-provider.ts";
 
 export default function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
+    persistentRuntimeIdleMinutes: {
+      type: "number",
+      label: "Release idle agent runtimes after (minutes)",
+      description: "Keep persistent VMs connected while unloading idle agents. Set 0 to disable.",
+      default: 15,
+      experimental_schema: z.number().int().min(0).max(1440),
+    },
     persistentIdleMinutes: {
       type: "number",
       label: "Suspend persistent VMs after idle (minutes)",
       description: "Keep their files and resume automatically. Set 0 to disable idle suspension.",
-      default: 15,
+      default: 0,
       experimental_schema: z.number().int().min(0).max(1440),
     },
     taskTemplate: {

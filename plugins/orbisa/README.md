@@ -8,9 +8,22 @@ from both disposable task VMs and the original Cursor/T3 Code VMs:
 - Personal (`~/.bb`): `ln-orbisa-01`.
 - Work (`~/.bb-work`): `180seg-orbisa-01` and `180seg-orbisa-02`.
 
-Each profile owns its own physical machines and credentials. Machines suspend
-after 15 idle minutes by default and BB resumes them before work runs. Set
-`persistentIdleMinutes` to `0` to disable idle suspension. Settling threads never
+Each profile owns its own machines and credentials. After 15 idle minutes, the
+plugin releases idle agent runtimes while keeping the BB daemon connected and the
+machine selectable for new threads. Thread history, files and credentials remain;
+BB reloads the provider session on the next message. Set
+`persistentRuntimeIdleMinutes` to `0` to disable runtime cleanup.
+
+Cleanup skips machines with active or starting threads, queued messages, pending
+interactions, background activity, or open terminals. It includes hidden workers
+and archived idle threads. Incoming messages wait during cleanup and are retried
+afterward. Cleanup runs once per activity cycle, with a fresh idle grace after a
+plugin reload. Failures are retried on the next sweep. It does not stop arbitrary
+development services or force memory reclamation.
+
+Full VM idle suspension is disabled by default because BB currently disables
+suspended machines in its new-thread picker. Set `persistentIdleMinutes` above
+`0` to opt in; existing saved settings are preserved. Settling threads never
 deletes these VMs or their files. Only explicit machine removal deletes a VM.
 Running or starting threads (including hidden workers) defer suspension; BB also
 refuses suspension while terminals are open.
