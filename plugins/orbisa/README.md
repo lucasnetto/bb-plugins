@@ -8,7 +8,7 @@ from both disposable task VMs and the original Cursor/T3 Code VMs:
 - Personal (`~/.bb`): `ln-orbisa-01`.
 - Work (`~/.bb-work`): `180seg-orbisa-01` and `180seg-orbisa-02`.
 
-Each profile owns its own machines and credentials. After 15 idle minutes, the
+Each profile owns its own machines and credentials. After 10 idle minutes, the
 plugin releases idle agent runtimes while keeping the BB daemon connected and the
 machine selectable for new threads. Thread history, files and credentials remain;
 BB reloads the provider session on the next message. Set

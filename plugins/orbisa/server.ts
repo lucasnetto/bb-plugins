@@ -9,7 +9,7 @@ export default function plugin(bb: BbPluginApi) {
       type: "number",
       label: "Release idle agent runtimes after (minutes)",
       description: "Keep persistent VMs connected while unloading idle agents. Set 0 to disable.",
-      default: 15,
+      default: 10,
       experimental_schema: z.number().int().min(0).max(1440),
     },
     persistentIdleMinutes: {

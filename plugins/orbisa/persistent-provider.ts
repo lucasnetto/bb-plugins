@@ -84,7 +84,7 @@ export function registerPersistentProvider(
 
   const cleanup = createPersistentRuntimeCleanup(
     bb,
-    async () => (await settings()).persistentRuntimeIdleMinutes ?? 15,
+    async () => (await settings()).persistentRuntimeIdleMinutes ?? 10,
     Date.now,
     async (hostId, paths, threadIds, signal) => {
       const host = await bb.sdk.hosts.get({ hostId, signal });
