@@ -13,6 +13,7 @@ import {
   type rpcContract,
 } from "../shared/runtime-settings.js";
 import "./app.css";
+import { mountModelPicker } from "./model-picker.js";
 
 export function RuntimeDefault() {
   const rpc = useRpc<typeof rpcContract>();
@@ -112,6 +113,7 @@ function CompactRuntimeDefault() {
 }
 
 export default definePluginApp((app) => {
+  app.contentScripts.register({ id: "model-picker", mount: mountModelPicker });
   app.composer.customize({
     id: "cursor-runtime-default",
     scopes: ["new-thread"],

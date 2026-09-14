@@ -71,7 +71,10 @@ function ProviderCard({
                     <span className="shrink-0 text-xs text-muted-foreground">default</span>
                   ) : null}
                 </label>
-                <span className="hidden shrink-0 font-mono text-xs text-muted-foreground sm:inline">
+                <span
+                  className="hidden min-w-0 max-w-[40%] truncate font-mono text-xs text-muted-foreground sm:inline"
+                  title={model.model}
+                >
                   {model.model}
                 </span>
               </li>

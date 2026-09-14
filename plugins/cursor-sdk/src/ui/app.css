@@ -66,3 +66,7 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+[data-cursor-sdk-duplicate] {
+  display: none !important;
+}
