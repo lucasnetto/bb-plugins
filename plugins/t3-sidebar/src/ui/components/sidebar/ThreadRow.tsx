@@ -1,3 +1,4 @@
+import { useThreadTitleRegeneration } from "@/ui/hooks/useThreadTitleRegeneration";
 import { CardThreadLayout, CompactThreadLayout } from "./ThreadRowLayouts";
 import { EditableThreadTitle, useThreadRename } from "./EditableThreadTitle";
 import { ThreadContextMenu } from "./ThreadContextMenu";
@@ -59,6 +60,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const { splitProps, isAvailable: splitAvailable } = experimental_useSidebarThreadSplit(thread.id);
 
   const rename = useThreadRename(title, (next) => actions.rename(thread.id, next));
+  const regeneration = useThreadTitleRegeneration(thread.id);
 
   const handleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -95,14 +97,30 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   );
 
   const titleNode = (
-    <EditableThreadTitle
-      rename={rename}
-      title={title}
-      recede={recede}
-      isCard={isCard}
-      isActive={isActive}
-      isUnread={thread.isUnread}
-    />
+    <span className="flex min-w-0 flex-1 items-center gap-2">
+      <EditableThreadTitle
+        rename={rename}
+        title={title}
+        recede={recede}
+        isCard={isCard}
+        isActive={isActive}
+        isUnread={thread.isUnread}
+      />
+      {regeneration.running && (
+        <span
+          role="status"
+          aria-live="polite"
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+        >
+          <Icon
+            name="Spinner"
+            aria-hidden
+            className="size-3 animate-spin motion-reduce:animate-none"
+          />
+          Renaming…
+        </span>
+      )}
+    </span>
   );
 
   const pinIndicator = thread.isPinned ? (
@@ -186,6 +204,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
         actions={actions}
         splitAvailable={splitAvailable}
         onRename={rename.start}
+        regeneration={regeneration}
       >
         <a
           {...anchorProps}

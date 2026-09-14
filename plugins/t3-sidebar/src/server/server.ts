@@ -1,3 +1,4 @@
+import { createRenameHandlers } from "./lib/rename";
 import { createSnoozeHandlers } from "./lib/snooze";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
@@ -14,6 +15,7 @@ export default function plugin(bb: BbPluginApi) {
   const runtime = createRuntime(bb);
   bb.rpc.register(rpcContract, {
     ...createSnoozeHandlers(bb),
+    ...createRenameHandlers(bb),
     ...createProjectSettingsHandlers(bb),
     ...createProjectThreadHandlers(bb),
     ...createSideThreadHandlers(bb),

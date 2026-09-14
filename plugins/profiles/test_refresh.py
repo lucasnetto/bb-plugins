@@ -49,4 +49,32 @@ class RefreshTest(unittest.TestCase):
             self.assertEqual(len(result['errors']), 2)
             self.assertFalse(any(c[0] in ('reload', 'install') for c in calls))
 
+
+class InstallMissingTests(unittest.TestCase):
+    def test_installs_only_explicit_missing_plugin_in_both_profiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'plugins' / 'example'
+            source.mkdir(parents=True)
+            (source / 'package.json').write_text(json.dumps({'name': 'bb-plugin-example'}))
+            inventories = {profile: [] for profile in refresh.PROFILES}
+            calls = []
+
+            def run(args, profile=None):
+                calls.append((args, profile))
+                if args[0] == 'install':
+                    inventories[profile] = [dict(id='example', source='path:' + str(source), rootDir=str(source), version='1', enabled=True, status='running')]
+                return json.dumps({'plugins': inventories.get(profile, [])})
+
+            result = refresh.refresh(root, ['example'], run=run, install_missing=True)
+            self.assertEqual(result['errors'], [])
+            self.assertEqual(len(result['plugins']), 2)
+            self.assertEqual(sum(args[0] == 'build' for args, _ in calls), 1)
+            self.assertEqual(sum(args[0] == 'install' for args, _ in calls), 2)
+
+    def test_requires_explicit_ids_and_mutating_mode(self):
+        for ids, check in [([], False), (['example'], True)]:
+            with self.assertRaises(RuntimeError):
+                refresh.refresh(Path('/unused'), ids, check=check, install_missing=True)
+
 if __name__ == '__main__': unittest.main()

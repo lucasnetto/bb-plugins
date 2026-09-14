@@ -43,7 +43,9 @@ def build_hash(source):
     return digest.hexdigest()[:16]
 
 
-def refresh(root, ids, check=False, run=cli):
+def refresh(root, ids, check=False, run=cli, install_missing=False):
+    if install_missing and (check or not ids):
+        raise RuntimeError("--install-missing requires explicit plugin IDs and cannot be used with --check")
     sources = {}
     for manifest in (root / 'plugins').glob('*/package.json'):
         name = json.loads(manifest.read_text())['name']
@@ -61,7 +63,10 @@ def refresh(root, ids, check=False, run=cli):
     for profile, plugins in inventories.items():
         selected = [p for p in plugins if p['id'] in sources and (not ids or p['id'] in ids)]
         for plugin_id in set(ids) - {p['id'] for p in selected}:
-            errors.append(f'{profile}/{plugin_id}: not installed; install it explicitly before refresh.')
+            if install_missing:
+                selected.append({'id': plugin_id, 'source': None, 'enabled': True})
+            else:
+                errors.append(f'{profile}/{plugin_id}: not installed; use --install-missing with explicit plugin IDs.')
         for plugin in selected:
             plugin_id = plugin['id']
             source = sources[plugin_id]
@@ -99,6 +104,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('plugins', nargs='*')
     parser.add_argument('--check', action='store_true', help='report paths, builds and health without refreshing')
+    parser.add_argument('--install-missing', action='store_true', help='install explicitly named local plugins when absent')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     if root != PERMANENT.resolve():
@@ -110,7 +116,7 @@ def main():
         except BlockingIOError:
             parser.error('A profile refresh is already running; wait for its result.')
         try:
-            result = refresh(root, args.plugins, args.check)
+            result = refresh(root, args.plugins, args.check, install_missing=args.install_missing)
         except RuntimeError as error:
             parser.error(str(error))
         print(json.dumps(result, indent=2))

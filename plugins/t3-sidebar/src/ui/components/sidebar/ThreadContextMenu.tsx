@@ -1,3 +1,4 @@
+import type { useThreadTitleRegeneration } from "@/ui/hooks/useThreadTitleRegeneration";
 import { useRef, type ReactNode } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { SidebarSection } from "@/ui/lib/sidebar-logic";
@@ -21,6 +22,7 @@ export function ThreadContextMenu({
   actions,
   splitAvailable,
   onRename,
+  regeneration,
   children,
 }: {
   thread: PluginSidebarThread;
@@ -28,6 +30,7 @@ export function ThreadContextMenu({
   actions: ThreadRowActions;
   splitAvailable: boolean;
   onRename: () => void;
+  regeneration: ReturnType<typeof useThreadTitleRegeneration>;
   children: ReactNode;
 }) {
   const renameAfterClose = useRef(false);
@@ -39,7 +42,13 @@ export function ThreadContextMenu({
   const snoozeMenu = useThreadSnoozeMenu((until) => actions.setSnoozed(thread.id, until));
 
   return (
-    <ContextMenu onOpenChange={snoozeMenu.onOpenChange}>
+    <ContextMenu
+      onOpenChange={(open) => {
+        snoozeMenu.onOpenChange(open);
+
+        if (open) void regeneration.refresh();
+      }}
+    >
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent
         className="w-52"
@@ -99,6 +108,16 @@ export function ThreadContextMenu({
         >
           Rename
         </ContextMenuItem>
+        {regeneration.available && (
+          <ContextMenuItem
+            disabled={regeneration.running}
+            onSelect={() => {
+              void regeneration.start();
+            }}
+          >
+            {regeneration.running ? "Regenerating…" : "Regenerate title"}
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           disabled={thread.isArchived}

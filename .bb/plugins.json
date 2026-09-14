@@ -38,6 +38,10 @@
     {
       "name": "cursor-sdk",
       "source": "./plugins/cursor-sdk"
+    },
+    {
+      "name": "rename-thread",
+      "source": "./plugins/rename-thread"
     }
   ]
 }

@@ -63,13 +63,23 @@ export default function plugin(bb: BbPluginApi) {
       {
         name: "refresh",
         summary: "Build and refresh local bb-plugins plugins in both profiles",
-        usage: "bb profiles refresh [plugin-id ...] [--check]",
+        usage: "bb profiles refresh [plugin-id ...] [--check | --install-missing]",
       },
     ],
     async run(argv) {
       if (argv[0] === "refresh") {
-        if (argv.slice(1).some((arg) => arg !== "--check" && !/^[a-z][a-z0-9-]*$/.test(arg)))
-          return { exitCode: 1, stderr: "Usage: bb profiles refresh [plugin-id ...] [--check]" };
+        if (
+          argv
+            .slice(1)
+            .some(
+              (arg) =>
+                arg !== "--check" && arg !== "--install-missing" && !/^[a-z][a-z0-9-]*$/.test(arg),
+            )
+        )
+          return {
+            exitCode: 1,
+            stderr: "Usage: bb profiles refresh [plugin-id ...] [--check | --install-missing]",
+          };
         const self = (await bb.sdk.plugins.list()).plugins.find((p) => p.id === bb.pluginId);
 
         if (!self) return { exitCode: 1, stderr: "Profiles installation is missing." };

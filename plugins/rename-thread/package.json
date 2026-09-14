@@ -1,0 +1,35 @@
+{
+  "name": "bb-plugin-rename-thread",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "better-sqlite3": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.41",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "Rename Thread",
+    "description": "Regenerate thread titles from the original request and recent conversation.",
+    "branding": {
+      "icon": "RefreshCw"
+    },
+    "server": "./src/server/server.ts",
+    "skills": [
+      "skills"
+    ]
+  }
+}

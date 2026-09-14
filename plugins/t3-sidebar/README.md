@@ -125,3 +125,7 @@ schedule; overlapping passes are skipped and cancellation reaches host Git
 commands. The clean/default-branch checks before and after fetch remain in
 place, and writes are never retried. Project CRUD, directory listing and thread creation also return Effects, with
 Promise conversion at BB entry points.
+
+With the Rename Thread plugin installed and enabled, the thread context menu also offers **Regenerate title**. Generation runs separately from the thread; the menu displays progress and reports the result in a toast.
+
+While a title is being regenerated, its thread row shows a spinner and **Renaming…**, including after the context menu closes.

@@ -68,7 +68,10 @@ and health for each profile. It reports an unreachable profile as a failure.
 The command builds each plugin once, reloads both installations, repairs stale
 local source paths, preserves disabled state, and verifies the result. A failed
 build is never loaded. It does not pull Git, discard local changes, update
-managed third-party plugins, or install missing plugins. Publish source changes
+managed third-party plugins, or install missing plugins unless explicitly requested with `--install-missing`.
+Use `bb profiles refresh <plugin-id> --install-missing` to install a new local
+plugin in both profiles. This option requires explicit plugin IDs and cannot
+be combined with `--check`. Publish source changes
 through the normal repository workflow.
 
 Profile isolation still applies to threads and provider accounts. The bounded

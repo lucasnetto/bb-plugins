@@ -1,3 +1,4 @@
+import { renameContract } from "./rename-contract";
 import { standardSchema } from "./standard-schema";
 import { Schema } from "effect";
 import { settledContract } from "./settled-contract";
@@ -10,6 +11,7 @@ import { sideThreadContract } from "./side-thread-contract";
 
 export const rpcContract = defineRpcContract({
   ...snoozeContract,
+  ...renameContract,
   ...projectSettingsContract,
   ...projectThreadContract,
   ...sideThreadContract,

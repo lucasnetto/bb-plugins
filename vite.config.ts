@@ -55,6 +55,7 @@ export default defineConfig({
   test: {
     projects: [
       "plugins/t3-sidebar",
+      "plugins/rename-thread",
       "plugins/hide-models",
       "plugins/pr-review",
       "plugins/workers",

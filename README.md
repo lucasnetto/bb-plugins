@@ -14,6 +14,7 @@ A pnpm workspace manages dependencies with one root lockfile.
 | hide-models           | Hide selected models from the model picker.                   |
 | model-thinking-level  | Keep the selected thinking level visible beside the model.    |
 | pr-review             | Find PRs, review code with agents, and settle completed work. |
+| rename-thread         | Regenerate thread titles from conversation context.          |
 | t3-sidebar            | Display a T3-style thread sidebar.                            |
 | workers               | Inspect hidden child workers and chat in the parent panel.    |
 
