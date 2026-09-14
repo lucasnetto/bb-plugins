@@ -81,6 +81,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
   const base = "a".repeat(40);
   let head = "b".repeat(40);
   let contextLine = "before";
+  let failStaging = true;
   const staged: unknown[] = [];
   const contentsRequests: unknown[] = [];
 
@@ -129,6 +130,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
           };
         },
         stageReviewComment: (input) => {
+          if (failStaging) throw new Error("Staging failed");
           staged.push(input);
 
           return { id: "comment-1" };
@@ -172,7 +174,16 @@ test("expanded context reaches the draft with exact revisions and refresh reload
       "Check this line",
     );
     fireEvent.click(slot.getByRole("button", { name: "Add to chat ⌘↵" }));
+    await slot.findByText(/Staging failed/);
+    expect(slot.getByLabelText("Comment on selected code")).toHaveProperty(
+      "value",
+      "Check this line",
+    );
+    expect(slot.inspection.composer.text).toBe("Existing draft");
+    failStaging = false;
+    fireEvent.click(slot.getByRole("button", { name: "Add to chat ⌘↵" }));
     await slot.findByText("Added to your draft.");
+    expect(slot.queryByLabelText("Comment on selected code")).toBeNull();
     expect(staged).toEqual([
       {
         threadId: "t1",

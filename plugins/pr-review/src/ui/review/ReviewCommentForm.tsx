@@ -30,8 +30,11 @@ export function ReviewCommentForm({
 
         if (!draft.comment.trim() || loading || draft.addingComment) return;
 
-        if (threadId) void draft.add("Comment");
-        else if (!githubDisabled && hasDetail) void onAddToReview?.();
+        if (threadId) {
+          void draft.add("Comment").then((added) => {
+            if (added) onClose();
+          });
+        } else if (!githubDisabled && hasDetail) void onAddToReview?.();
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

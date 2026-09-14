@@ -34,7 +34,7 @@ export function useReviewComposer({
   const [addingComment, setAddingComment] = useState(false);
 
   async function add(action: ReviewAction) {
-    if (!threadId || !detail || addingComment) return;
+    if (!threadId || !detail || addingComment) return false;
     setAddingComment(true);
 
     try {
@@ -71,8 +71,10 @@ export function useReviewComposer({
 
       setComment("");
       setNotice("Added to your draft.");
+      return true;
     } catch (error) {
       setError(String(error));
+      return false;
     } finally {
       setAddingComment(false);
     }
