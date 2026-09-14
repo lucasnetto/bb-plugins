@@ -21,12 +21,13 @@ type RepositoryVariables = {
 
 type BranchVariables = { id: string; head: string; method: string };
 
-type GraphqlVariables = RepositoryVariables | BranchVariables;
+type GraphqlVariables = RepositoryVariables | BranchVariables | { id: string };
 
 type WorkspaceApiBody =
   | { query: string; variables: GraphqlVariables }
   | { sha: string; merge_method: "merge" | "squash" | "rebase"; merge_action: "default" }
   | { title: string; body: string }
+  | { body: string }
   | { labels: string[] }
   | { reviewers: string[]; team_reviewers: string[] };
 
@@ -193,6 +194,59 @@ const overviewRaw = z.object({
   }),
 });
 
+// Actions need fresh revision/permission checks, not the full display payload.
+export const ACTION_PREFLIGHT_QUERY = `query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){viewerPermission mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
+    pullRequest(number:$number){id state isDraft updatedAt headRefName baseRefName headRefOid viewerCanUpdate viewerCanUpdateBranch}
+  }
+}`;
+
+const actionPreflightRaw = z.object({
+  repository: overviewRaw.shape.repository.omit({ pullRequest: true }).extend({
+    pullRequest: overviewRaw.shape.repository.shape.pullRequest.pick({
+      id: true,
+      state: true,
+      isDraft: true,
+      updatedAt: true,
+      headRefName: true,
+      baseRefName: true,
+      headRefOid: true,
+      viewerCanUpdate: true,
+      viewerCanUpdateBranch: true,
+    }),
+  }),
+});
+
+function capabilities(repo: z.infer<typeof actionPreflightRaw>["repository"]) {
+  return {
+    canEdit: repo.pullRequest.viewerCanUpdate,
+    canMerge: ["ADMIN", "MAINTAIN", "WRITE"].includes(repo.viewerPermission ?? ""),
+    canUpdateBranch: repo.pullRequest.viewerCanUpdateBranch,
+    mergeMethods: [
+      repo.mergeCommitAllowed && "merge",
+      repo.squashMergeAllowed && "squash",
+      repo.rebaseMergeAllowed && "rebase",
+    ].filter(Boolean),
+    autoMergeAllowed: repo.autoMergeAllowed,
+  };
+}
+
+export const prActionPreflight = Effect.fn("PrWorkspace.actionPreflight")(function* (
+  root: string,
+  url: string,
+) {
+  const ref = yield* decode(() => repositoryVariables(url));
+
+  const data = yield* graphql(
+    root,
+    ACTION_PREFLIGHT_QUERY,
+    { owner: ref.owner, name: ref.name, number: ref.number },
+    actionPreflightRaw,
+  );
+
+  return { ...data.repository.pullRequest, ...capabilities(data.repository) };
+});
+
 export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: string, url: string) {
   const ref = yield* decode(() => repositoryVariables(url));
 
@@ -209,7 +263,7 @@ export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: str
     { concurrency: 2 },
   );
 
-  const { pullRequest: pr, ...repo } = data.repository;
+  const { pullRequest: pr } = data.repository;
   const contexts = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts;
 
   return yield* decode(() =>
@@ -217,15 +271,7 @@ export const prOverview = Effect.fn("PrWorkspace.overview")(function* (root: str
       ...pr,
       repository: ref.repository,
       viewer: data.viewer.login,
-      canEdit: pr.viewerCanUpdate,
-      canMerge: ["ADMIN", "MAINTAIN", "WRITE"].includes(repo.viewerPermission ?? ""),
-      canUpdateBranch: pr.viewerCanUpdateBranch,
-      mergeMethods: [
-        repo.mergeCommitAllowed && "merge",
-        repo.squashMergeAllowed && "squash",
-        repo.rebaseMergeAllowed && "rebase",
-      ].filter(Boolean),
-      autoMergeAllowed: repo.autoMergeAllowed,
+      ...capabilities(data.repository),
       autoMerge: pr.autoMergeRequest !== null,
       labels: pr.labels.nodes,
       reviewers: pr.reviewRequests.nodes.flatMap(({ requestedReviewer: actor }) =>

@@ -1,6 +1,11 @@
 import { expect, it } from "vite-plus/test";
 import { prAction, prMergeStatus, stackScope } from "../../src/server/workspace-actions";
-import { checkState, prStack, prTimeline } from "../../src/server/workspace-github";
+import {
+  ACTION_PREFLIGHT_QUERY,
+  checkState,
+  prStack,
+  prTimeline,
+} from "../../src/server/workspace-github";
 import { runHost, type Command } from "../../src/server/host-effects";
 import { overview, rawOverview, stack } from "../workspace-fixture";
 import type { Overview, WorkspaceAction } from "../../src/shared/workspace-contract";
@@ -48,7 +53,7 @@ function fixture(
 
     const payload = body ? JSON.parse(body.startsWith("{") ? body : "{}") : {};
 
-    if (args.includes("graphql") && payload.query?.includes("viewer{login}"))
+    if (args.includes("graphql") && payload.query === ACTION_PREFLIGHT_QUERY)
       return JSON.stringify(rawOverview(options.pr));
 
     if (args.some((arg) => arg.includes("/stacks?"))) {
@@ -58,6 +63,9 @@ function fixture(
     }
 
     writes.push({ args, body });
+
+    if (payload.query?.includes("result:"))
+      return JSON.stringify({ data: { result: { pullRequest: { id: overview.id } } } });
 
     if (args.includes("graphql"))
       return JSON.stringify({
@@ -186,7 +194,8 @@ it("passes comment text through stdin and refuses to check out over local change
   const f = fixture({ dirty: true });
   const body = "A comment with `code` and $(literal text)\n\nSecond paragraph.";
   await f.action({ kind: "comment", body });
-  expect(f.writes[0]).toEqual({ args: ["pr", "comment", overview.url, "--body-file", "-"], body });
+  expect(f.writes[0]?.args).toContain("repos/acme/api/issues/42/comments");
+  expect(JSON.parse(f.writes[0]!.body!)).toEqual({ body });
   await expect(f.action({ kind: "checkout" })).rejects.toThrow("uncommitted");
   expect(f.writes).toHaveLength(1);
 });
@@ -216,4 +225,94 @@ it("maps Git commit authors without logins, and paginates timeline events", asyn
     ],
   });
   expect(checkState("EXPECTED")).toBe("pending");
+});
+
+it("validates merge revisions and stack scope concurrently before any write", async () => {
+  const f = fixture();
+  let release!: () => void;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  let stackStarted!: () => void;
+
+  const started = new Promise<void>((resolve) => {
+    stackStarted = resolve;
+  });
+
+  const run: Command = async (root, program, args, signal, body) => {
+    if (body && JSON.parse(body).query === ACTION_PREFLIGHT_QUERY) await gate;
+
+    if (args.some((arg) => arg.includes("/stacks?"))) stackStarted();
+
+    return f.run(root, program, args, signal, body);
+  };
+
+  const result = runHost(
+    prAction("/checkout", overview.url, overview.headRefOid, "main", {
+      kind: "merge",
+      method: "squash",
+      auto: false,
+      stack: null,
+    }),
+    undefined,
+    run,
+  );
+
+  try {
+    await started;
+    expect(f.writes).toHaveLength(0);
+  } finally {
+    release();
+    await result;
+  }
+
+  expect(f.writes).toHaveLength(1);
+});
+
+it.each([
+  ["close", "closePullRequest", {}],
+  ["reopen", "reopenPullRequest", { state: "CLOSED" }],
+  ["ready", "markPullRequestReadyForReview", { isDraft: true }],
+  ["draft", "convertPullRequestToDraft", {}],
+  ["disable-auto-merge", "disablePullRequestAutoMerge", {}],
+] as const)("%s writes directly using the validated PR ID", async (kind, mutation, pr) => {
+  const f = fixture({ pr });
+  await f.action({ kind });
+  expect(f.writes).toHaveLength(1);
+  const payload = JSON.parse(f.writes[0]!.body!);
+  expect(payload.query).toContain(`result:${mutation}(input:{pullRequestId:$id})`);
+  expect(payload.variables).toEqual({ id: overview.id });
+});
+
+it("keeps state changes idempotent and rejects stale revisions or missing permissions", async () => {
+  const ready = fixture();
+  await ready.action({ kind: "ready" });
+  expect(ready.writes).toHaveLength(0);
+  const denied = fixture({ pr: { canEdit: false } });
+  await expect(denied.action({ kind: "close" })).rejects.toThrow("permission");
+  expect(denied.writes).toHaveLength(0);
+  const stale = fixture();
+  await expect(stale.action({ kind: "comment", body: "hello" }, "f".repeat(40))).rejects.toThrow(
+    "changed",
+  );
+  expect(stale.writes).toHaveLength(0);
+});
+
+it("propagates GraphQL state mutation errors instead of reporting success", async () => {
+  const f = fixture();
+
+  const run: Command = (root, program, args, signal, body) =>
+    body && JSON.parse(body).query?.includes("result:")
+      ? Promise.resolve(JSON.stringify({ errors: [{ message: "Permission revoked" }] }))
+      : f.run(root, program, args, signal, body);
+
+  await expect(
+    runHost(
+      prAction("/checkout", overview.url, overview.headRefOid, "main", { kind: "close" }),
+      undefined,
+      run,
+    ),
+  ).rejects.toThrow("Permission revoked");
 });

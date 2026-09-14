@@ -2,7 +2,15 @@
 import { Effect, Match } from "effect";
 import { z } from "zod";
 import { command, decode, invalid } from "./host-effects";
-import { api, graphql, json, prOverview, prStack, repositoryVariables } from "./workspace-github";
+import { matchingCheckout } from "./checkout";
+import {
+  api,
+  graphql,
+  json,
+  prActionPreflight,
+  prStack,
+  repositoryVariables,
+} from "./workspace-github";
 import {
   mergeStatusSchema,
   type WorkspaceAction,
@@ -191,7 +199,15 @@ export const prAction = Effect.fn("PrWorkspace.action")(function* (
   base: string,
   action: WorkspaceAction,
 ) {
-  const current = yield* prOverview(root, url);
+  const [current, stack] = yield* Effect.all(
+    [
+      prActionPreflight(root, url),
+      action.kind === "merge" || action.kind === "update-branch"
+        ? prStack(root, url, false)
+        : Effect.succeed(null),
+    ],
+    { concurrency: 2 },
+  );
 
   if (current.headRefOid !== head || current.baseRefName !== base)
     return yield* invalid(
@@ -205,29 +221,46 @@ export const prAction = Effect.fn("PrWorkspace.action")(function* (
 
   const done = (message: string): ActionResult => ({ message, pendingMergeId: null });
 
+  // Reuse the ID from validation instead of letting `gh pr` fetch the PR again.
+  const changeState = (
+    mutation:
+      | "closePullRequest"
+      | "reopenPullRequest"
+      | "markPullRequestReadyForReview"
+      | "convertPullRequestToDraft"
+      | "disablePullRequestAutoMerge",
+  ) =>
+    graphql(
+      root,
+      `mutation($id:ID!){result:${mutation}(input:{pullRequestId:$id}){pullRequest{id}}}`,
+      { id: current.id },
+      z.object({ result: z.object({ pullRequest: z.object({ id: z.string() }) }) }),
+    );
+
   if (action.kind === "comment") {
-    yield* runPr("comment", ["--body-file", "-"], action.body);
+    yield* api(root, `${endpoint}/issues/${ref.number}/comments`, "POST", { body: action.body });
 
     return done("Comment posted.");
   }
 
   if (action.kind === "checkout") {
-    if (!current.checkoutRoot)
+    const checkoutRoot = yield* matchingCheckout(root, ref.repository);
+
+    if (!checkoutRoot)
       return yield* invalid("Open this PR in a thread with a matching repository to check it out.");
-    const changes = yield* command(current.checkoutRoot, "git", ["status", "--porcelain"]);
+    const changes = yield* command(checkoutRoot, "git", ["status", "--porcelain"]);
 
     if (changes.trim())
       return yield* invalid(
         "This checkout has uncommitted changes. Commit or stash them before checking out the PR.",
       );
-    yield* command(current.checkoutRoot, "gh", ["pr", "checkout", ref.url]);
+    yield* command(checkoutRoot, "gh", ["pr", "checkout", ref.url]);
 
     return done(`Checked out ${current.headRefName}.`);
   }
 
   if (action.kind === "merge" || action.kind === "update-branch") {
     if (current.state !== "OPEN") return yield* invalid("This pull request is no longer open.");
-    const stack = yield* prStack(root, url, false);
 
     const open = yield* decode(() =>
       stackScope(stack, action.stack, ref.number, action.kind === "update-branch"),
@@ -330,23 +363,27 @@ export const prAction = Effect.fn("PrWorkspace.action")(function* (
       return done(action.remove ? "Review request removed." : "Review requested.");
     case "close":
       if (current.state !== "OPEN") return yield* invalid("This pull request is not open.");
-      yield* runPr("close");
+      yield* changeState("closePullRequest");
 
       return done("Pull request closed.");
     case "reopen":
       if (current.state !== "CLOSED")
         return yield* invalid("Only closed, unmerged pull requests can be reopened.");
-      yield* runPr("reopen");
+      yield* changeState("reopenPullRequest");
 
       return done("Pull request reopened.");
     case "ready":
     case "draft":
       if (current.state !== "OPEN") return yield* invalid("This pull request is not open.");
-      yield* runPr("ready", action.kind === "draft" ? ["--undo"] : []);
+
+      if (current.isDraft !== (action.kind === "draft"))
+        yield* changeState(
+          action.kind === "draft" ? "convertPullRequestToDraft" : "markPullRequestReadyForReview",
+        );
 
       return done(action.kind === "draft" ? "Converted to draft." : "Marked ready for review.");
     case "disable-auto-merge":
-      yield* runPr("merge", ["--disable-auto"]);
+      yield* changeState("disablePullRequestAutoMerge");
 
       return done("Auto-merge disabled.");
   }
