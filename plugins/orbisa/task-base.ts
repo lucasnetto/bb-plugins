@@ -10,7 +10,7 @@ import { checked as runChecked, command as runCommand } from "./task-process.ts"
 import { StartupFailure } from "./task-startup.ts";
 
 // Increment when the reproducible base setup changes. Never snapshot task disks.
-export const BASE_RECIPE = 2;
+export const BASE_RECIPE = 3;
 
 export function baseFingerprint(
   sourceId: string,

@@ -265,4 +265,6 @@ receipt hit does not wake the base. Recovery without a valid receipt checks
 the marker's fingerprint, rather than just its existence; interrupted or stale
 builds are rebuilt. Recipe 2 also pins the Clojure helpers to the template's
 Babashka interpreter so BB's launcher cannot capture their `bb` shebang.
+Recipe 3 invalidates bases created before the templates switched to GitHub’s
+official APT repository for the GitHub CLI.
 Keep `BASE_RECIPE` current when base installation steps change.

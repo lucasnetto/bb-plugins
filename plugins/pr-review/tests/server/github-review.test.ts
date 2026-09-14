@@ -88,7 +88,13 @@ function fixture(pending = true) {
     if (route.endsWith("/pulls/9"))
       return JSON.stringify({ node_id: "PR9", head: { sha: head }, user: { login: "author" } });
 
-    if (route.includes("/reviews?")) return JSON.stringify(pending ? [[review]] : [[]]);
+    if (route.includes("/reviews?")) {
+      expect(args).not.toContain("--slurp");
+      expect(args).toContain("--paginate");
+      expect(args[args.indexOf("--jq") + 1]).toBe("@json");
+
+      return `${JSON.stringify([{ ...review, state: "COMMENTED" }])}\n${JSON.stringify(pending ? [review] : [])}\n`;
+    }
 
     if (route.includes("/comments?")) return JSON.stringify(pending ? [[comment]] : [[]]);
     throw new Error(`Unexpected route ${route}`);

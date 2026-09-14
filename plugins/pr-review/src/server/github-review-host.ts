@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { command, decode, decodeSchema, invalid } from "./host-effects";
+import { collectGithubPages, githubPageArgs } from "./github-pages";
 import { parsePrUrl } from "../shared/links-contract";
 import {
   githubPendingSchema,
@@ -34,7 +35,7 @@ const api = Effect.fn("GithubReview.api")(function* (
   payload?: ReviewApiPayload,
   paginate = false,
 ) {
-  return yield* command(
+  const raw = yield* command(
     root,
     "gh",
     [
@@ -43,12 +44,14 @@ const api = Effect.fn("GithubReview.api")(function* (
       "github.com",
       "--method",
       method,
-      ...(paginate ? ["--paginate", "--slurp"] : []),
+      ...(paginate ? githubPageArgs : []),
       ...(payload === undefined ? [] : ["--input", "-"]),
       path,
     ],
     payload === undefined ? undefined : JSON.stringify(payload),
   );
+
+  return paginate ? collectGithubPages(raw) : raw;
 });
 
 const user = Schema.Struct({ login: Schema.String });

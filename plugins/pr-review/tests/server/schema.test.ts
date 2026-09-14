@@ -9,13 +9,12 @@ test("malformed GitHub JSON and payloads remain typed input failures", async () 
     JSON.stringify({ title: 42 }),
     JSON.stringify({
       title: "PR",
-      state: "OPEN",
-      isDraft: false,
+      state: "open",
+      merged: false,
+      draft: false,
       body: "",
-      headRefName: "fix",
-      baseRefName: "main",
-      baseRefOid: "base",
-      headRefOid: null,
+      head: { ref: "fix", sha: null },
+      base: { ref: "main", sha: "base" },
     }),
   ]) {
     const result = await runHost(
@@ -57,3 +56,33 @@ test("guide job responses require the fields guaranteed by each lifecycle stage"
   ])
     expect((await validate(invalid)).issues).toBeDefined();
 });
+
+for (const [state, merged, expected] of [
+  ["open", false, "OPEN"],
+  ["closed", false, "CLOSED"],
+  ["closed", true, "MERGED"],
+] as const) {
+  test(`reads ${expected} PR metadata without CLI JSON field dependencies`, async () => {
+    const result = await runHost(
+      linkedSummary("/repo", "https://github.com/org/api/pull/42"),
+      undefined,
+      async (_cwd, program, args) => {
+        expect(program).toBe("gh");
+        expect(args).toEqual(["api", "--hostname", "github.com", "repos/org/api/pulls/42"]);
+
+        return JSON.stringify({
+          title: "PR",
+          state,
+          merged,
+          draft: true,
+          body: null,
+          head: { ref: "fix", sha: "b".repeat(40) },
+          base: { ref: "main", sha: "a".repeat(40) },
+        });
+      },
+    );
+
+    expect(result.state).toBe(expected);
+    expect(result.isDraft).toBe(true);
+  });
+}

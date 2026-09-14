@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { collectGithubPages, githubPageArgs } from "./github-pages";
 import { matchingCheckout } from "./checkout";
 import { command, decode, invalid, decodeSchema } from "./host-effects";
 import {
@@ -8,29 +9,41 @@ import {
   type LinkedDetail,
 } from "../shared/links-contract";
 
+const revisionSchema = Schema.Struct({ ref: Schema.String, sha: Schema.String });
+
 const viewSchema = Schema.Struct({
   title: Schema.String,
-  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
-  isDraft: Schema.Boolean,
-  body: Schema.String,
-  headRefName: Schema.String,
-  baseRefName: Schema.String,
-  baseRefOid: Schema.String,
-  headRefOid: Schema.String,
+  state: Schema.Literals(["open", "closed"]),
+  merged: Schema.Boolean,
+  draft: Schema.Boolean,
+  body: Schema.NullOr(Schema.String),
+  head: revisionSchema,
+  base: revisionSchema,
 });
 
 const view = Effect.fn("LinkedPr.view")(function* (root: string, url: string) {
   const ref = yield* decode(() => parsePrUrl(url));
 
   const raw = yield* command(root, "gh", [
-    "pr",
-    "view",
-    ref.url,
-    "--json",
-    "title,state,isDraft,body,headRefName,baseRefName,baseRefOid,headRefOid",
+    "api",
+    "--hostname",
+    "github.com",
+    `repos/${ref.repository}/pulls/${ref.number}`,
   ]);
 
-  const data = yield* decodeSchema(Schema.fromJsonString(viewSchema))(raw);
+  const response = yield* decodeSchema(Schema.fromJsonString(viewSchema))(raw);
+
+  const data = {
+    title: response.title,
+    state: response.merged ? "MERGED" : response.state === "open" ? "OPEN" : "CLOSED",
+    isDraft: response.draft,
+    body: response.body ?? "",
+    headRefName: response.head.ref,
+    baseRefName: response.base.ref,
+    baseRefOid: response.base.sha,
+    headRefOid: response.head.sha,
+  };
+
   const pr = yield* decodeSchema(prSummarySchema)({ ...ref, ...data });
 
   return { pr, data };
@@ -50,8 +63,7 @@ export const linkedDetail = Effect.fn("LinkedPr.detail")(function* (root: string
         "api",
         "--hostname",
         "github.com",
-        "--paginate",
-        "--slurp",
+        ...githubPageArgs,
         `repos/${ref.repository}/pulls/${ref.number}/files`,
       ]),
       matchingCheckout(root, ref.repository),
@@ -76,7 +88,7 @@ export const linkedDetail = Effect.fn("LinkedPr.detail")(function* (root: string
         ),
       ),
     ),
-  )(rawFiles).pipe(Effect.map((decoded) => decoded.flat()));
+  )(collectGithubPages(rawFiles)).pipe(Effect.map((decoded) => decoded.flat()));
 
   return {
     pr,
