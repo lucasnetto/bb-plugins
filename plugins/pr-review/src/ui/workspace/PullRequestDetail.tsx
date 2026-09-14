@@ -60,11 +60,13 @@ export function PullRequestDetail({
   url,
   active = true,
   code,
+  linkAction,
 }: {
   threadId: string | null;
   url: string;
   active?: boolean;
   code: ReactNode;
+  linkAction?: ReactNode;
 }) {
   const navigate = useBbNavigate();
   const rpc = useRpc<typeof workspaceRpcContract>();
@@ -236,6 +238,7 @@ export function PullRequestDetail({
             <Icon name="ExternalLink" className="size-3" />
           </UrlLink>
           <div className="pr-detail-actions">
+            {linkAction}
             <PrMenu label="Check out" icon="GitBranch" disabled={!detail || data.busy}>
               <PrMenuItem
                 icon="Copy"

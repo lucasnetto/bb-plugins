@@ -16,7 +16,7 @@ export default function plugin(bb: BbPluginApi) {
   const guides = registerGuides(bb, runtime, links);
   const generation = registerGuideGeneration(bb, runtime, guides);
   links.onUnlink(generation.guideCancel);
-  const github = githubReviewHandlers(bb, links);
+  const github = githubReviewHandlers(bb);
 
   const operations = {
     ...links,

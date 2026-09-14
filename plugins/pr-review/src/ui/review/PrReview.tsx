@@ -1,3 +1,4 @@
+import { usePrLink, PrLinkButton } from "./usePrLink";
 import { useGithubReview } from "./useGithubReview";
 import { GithubReviewPanel } from "./GithubReviewPanel";
 import { githubSelection } from "./githubSelection";
@@ -18,12 +19,21 @@ import { useReviewComposer } from "./useReviewComposer";
 import { PullRequestDetail } from "../workspace/PullRequestDetail";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
+  const link = usePrLink(threadId, url);
+
   return (
     <PullRequestDetail
       key={`${threadId}:${url}`}
       threadId={threadId}
       url={url}
-      code={<PrReviewContent threadId={threadId} url={url} />}
+      linkAction={<PrLinkButton link={link} />}
+      code={
+        <PrReviewContent
+          threadId={threadId}
+          agentThreadId={link.linked ? threadId : null}
+          url={url}
+        />
+      }
     />
   );
 }
@@ -40,7 +50,15 @@ export function StandalonePrReview({ url, active = true }: { url: string; active
   );
 }
 
-function PrReviewContent({ threadId, url }: { threadId: string | null; url: string }) {
+function PrReviewContent({
+  threadId,
+  agentThreadId = null,
+  url,
+}: {
+  threadId: string | null;
+  agentThreadId?: string | null;
+  url: string;
+}) {
   const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
     useReviewData(threadId, url);
 
@@ -55,9 +73,10 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
 
   const [treeOpen, setTreeOpen] = useState(true);
   const [treeWidth, setTreeWidth] = useState<number | null>(null);
-  const guide = useGuide(threadId, url, revision);
+  const guide = useGuide(agentThreadId, url, revision);
   const [guideRequestOpen, setGuideRequestOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideRequested, setGuideOpen] = useState(false);
+  const guideOpen = guideRequested && !!agentThreadId;
 
   const staleGuide =
     !!guide.data &&
@@ -78,7 +97,7 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
   });
 
   const draft = useReviewComposer({
-    threadId,
+    threadId: agentThreadId,
     url,
     detail,
     selectedPath,
@@ -115,7 +134,7 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
 
   const commentForm = diff.selection.lines ? (
     <ReviewCommentForm
-      threadId={threadId}
+      threadId={agentThreadId}
       pullRequestNumber={detail?.pr.number}
       hasDetail={!!detail}
       loading={loading}
@@ -172,7 +191,7 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
       <ReviewToolbar
         fileCount={detail?.files.length ?? 0}
         guideOpen={guideOpen}
-        onToggleGuide={threadId ? toggleGuide : undefined}
+        onToggleGuide={agentThreadId ? toggleGuide : undefined}
         treeOpen={treeOpen}
         onToggleTree={() => setTreeOpen(!treeOpen)}
         loading={loading}
@@ -189,9 +208,9 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
           Loading diff…
         </p>
       ) : null}
-      {guideOpen && threadId ? (
+      {guideOpen && agentThreadId ? (
         <ReviewGuidePanel
-          threadId={threadId}
+          threadId={agentThreadId}
           guideRequestOpen={guideRequestOpen}
           setGuideRequestOpen={setGuideRequestOpen}
           guide={guide}
@@ -254,7 +273,7 @@ function PrReviewContent({ threadId, url }: { threadId: string | null; url: stri
             ? `${diff.selection.path} · ${diff.selection.lines.range.start}–${diff.selection.lines.range.end}`
             : (selectedPath ?? "Select a file or lines")}
         </span>
-        {threadId &&
+        {agentThreadId &&
           (["Ask", "Explain", "Fix"] as const).map((action) => (
             <Button
               key={action}

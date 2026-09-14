@@ -147,8 +147,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
       ...input
     }: Schema.Schema.Type<typeof linkedContentsInput> & { threadId: string }) =>
       Effect.gen(function* () {
-        const rows = yield* listRows(threadId);
-        const ref = yield* sync("linked contents input", () => requireLinkedPr(rows, input.url));
+        const ref = yield* sync("linked contents input", () => parsePrUrl(input.url));
         const env = yield* environment(threadId);
 
         return yield* call("host.linkedContents", (signal) =>
@@ -233,8 +232,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
     }),
     linkedDetail: ({ threadId, url }: { threadId: string; url: string }) =>
       Effect.gen(function* () {
-        const rows = yield* listRows(threadId);
-        const ref = yield* sync("linked detail input", () => requireLinkedPr(rows, url));
+        const ref = yield* sync("linked detail input", () => parsePrUrl(url));
         const env = yield* environment(threadId);
 
         const detail = yield* call("host.linkedDetail", (signal) =>

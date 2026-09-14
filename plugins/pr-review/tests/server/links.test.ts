@@ -140,7 +140,8 @@ test("workspace metadata refreshes existing links across threads and preserves l
     assert.equal(stacked.find((pr) => pr.url === lowerUrl)?.state, "MERGED");
     assert.equal(stacked.find((pr) => pr.url === unrelatedUrl)?.state, "OPEN");
     assert.deepEqual(await harness.behavior.callRpc("linkedList", { threadId: "t3" }), []);
-    await assert.rejects(() => harness.behavior.callRpc("prOverview", { threadId: "t3", url }));
+    await harness.behavior.callRpc("prOverview", { threadId: "t3", url });
+    assert.deepEqual(await harness.behavior.callRpc("linkedList", { threadId: "t3" }), []);
   } finally {
     await harness.lifecycle.dispose();
   }
@@ -219,9 +220,9 @@ test("failed validation does not save a link; URL review uses thread host withou
     const detail = await harness.behavior.callRpc("linkedDetail", { threadId: "t1", url });
     assert.match(JSON.stringify(detail), /"repositoryRoot":null/);
     assert.equal(harness.inspection.sdk.callsTo("threads.spawn").length, 0);
-    await assert.rejects(() =>
-      harness.behavior.callRpc("linkedDetail", { threadId: "other", url }),
-    );
+    const unlinked = await harness.behavior.callRpc("linkedDetail", { threadId: "other", url });
+    assert.match(JSON.stringify(unlinked), /"repositoryRoot":null/);
+    assert.deepEqual(await harness.behavior.callRpc("linkedList", { threadId: "other" }), []);
   } finally {
     await harness.lifecycle.dispose();
   }

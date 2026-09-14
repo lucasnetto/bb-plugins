@@ -10,7 +10,7 @@ import { LIST_CHANGED } from "../../contract";
 export function registerWorkspace(
   bb: BbPluginApi,
   runtime: ReturnType<typeof createRuntime>,
-  links: Pick<ReturnType<typeof registerLinks>, "linkedList" | "updateSummary">,
+  links: Pick<ReturnType<typeof registerLinks>, "updateSummary">,
 ) {
   const host = bb.hosts.experimental_client({ contract: workspaceHostContract });
 
@@ -22,10 +22,6 @@ export function registerWorkspace(
 
     if (input.threadId) {
       const threadId = input.threadId;
-      const rows = yield* links.linkedList({ threadId });
-
-      if (!rows.some((row) => row.url === ref.url))
-        return yield* fail("This PR is not linked to this thread.");
       const thread = yield* call("threads.get", () => bb.sdk.threads.get({ threadId }));
 
       if (thread.environmentId) {

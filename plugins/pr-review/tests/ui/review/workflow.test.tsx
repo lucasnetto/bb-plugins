@@ -89,6 +89,18 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     { threadId: "t1", url },
     {
       rpc: {
+        linkedList: () => [
+          {
+            url,
+            repository: "org/api",
+            number: 42,
+            title: "Fix",
+            state: "OPEN",
+            isDraft: false,
+            reason: "manual",
+            linkedAt: 1,
+          },
+        ],
         linkedDetail: () => ({
           pr: {
             url,

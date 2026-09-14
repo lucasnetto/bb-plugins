@@ -104,6 +104,7 @@ test("background guides preserve code selection; toggles and active guide replac
     { threadId: "guide-selection", url },
     {
       rpc: {
+        linkedList: () => [{ ...detail.pr, reason: "manual", linkedAt: 1 }],
         linkedDetail: () => detail,
         guideGet: () => data,
         guideJob: () => null,

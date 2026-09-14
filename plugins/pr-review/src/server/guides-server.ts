@@ -65,7 +65,7 @@ export function registerGuides(
     });
 
   const guideContext = Effect.fn("Guide.context")(function* (input: Target) {
-    const detail = yield* links.linkedDetail(input);
+    const detail = yield* links.linkedDetail(yield* target(input));
 
     const revision = yield* decodeSchema(
       "guide revision",

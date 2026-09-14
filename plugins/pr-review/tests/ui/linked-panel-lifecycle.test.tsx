@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { Schema } from "effect";
 import { threadInput, type LinkedPr } from "../../src/shared/links-contract";
-import { expect, test, vi } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -9,24 +9,6 @@ import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing
 installTestPluginRuntime();
 
 const { LinkedPrsPanel } = await import("../../src/ui/linked-prs");
-
-test("opening a review does not also fetch the hidden picker", async () => {
-  const linkedList = vi.fn(() => new Promise(() => {}));
-
-  const slot = renderSlot(
-    { component: LinkedPrsPanel },
-    { threadId: "review-lifecycle", params: { url: "https://github.com/org/repo/pull/1" } },
-    { rpc: { linkedList } },
-  );
-
-  try {
-    await act(async () => {});
-    expect(linkedList).toHaveBeenCalledTimes(1);
-    expect(slot.getByText("Opening pull request…")).toBeTruthy();
-  } finally {
-    slot.lifecycle.unmount();
-  }
-});
 
 test("switching threads resets the linked picker and ignores the previous list response", async () => {
   function Panel() {

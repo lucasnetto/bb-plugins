@@ -4,12 +4,8 @@ import { hostContract } from "../shared/contract";
 import { githubReviewTarget, githubReviewMutation } from "../shared/github-review-contract";
 import { parsePrUrl } from "../shared/links-contract";
 import { call, sync, fail } from "./server-effects";
-import type { registerLinks } from "./links-server";
 
-export function githubReviewHandlers(
-  bb: BbPluginApi,
-  links: Pick<ReturnType<typeof registerLinks>, "linkedList">,
-) {
+export function githubReviewHandlers(bb: BbPluginApi) {
   const host = bb.hosts.experimental_client({ contract: hostContract });
 
   const target = Effect.fn("GithubReview.target")(function* (
@@ -18,11 +14,6 @@ export function githubReviewHandlers(
     const ref = yield* sync("review URL", () => parsePrUrl(input.url));
 
     if (input.threadId) {
-      const rows = yield* links.linkedList({ threadId: input.threadId });
-
-      if (!rows.some((row) => row.url === ref.url))
-        return yield* fail("This PR is not linked to this thread.");
-
       const thread = yield* call("threads.get", () =>
         bb.sdk.threads.get({ threadId: input.threadId! }),
       );

@@ -15,47 +15,6 @@ import { Input } from "./components/ui/input";
 import type { rpcContract } from "../shared/contract";
 import type { LinkedPr } from "../shared/links-contract";
 import { LINKS_CHANGED } from "../shared/links-events";
-import { overviewCache, workspaceKey } from "./workspace/workspace-cache";
-
-function LinkedPrReview({ threadId, url }: { threadId: string; url: string }) {
-  const rpc = useRpc<typeof rpcContract>();
-  const [ready, setReady] = useState(() => !!overviewCache.peek(workspaceKey(threadId, url)));
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let disposed = false;
-
-    async function prepare() {
-      const links = await rpc.call("linkedList", { threadId });
-
-      if (disposed) return;
-
-      if (!links.some((link) => link.url === url)) {
-        await rpc.call("linkedLink", { threadId, url, reason: "manual" });
-      }
-
-      if (!disposed) setReady(true);
-    }
-
-    void prepare().catch((reason) => {
-      if (!disposed) setError(String(reason));
-    });
-
-    return () => {
-      disposed = true;
-    };
-  }, [rpc, threadId, url]);
-
-  if (error)
-    return (
-      <p role="alert" className="p-4">
-        {error}
-      </p>
-    );
-
-  if (!ready) return <p className="p-4 text-sm text-muted-foreground">Opening pull request…</p>;
-
-  return <PrReview threadId={threadId} url={url} />;
-}
 
 const panelParams = z.object({ url: z.string() });
 
@@ -66,7 +25,7 @@ export function LinkedPrsPanel({ threadId, params }: PluginThreadPanelProps) {
   const selectedUrl = selection.success ? selection.data.url : null;
 
   return selectedUrl ? (
-    <LinkedPrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
+    <PrReview key={`${threadId}:${selectedUrl}`} threadId={threadId} url={selectedUrl} />
   ) : (
     <LinkedPrPicker key={threadId} threadId={threadId} />
   );
