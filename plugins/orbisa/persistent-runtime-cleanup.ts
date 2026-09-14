@@ -17,6 +17,12 @@ export function createPersistentRuntimeCleanup(
   bb: BbPluginApi,
   idleMinutes: () => Promise<number>,
   now = Date.now,
+  cleanProcesses: (
+    hostId: string,
+    paths: string[],
+    threadIds: string[],
+    signal: AbortSignal,
+  ) => Promise<void> = async () => {},
 ) {
   const startedAt = now();
   const cleaning = new Set<string>();
@@ -64,8 +70,6 @@ export function createPersistentRuntimeCleanup(
 
       if (!Number.isFinite(since) || now() - since < minutes * 60_000) return;
 
-      if (cleaned !== undefined && cleaned >= since) return;
-
       const threads = (await listThreads(signal)).filter(
         (thread) => thread.environmentHostId === hostId,
       );
@@ -80,7 +84,41 @@ export function createPersistentRuntimeCleanup(
         signal,
       });
 
-      if (terminals.sessions.some((terminal) => terminal.status !== "exited")) return;
+      const openTerminals = terminals.sessions.filter((terminal) => terminal.status !== "exited");
+
+      const lastInput = Math.max(
+        0,
+        ...openTerminals.map((terminal) => terminal.lastUserInputAt ?? terminal.createdAt),
+      );
+
+      if (now() - lastInput < minutes * 60_000) return;
+
+      if (cleaned !== undefined && cleaned >= Math.max(since, lastInput)) return;
+
+      const currentBeforeClose = (await listThreads(signal)).filter(
+        (thread) => thread.environmentHostId === hostId,
+      );
+
+      if (currentBeforeClose.some(busy)) return;
+
+      for (const terminal of openTerminals) {
+        signal.throwIfAborted();
+
+        const latest = await bb.sdk.terminals.list({
+          scope: { kind: "host_path", hostId },
+          signal,
+        });
+
+        if (
+          latest.sessions.some(
+            (item) =>
+              item.status !== "exited" &&
+              now() - (item.lastUserInputAt ?? item.createdAt) < minutes * 60_000,
+          )
+        )
+          return;
+        await bb.sdk.terminals.close({ terminalId: terminal.id, mode: "force" });
+      }
 
       for (const candidate of threads) {
         // Re-read activity immediately before each release. The dispatch hook
@@ -97,6 +135,33 @@ export function createPersistentRuntimeCleanup(
         await bb.sdk.threads.stop({ threadId: candidate.id });
       }
 
+      const beforeProcesses = (await listThreads(signal)).filter(
+        (thread) => thread.environmentHostId === hostId,
+      );
+
+      if (beforeProcesses.some(busy)) return;
+
+      const finalTerminals = await bb.sdk.terminals.list({
+        scope: { kind: "host_path", hostId },
+        signal,
+      });
+
+      if (finalTerminals.sessions.some((terminal) => terminal.status !== "exited")) return;
+      const environments = await bb.sdk.environments.list({ hostId, signal });
+
+      const paths = [
+        ...new Set(
+          environments.flatMap((environment) => (environment.path ? [environment.path] : [])),
+        ),
+      ];
+
+      signal.throwIfAborted();
+      await cleanProcesses(
+        hostId,
+        paths,
+        beforeProcesses.map((thread) => thread.id),
+        signal,
+      );
       signal.throwIfAborted();
       await bb.storage.kv.set(cleanedKey(hostId), now());
 

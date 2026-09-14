@@ -15,11 +15,18 @@ BB reloads the provider session on the next message. Set
 `persistentRuntimeIdleMinutes` to `0` to disable runtime cleanup.
 
 Cleanup skips machines with active or starting threads, queued messages, pending
-interactions, background activity, or open terminals. It includes hidden workers
-and archived idle threads. Incoming messages wait during cleanup and are retried
+interactions, or background activity. All workloads on these managed VMs are
+agent-owned: recent terminal input or terminal creation resets the idle grace;
+an abandoned open terminal does not block cleanup. Cleanup force-closes idle
+terminals through BB, releases idle runtimes, and terminates leftover processes
+owned by the guest user whose working directory is inside a BB workspace or
+whose `BB_THREAD_ID` belongs to that machine. It includes hidden workers and
+archived idle threads. Incoming messages wait during cleanup and are retried
 afterward. Cleanup runs once per activity cycle, with a fresh idle grace after a
-plugin reload. Failures are retried on the next sweep. It does not stop arbitrary
-development services or force memory reclamation.
+plugin reload. Failures are retried on the next sweep. The process sweep verifies VM and BB enrollment identities, preserves BB
+infrastructure, and sends TERM followed by KILL after a two-second grace using
+PID-bound handles. Root-owned services and processes outside both the workspace
+and thread association are left alone. It does not force memory reclamation.
 
 Full VM idle suspension is disabled by default because BB currently disables
 suspended machines in its new-thread picker. Set `persistentIdleMinutes` above

@@ -15,6 +15,8 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
   let busy = false;
   let queued = false;
   let terminal = false;
+  let terminalInput = 1_000_000;
+  let reaped = 0;
   let stopFailure = false;
   let hidden = false;
   let background = 0;
@@ -54,7 +56,26 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
           return { ok: true };
         },
       },
-      terminals: { list: async () => ({ sessions: terminal ? [{ status: "running" }] : [] }) },
+      environments: { list: async () => [] },
+      terminals: {
+        list: async () => ({
+          sessions: terminal
+            ? [
+                {
+                  id: "term_old",
+                  status: "running",
+                  createdAt: 1_000_000,
+                  lastUserInputAt: terminalInput,
+                },
+              ]
+            : [],
+        }),
+        close: async () => {
+          terminal = false;
+
+          return { id: "term_old", status: "exited" };
+        },
+      },
     },
   });
 
@@ -62,6 +83,9 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
     bb,
     async () => 15,
     () => clock,
+    async () => {
+      reaped++;
+    },
   );
 
   const sweep = () => Effect.runPromise(policy.sweep());
@@ -78,6 +102,7 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
     await sweep();
     queued = false;
     terminal = true;
+    terminalInput = clock;
     await sweep();
     terminal = false;
     background = 1;
@@ -87,10 +112,14 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
     await sweep();
     interaction = false;
     assert.equal(stops(), 0);
+    terminal = true;
+    terminalInput = 1_000_000;
     hidden = true;
     stopFailure = true;
     await sweep();
     assert.equal(stops(), 1);
+    assert.equal(harness.inspection.sdk.callsTo("terminals.close").length, 1);
+    assert.equal(reaped, 0);
     assert.ok(!JSON.stringify(harness.logEntries).includes("secret failure"));
     stopFailure = false;
     await sweep();
@@ -104,6 +133,7 @@ void test("idle cleanup preserves machines and history, defers busy work, and ru
     clock += 16 * 60_000;
     await sweep();
     assert.equal(stops(), 3);
+    assert.equal(reaped, 2);
     assert.equal(harness.inspection.sdk.callsTo("hosts.experimental_suspend").length, 0);
     assert.equal(harness.inspection.sdk.callsTo("threads.archive").length, 0);
   } finally {

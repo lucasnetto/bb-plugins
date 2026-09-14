@@ -16,6 +16,7 @@ import {
   type PersistentResource,
 } from "./persistent-resource.ts";
 import { seedPersistentCatalog } from "./persistent-catalog.ts";
+import { cleanPersistentProcesses } from "./persistent-process-cleanup.ts";
 import { createPersistentRuntimeCleanup } from "./persistent-runtime-cleanup.ts";
 import { createPersistentPolicy } from "./persistent-policy.ts";
 
@@ -84,6 +85,21 @@ export function registerPersistentProvider(
   const cleanup = createPersistentRuntimeCleanup(
     bb,
     async () => (await settings()).persistentRuntimeIdleMinutes ?? 15,
+    Date.now,
+    async (hostId, paths, threadIds, signal) => {
+      const host = await bb.sdk.hosts.get({ hostId, signal });
+      const slot = profileSlots(dataDir).find((slot) => host.name.endsWith(`-${slot}`));
+
+      if (!slot) throw new Error("Unknown persistent slot.");
+
+      const resource = owned(
+        persistentSchema.parse(await bb.storage.kv.get(`persistent-slot/${slot}`)),
+      );
+
+      if (host.machineProviderId !== PERSISTENT_PROVIDER || host.name !== resource.name)
+        throw new Error("Persistent machine ownership mismatch.");
+      await cleanPersistentProcesses(resource, hostId, paths, threadIds, signal);
+    },
   );
 
   bb.onDispose(() => runtime.dispose());
