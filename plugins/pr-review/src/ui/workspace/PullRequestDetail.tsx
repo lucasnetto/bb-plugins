@@ -173,8 +173,26 @@ export function PullRequestDetail({
     data.stackLoaded &&
     !data.stackError;
 
+  const canMergeNow =
+    canMerge &&
+    detail.mergeable === "MERGEABLE" &&
+    ["CLEAN", "HAS_HOOKS", "UNSTABLE"].includes(detail.mergeStateStatus);
+
   const primary = detail?.state === "CLOSED" ? "reopen" : detail?.isDraft ? "ready" : "merge";
-  const disabled = data.busy || !detail || (primary === "merge" ? !canMerge : !detail.canEdit);
+  const disabled = data.busy || !detail || (primary === "merge" ? !canMergeNow : !detail.canEdit);
+  const mergeLabel = (() => {
+    if (!detail) return "Loading…";
+    if (detail.state === "MERGED") return "Merged";
+    if (detail.mergeable === "CONFLICTING" || detail.mergeStateStatus === "DIRTY")
+      return "Conflicts";
+    if (detail.mergeStateStatus === "BEHIND") return "Branch out of date";
+    if (detail.mergeStateStatus === "BLOCKED" || detail.mergeStateStatus === "DRAFT")
+      return "Merge blocked";
+    if (!detail.canMerge) return "No merge permission";
+    if (data.stackError) return "Merge unavailable";
+    if (!canMergeNow) return "Checking mergeability…";
+    return "Merge";
+  })();
 
   const commentForm = (
     <form
@@ -254,29 +272,27 @@ export function PullRequestDetail({
                 Check out in this environment
               </PrMenuItem>
             </PrMenu>
-            {detail?.state !== "MERGED" && (
-              <button
-                className={`pr-control pr-header-primary ${primary === "merge" ? "pr-merge-button" : ""}`}
-                disabled={disabled}
-                onClick={() => setDialog(primary)}
-              >
-                <Icon
-                  name={Match.value(primary).pipe(
-                    Match.when("merge", (): IconName => "GitMerge"),
-                    Match.when("ready", (): IconName => "GitPullRequest"),
-                    Match.when("reopen", (): IconName => "RotateCcw"),
-                    Match.exhaustive,
-                  )}
-                  className="size-3.5"
-                />
-                {Match.value(primary).pipe(
-                  Match.when("merge", () => "Merge"),
-                  Match.when("ready", () => "Ready for review"),
-                  Match.when("reopen", () => "Reopen"),
+            <button
+              className={`pr-control pr-header-primary ${primary === "merge" && canMergeNow ? "pr-merge-button" : ""}`}
+              disabled={disabled}
+              onClick={() => setDialog(primary)}
+            >
+              <Icon
+                name={Match.value(primary).pipe(
+                  Match.when("merge", (): IconName => "GitMerge"),
+                  Match.when("ready", (): IconName => "GitPullRequest"),
+                  Match.when("reopen", (): IconName => "RotateCcw"),
                   Match.exhaustive,
                 )}
-              </button>
-            )}
+                className="size-3.5"
+              />
+              {Match.value(primary).pipe(
+                Match.when("merge", () => mergeLabel),
+                Match.when("ready", () => "Ready for review"),
+                Match.when("reopen", () => "Reopen"),
+                Match.exhaustive,
+              )}
+            </button>
             <PrMenu label="Pull request actions" icon="MoreHorizontal" compact disabled={!detail}>
               <PrMenuItem icon="ExternalLink" onSelect={() => navigate.openUrl(url)}>
                 Open on GitHub

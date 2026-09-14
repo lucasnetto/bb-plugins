@@ -3,9 +3,86 @@ import { beforeEach, expect, it } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { overview, stack } from "../../workspace-fixture";
+import type { Overview } from "../../../src/shared/workspace-contract";
 import { invalidateWorkspace } from "../../../src/ui/workspace/workspace-cache";
 
 beforeEach(() => invalidateWorkspace());
+
+it.each<{ name: string; overrides: Partial<Overview>; action: string; disabled: boolean }>([
+  ...["CLEAN", "HAS_HOOKS", "UNSTABLE"].map((mergeStateStatus) => ({
+    name: mergeStateStatus,
+    overrides: { mergeStateStatus },
+    action: "Merge",
+    disabled: false,
+  })),
+  ...[
+    ["BLOCKED", "Merge blocked"],
+    ["BEHIND", "Branch out of date"],
+    ["DIRTY", "Conflicts"],
+    ["DRAFT", "Merge blocked"],
+    ["UNKNOWN", "Checking mergeability…"],
+  ].map(([mergeStateStatus, action]) => ({
+    name: mergeStateStatus,
+    overrides: { mergeStateStatus },
+    action,
+    disabled: true,
+  })),
+  {
+    name: "conflicts",
+    overrides: { mergeable: "CONFLICTING" },
+    action: "Conflicts",
+    disabled: true,
+  },
+  {
+    name: "calculating",
+    overrides: { mergeable: "UNKNOWN" },
+    action: "Checking mergeability…",
+    disabled: true,
+  },
+  {
+    name: "no permission",
+    overrides: { canMerge: false },
+    action: "No merge permission",
+    disabled: true,
+  },
+  { name: "merged", overrides: { state: "MERGED" }, action: "Merged", disabled: true },
+  { name: "closed", overrides: { state: "CLOSED" }, action: "Reopen", disabled: false },
+  { name: "draft", overrides: { isDraft: true }, action: "Ready for review", disabled: false },
+])(
+  "shows the available primary action for $name",
+  async ({ name, overrides, action, disabled }) => {
+    installTestPluginRuntime();
+    const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
+    const slot = renderSlot(
+      { component: PullRequestDetail },
+      { threadId: name, url: overview.url, code: null },
+      {
+        rpc: {
+          prOverview: () => ({ ...overview, ...overrides }),
+          prStack: () => stack,
+          prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
+        },
+      },
+    );
+
+    try {
+      expect(slot.getByRole("button", { name: "Loading…" }).hasAttribute("disabled")).toBe(true);
+      await slot.findByRole("heading", { name: "Fix API" });
+      const button = await slot.findByRole("button", { name: action });
+      expect(button.hasAttribute("disabled")).toBe(disabled);
+      if (disabled) {
+        fireEvent.click(button);
+        expect(slot.queryByRole("dialog")).toBeNull();
+        expect(slot.inspection.rpcCalls.some((call) => call.method === "prAction")).toBe(false);
+      }
+      if (action !== "Merge") {
+        expect(slot.queryByRole("button", { name: "Merge" })).toBeNull();
+      }
+    } finally {
+      slot.lifecycle.unmount();
+    }
+  },
+);
 
 it("shows the exact native merge scope, waits for the result, and keeps the code view mounted across tabs", async () => {
   installTestPluginRuntime();
