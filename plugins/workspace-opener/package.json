@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-workspace-opener",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:",
+    "@types/node": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.41",
+    "bbPluginSdk": ">=0.4.47"
+  },
+  "bb": {
+    "name": "Workspace Opener",
+    "description": "Open a folder\u2019s single .code-workspace file in Cursor or VS Code.",
+    "branding": {
+      "icon": "FolderOpen"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "app": "./app.ts",
+    "skills": [
+      "skills"
+    ]
+  }
+}
