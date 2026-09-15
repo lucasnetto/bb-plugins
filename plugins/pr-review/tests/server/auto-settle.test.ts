@@ -4,6 +4,7 @@ import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/tes
 import { Schema } from "effect";
 import plugin from "../../server";
 import { parsePrUrl } from "../../src/shared/links-contract";
+import { overview, stack } from "../workspace-fixture";
 
 const url = "https://github.com/org/api/pull/42";
 
@@ -17,6 +18,9 @@ async function setup() {
   let archiveFails = false;
   let duringFetch = () => {};
 
+  let archiveCount = 0;
+  let summaryCount = 0;
+
   const initial = createFakePluginHost({
     pluginId: "pr-review",
     sdk: {
@@ -26,6 +30,7 @@ async function setup() {
           childBusy ? [makeThreadResponse({ id: "child", status: "active" })] : [],
         archive: async () => {
           if (archiveFails) throw new Error("Archive failed");
+          archiveCount++;
           thread = { ...thread, archivedAt: 10 };
 
           return { thread };
@@ -33,18 +38,35 @@ async function setup() {
       },
       environments: { get: async () => ({ path: "/repo", hostId: "host" }) },
     },
-    experimental_callHostRpc: async ({ input }) => {
+    experimental_callHostRpc: async ({ method, input }) => {
       const request = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(input);
 
       if (request.url === failedUrl) throw new Error("GitHub unavailable");
       duringFetch();
 
-      return {
+      const pr = {
         ...parsePrUrl(request.url),
         title: "Change",
         state: states.get(request.url) ?? "OPEN",
         isDraft: false,
       };
+
+      if (method === "prOverview") return { ...overview, ...pr };
+
+      if (method === "prStack") return { ...stack, layers: [{ ...stack.layers[1], ...pr }] };
+
+      if (method === "linkedDetail")
+        return {
+          pr,
+          body: "",
+          headRefName: "fix",
+          baseRefName: "main",
+          repositoryRoot: null,
+          files: [],
+        };
+      summaryCount++;
+
+      return pr;
     },
   });
 
@@ -74,6 +96,10 @@ async function setup() {
     unlink: (value = url) =>
       harness.behavior.callRpc("linkedUnlink", { threadId: "t1", url: value }),
     sweep: () => harness.behavior.runSchedule("settle-completed-prs"),
+    observe: (method: "prOverview" | "prStack" | "linkedDetail", value = url) =>
+      harness.behavior.callRpc(method, { threadId: "t1", url: value }),
+    archiveCount: () => archiveCount,
+    summaryCount: () => summaryCount,
     archived: () => thread.archivedAt !== null,
     reload: async () => {
       ({ harness } = await harness.lifecycle.reload(plugin));
@@ -100,6 +126,94 @@ test("all PRs must be closed or merged; empty, open and failed lookups never set
     h.fail("");
     await h.sweep();
     assert.equal(h.archived(), true);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test.each(["prOverview", "prStack", "linkedDetail"] as const)(
+  "%s settles as soon as the last linked PR is observed closed or merged",
+  async (method) => {
+    const h = await setup();
+
+    try {
+      await h.link();
+      await h.link(other);
+      h.states.set(url, "MERGED");
+      const summaries = h.summaryCount();
+      await h.observe(method);
+      assert.equal(h.archived(), false);
+      assert.equal(h.summaryCount(), summaries);
+      h.states.set(other, "CLOSED");
+      await h.observe(method, other);
+      assert.equal(h.archived(), true);
+      assert.equal(h.summaryCount(), summaries + 2);
+      await h.sweep();
+      assert.equal(h.archiveCount(), 1);
+    } finally {
+      await h.dispose();
+    }
+  },
+);
+
+test("observed completion verifies stale siblings and retries failed checks on the fallback sweep", async () => {
+  const h = await setup();
+
+  try {
+    await h.link();
+    await h.link(other);
+    h.states.set(url, "CLOSED");
+    await h.observe("prOverview");
+    h.states.set(url, "OPEN");
+    h.states.set(other, "MERGED");
+    await h.observe("linkedDetail", other);
+    assert.equal(h.archived(), false);
+    h.states.set(url, "MERGED");
+    h.fail(other);
+    await h.observe("prOverview");
+    assert.equal(h.archived(), false);
+    h.fail("");
+    await h.sweep();
+    assert.equal(h.archived(), true);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test("observed completion respects settings, busy workers, and manual Un-settle", async () => {
+  const h = await setup();
+
+  try {
+    await h.link();
+    h.states.set(url, "MERGED");
+    await h.enable(false);
+    await h.observe("prOverview");
+    assert.equal(h.archived(), false);
+    await h.enable(true);
+    h.childBusy(true);
+    await h.observe("prOverview");
+    assert.equal(h.archived(), false);
+    h.childBusy(false);
+    await h.observe("prOverview");
+    assert.equal(h.archived(), true);
+    h.setThread({ archivedAt: null });
+    await h.reload();
+    await h.observe("prOverview");
+    assert.equal(h.archived(), false);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test("simultaneous status observations and polling archive only once", async () => {
+  const h = await setup();
+
+  try {
+    await h.link();
+    h.states.set(url, "MERGED");
+    await Promise.all([h.observe("prOverview"), h.observe("linkedDetail"), h.sweep()]);
+    assert.equal(h.archived(), true);
+    assert.equal(h.archiveCount(), 1);
   } finally {
     await h.dispose();
   }

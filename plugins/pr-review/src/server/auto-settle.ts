@@ -1,5 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Semaphore } from "effect";
 import type { LinkedPr } from "../shared/links-contract";
 import { call, sync, decodeSchema, type BackendError, type createRuntime } from "./server-effects";
 import type { initializeReviewDatabase } from "./database";
@@ -14,7 +14,7 @@ const fingerprint = (rows: readonly LinkedPr[]) =>
 const terminal = (rows: readonly LinkedPr[]) =>
   rows.length > 0 && rows.every(({ state }) => state === "MERGED" || state === "CLOSED");
 
-/** Poll on the server so settling does not depend on an open browser panel. */
+/** React to observed PR completion, with polling as a fallback when no panel is open. */
 export function registerAutoSettle(
   bb: BbPluginApi,
   runtime: ReturnType<typeof createRuntime>,
@@ -81,6 +81,7 @@ export function registerAutoSettle(
     });
 
   const check = Effect.fn("AutoSettle.check")(function* (threadId: string) {
+    if (!(yield* call("auto settle.settings", () => settings.get())).autoSettle) return;
     const before = yield* eligible(threadId);
 
     if (!before) return;
@@ -140,6 +141,25 @@ export function registerAutoSettle(
     });
   });
 
+  // A panel refresh and the fallback sweep can discover completion together.
+  const lock = Semaphore.makeUnsafe(1);
+
+  const attempt = Effect.fn("AutoSettle.attempt")((threadId: string) =>
+    check(threadId).pipe(
+      Semaphore.withPermit(lock),
+      Effect.catchTag("BackendError", (error) =>
+        sync("auto settle.log", () => {
+          bb.log.warn(`Could not auto-settle ${threadId}; will retry next pass: ${error.message}`);
+        }),
+      ),
+    ),
+  );
+
+  const observed = Effect.fn("AutoSettle.observed")(function* (threadId: string) {
+    // Avoid extra GitHub calls while any known linked PR is still open.
+    if (terminal(yield* links.list(threadId))) yield* attempt(threadId);
+  });
+
   const sweep = Effect.fn("AutoSettle.sweep")(function* () {
     if (!(yield* call("auto settle.settings", () => settings.get())).autoSettle) return;
 
@@ -152,20 +172,7 @@ export function registerAutoSettle(
       Schema.Array(Schema.Struct({ thread_id: Schema.String })),
     )(raw);
 
-    yield* Effect.forEach(
-      rows,
-      ({ thread_id }) =>
-        check(thread_id).pipe(
-          Effect.catchTag("BackendError", (error) =>
-            sync("auto settle.log", () => {
-              bb.log.warn(
-                `Could not auto-settle ${thread_id}; will retry next pass: ${error.message}`,
-              );
-            }),
-          ),
-        ),
-      { discard: true },
-    );
+    yield* Effect.forEach(rows, ({ thread_id }) => attempt(thread_id), { discard: true });
   });
 
   let running = false;
@@ -179,4 +186,6 @@ export function registerAutoSettle(
       running = false;
     }
   });
+
+  return { observed };
 }

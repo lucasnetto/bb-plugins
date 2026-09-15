@@ -42,7 +42,7 @@ Chapters pair explanations with selectable diffs. Reviewed checkboxes collapse c
 bb plugin config pr-review set autoSettle false
 ```
 
-Every five minutes, it refreshes linked PRs for eligible threads. A visible, idle thread with at least one PR settles only when all linked PRs are confirmed merged or closed. Failed lookups, queued messages, active agents, and busy descendants defer settling.
+PR overview, stack, and linked-detail refreshes trigger a settlement check as soon as all linked PRs are known merged or closed. The check freshly verifies every linked PR before archiving the thread. A five-minute server poll remains as a fallback when no panel is open or an earlier check was deferred; it is not a waiting period after detecting completion. A visible, idle thread with at least one PR settles only when all linked PRs are confirmed merged or closed. Failed lookups, queued messages, active agents, and busy descendants defer settling.
 
 Manually un-settling a thread keeps it open across reloads. Another automatic settlement requires a PR URL never included in any previous settlement, with all current links closed or merged. Relinking or reopening/reclosing previously settled PRs does not cause another settlement.
 

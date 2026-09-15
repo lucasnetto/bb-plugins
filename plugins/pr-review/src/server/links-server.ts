@@ -74,14 +74,18 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
 
         const data = JSON.stringify({ ...current, url, repository, number, title, state, isDraft });
 
-        if (data === entry.data) return;
-        yield* sync("linked PR.update summary", () => {
-          const result = db
-            .prepare("UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ? AND data = ?")
-            .run(data, entry.thread_id, url, entry.data);
+        if (data !== entry.data)
+          yield* sync("linked PR.update summary", () => {
+            const result = db
+              .prepare(
+                "UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ? AND data = ?",
+              )
+              .run(data, entry.thread_id, url, entry.data);
 
-          if (result.changes > 0) changed(entry.thread_id);
-        });
+            if (result.changes > 0) changed(entry.thread_id);
+          });
+
+        if (state === "MERGED" || state === "CLOSED") yield* autoSettle.observed(entry.thread_id);
       }),
     );
   });
@@ -243,23 +247,13 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
           ),
         );
 
-        const current = (yield* listRows(threadId)).find((pr) => pr.url === ref.url);
-        yield* sync("refresh linked PR", () => {
-          if (current) {
-            db.prepare("UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ?").run(
-              JSON.stringify({ ...current, ...detail.pr, ...ref }),
-              threadId,
-              ref.url,
-            );
-            changed(threadId);
-          }
-        });
+        yield* updateSummary({ ...detail.pr, ...ref });
 
         return detail;
       }),
   };
 
-  registerAutoSettle(bb, runtime, db, {
+  const autoSettle = registerAutoSettle(bb, runtime, db, {
     list: listRows,
     refresh: Effect.fn("LinkedPr.refreshSummaries")(function* (
       threadId: string,
@@ -302,6 +296,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
       return refreshed;
     }),
   });
+
   registerLinkTools(bb, runtime, handlers);
   bb.events.on("thread.deleted", ({ thread }) =>
     runtime.runPromise(
