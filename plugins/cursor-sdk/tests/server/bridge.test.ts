@@ -88,6 +88,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const disposal = Deferred.makeUnsafe<void>();
   const cancellation = Deferred.makeUnsafe<void>();
   let sequence = 0;
+  const failures: Partial<Record<"models" | "send" | "stream" | "result", SdkError>> = {};
 
   const makeAgent = (agentId: string): SDKAgent => {
     const detach = new Set<() => void>();
@@ -101,6 +102,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           .parse(message);
 
         sent.push({ text, options: sendOptions });
+
+        if (failures.send) throw failures.send;
 
         if (text === "send-failure") throw new Error("Could not send");
 
@@ -127,6 +130,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           supports: () => true,
           unsupportedReason: () => undefined,
           async *stream(): AsyncGenerator<SDKMessage, void> {
+            if (failures.stream) throw failures.stream;
+
             if (text === "stream-failure") throw new Error("Connection dropped");
 
             if (text.includes("hold")) await block;
@@ -144,6 +149,13 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
             }
           },
           async wait() {
+            if (failures.result)
+              return {
+                id,
+                status: "error",
+                error: { message: failures.result.message, code: failures.result.code },
+              };
+
             return {
               id,
               status: interrupted ? "cancelled" : "finished",
@@ -255,6 +267,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       },
       models: {
         async list() {
+          if (failures.models) throw failures.models;
+
           return catalog;
         },
       },
@@ -369,6 +383,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
 
   return {
     bridge,
+    failures,
     dataDir,
     executionOptions,
     sourceCalls: () => sourceCalls,
@@ -447,6 +462,108 @@ describe("provider bridge", () => {
       report.passed,
       experimental_formatConformanceReport(report) + JSON.stringify(f.errors),
     ).toBe(true);
+  });
+
+  test("loads local MCP settings on start and resume", async () => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    expect(f.created[0]?.local?.settingSources).toEqual(["project", "user", "plugins"]);
+    await f.request("thread/stop", {
+      threadId: "thread",
+      providerThreadId: "agent-1",
+      activeTurnId: null,
+      intent: "release",
+    });
+    await f.request("thread/resume", {
+      threadId: "thread",
+      providerThreadId: "agent-1",
+      cwd: "/tmp",
+      instructionMode: "append",
+      options,
+    });
+    expect(f.resumedOptions[0]?.local?.settingSources).toEqual(["project", "user", "plugins"]);
+  });
+
+  test("does not forward local setting sources to cloud", async () => {
+    const f = fixture(undefined, true);
+    await f.init();
+    await f.start();
+    expect(f.created[0]?.local).toBeUndefined();
+  });
+
+  test.each(["send", "stream"] as const)(
+    "preserves structured %s failures and settles once without replay",
+    async (stage) => {
+      const f = fixture();
+      await f.init();
+      await f.start();
+      f.failures[stage] = new SdkError({
+        message: "Limited crsr_secret",
+        code: "quota",
+        status: 429,
+        isRetryable: true,
+        requestId: "req-42",
+      });
+      await f.turn("hello");
+      await f.settled();
+      expect(f.deltas().filter((d) => d.kind === "provider.error")).toEqual([
+        expect.objectContaining({
+          message: "Limited [redacted]",
+          errorInfo: { category: "rate-limit", httpStatusCode: 429, providerCode: "quota" },
+          willRetry: false,
+          settlesTurn: false,
+          detail: JSON.stringify({ isRetryable: true, requestId: "req-42" }),
+        }),
+      ]);
+      expect(f.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "provider/recovery",
+        params: {
+          threadId: "thread",
+          kind: "rateLimited",
+          message: "Limited [redacted]",
+          retryable: false,
+        },
+      });
+      expect(f.deltas().filter((d) => d.kind === "turn.boundary")).toHaveLength(1);
+      expect(f.sent).toHaveLength(1);
+    },
+  );
+
+  test("preserves terminal result error codes without guessing a recovery action", async () => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    f.failures.result = new SdkError({ message: "Stopped", code: "vendor_specific" });
+    await f.turn("hello");
+    await f.settled();
+    expect(f.deltas().find((d) => d.kind === "provider.error")).toMatchObject({
+      errorInfo: { category: "unknown", providerCode: "vendor_specific", httpStatusCode: null },
+    });
+    expect(
+      f.messages.some(
+        (m) => z.object({ method: z.literal("provider/recovery") }).safeParse(m).success,
+      ),
+    ).toBe(false);
+  });
+
+  test("returns an authentication recovery hint for a rejected session start", async () => {
+    const f = fixture();
+    await f.init();
+    f.failures.models = new SdkError({ message: "Expired", status: 401, code: "auth" });
+    const response = await f.start();
+    expect(f.messages).toContainEqual({
+      jsonrpc: "2.0",
+      id: response.id,
+      error: {
+        code: -32603,
+        message: "Expired",
+        data: { recovery: { kind: "authRequired", message: "Expired", retryable: false } },
+      },
+    });
+    expect(f.created).toHaveLength(0);
+    expect(f.deltas()).toEqual([]);
   });
 
   test("injects a steer into the active run without starting or cancelling a run", async () => {
@@ -1237,4 +1354,31 @@ test("follow-up runs retain result-only text and cumulative usage", () => {
   expect(deltas.filter((d) => d.kind === "usage").at(-1)).toMatchObject({
     total: { totalTokens: 10 },
   });
+});
+
+test("task milestones are bounded, deduplicated, and do not replace final text", () => {
+  const deltas: z.infer<typeof threadDeltaSchema>[] = [];
+  const events = new RunEvents((batch) => deltas.push(...batch));
+  const base = { type: "task", agent_id: "agent", run_id: "run" } as const;
+  events.startRun();
+  events.accept(base);
+  events.accept({ ...base, text: "  ", status: " " });
+  events.accept({ ...base, status: "running", text: "Inspecting files" });
+  events.accept({ ...base, status: "running", text: "Inspecting files" });
+  events.accept({ ...base, status: "completed" });
+  events.finish({ id: "run", status: "finished", result: "Final answer" });
+  expect(deltas.flatMap((d) => (d.kind === "item.textDelta" ? [d.text] : []))).toEqual([
+    "running: Inspecting files",
+    "completed",
+    "Final answer",
+  ]);
+  events.startRun();
+  events.accept({ ...base, status: "completed" });
+  events.accept({ ...base, text: "x".repeat(10000) });
+  expect(deltas.filter((d) => d.kind === "item.textDelta").at(-1)?.text).toHaveLength(8000);
+  expect(deltas.filter((d) => d.kind === "item.textDelta" && d.text === "completed")).toHaveLength(
+    2,
+  );
+
+  for (const delta of deltas) expect(threadDeltaSchema.safeParse(delta).success).toBe(true);
 });

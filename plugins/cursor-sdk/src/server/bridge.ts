@@ -40,6 +40,9 @@ import {
   foreign,
   readApiKey,
   safeMessage,
+  sdkError,
+  sdkErrorInfo,
+  sdkRecovery,
   optionsSchema,
   SdkError,
   type Profile,
@@ -332,7 +335,7 @@ export function createSdkBridge(
       const options: AgentOptions = {
         apiKey,
         model,
-        local: { cwd: params.cwd, store },
+        local: { cwd: params.cwd, store, settingSources: ["project", "user", "plugins"] },
         mode: params.options.promptMode === "plan" ? ("plan" as const) : ("agent" as const),
       };
 
@@ -455,7 +458,7 @@ export function createSdkBridge(
     session: Session,
     turn: TurnState,
     status: "completed" | "failed" | "interrupted",
-    message?: string,
+    error?: SdkError,
   ) => {
     if (turn.ended) return;
     acceptInput(session, turn);
@@ -469,7 +472,33 @@ export function createSdkBridge(
       claimIfIdle: true,
     };
 
-    if (message) boundary.error = { message };
+    if (error) {
+      boundary.error = { message: error.message };
+
+      if (!session.released) {
+        const info = sdkErrorInfo(error);
+        emit(session.threadId, [
+          {
+            kind: "provider.error",
+            message: error.message,
+            errorInfo: info,
+            category: info.category,
+            providerTurnId: turn.providerTurnId,
+            settlesTurn: false,
+            willRetry: false,
+            detail: JSON.stringify({ isRetryable: error.isRetryable, requestId: error.requestId }),
+          },
+        ]);
+        const recovery = sdkRecovery(error);
+
+        if (recovery)
+          io.send({
+            jsonrpc: "2.0",
+            method: "provider/recovery",
+            params: { ...recovery, threadId: session.threadId },
+          });
+      }
+    }
 
     if (!session.released) emit(session.threadId, [boundary]);
   };
@@ -555,10 +584,7 @@ export function createSdkBridge(
     };
 
     if (session.cloud) cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source));
-    yield* Stream.fromAsyncIterable(
-      run.stream(),
-      (error) => new SdkError({ message: safeMessage(error) }),
-    ).pipe(
+    yield* Stream.fromAsyncIterable(run.stream(), sdkError).pipe(
       Stream.runForEach((event) =>
         Effect.sync(() => {
           if (!turn.ended && !session.released) turn.events.accept(event);
@@ -592,7 +618,7 @@ export function createSdkBridge(
       session,
       turn,
       runStatus(result.status),
-      result.error ? safeMessage(result.error.message) : undefined,
+      result.error ? sdkError(result.error) : undefined,
     );
   });
 
@@ -639,7 +665,7 @@ export function createSdkBridge(
                 session,
                 turn,
                 turn.interrupted ? "interrupted" : "failed",
-                safeMessage(Cause.squash(cause)),
+                sdkError(Cause.squash(cause)),
               );
             }),
           ),
@@ -961,7 +987,7 @@ export function createSdkBridge(
                 safeMessage(value),
                 value instanceof experimental_BridgeRecoveryError
                   ? { recovery: value.recovery }
-                  : undefined,
+                  : { recovery: sdkRecovery(sdkError(value)) },
               );
             },
           }),

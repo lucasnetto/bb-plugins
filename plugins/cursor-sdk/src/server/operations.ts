@@ -1,3 +1,4 @@
+import type { ProviderErrorInfo, ProviderRecoveryHint } from "@get-bb/plugin-sdk/provider-bridge";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -8,12 +9,16 @@ import { z } from "zod";
 
 export class SdkError extends Schema.TaggedError<SdkError>()("SdkError", {
   message: Schema.String,
+  code: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Number),
+  isRetryable: Schema.optional(Schema.Boolean),
+  requestId: Schema.optional(Schema.String),
 }) {}
 
 export const foreign = <A>(operation: () => Promise<A>) =>
   Effect.tryPromise({
     try: operation,
-    catch: (error) => new SdkError({ message: safeMessage(error) }),
+    catch: sdkError,
   });
 
 const errorMessageSchema = z.unknown().transform((error) =>
@@ -24,6 +29,69 @@ const errorMessageSchema = z.unknown().transform((error) =>
 );
 
 export const safeMessage = errorMessageSchema.parse.bind(errorMessageSchema);
+
+const sdkErrorMetadata = z.object({
+  message: z.string().optional().catch(undefined),
+  code: z.string().optional().catch(undefined),
+  status: z.number().int().optional().catch(undefined),
+  isRetryable: z.boolean().optional().catch(undefined),
+  requestId: z.string().optional().catch(undefined),
+});
+
+const sdkErrorSchema = z.unknown().transform((error) => {
+  const metadata = sdkErrorMetadata.safeParse(error);
+  const fields = metadata.success ? metadata.data : undefined;
+
+  return new SdkError({
+    message: safeMessage(fields?.message ?? error),
+    code: fields?.code === undefined ? undefined : safeMessage(fields.code),
+    status: fields?.status,
+    isRetryable: fields?.isRetryable,
+    requestId: fields?.requestId === undefined ? undefined : safeMessage(fields.requestId),
+  });
+});
+
+export const sdkError = sdkErrorSchema.parse.bind(sdkErrorSchema);
+
+export function sdkErrorInfo(error: SdkError): ProviderErrorInfo {
+  let category: ProviderErrorInfo["category"] = "unknown";
+
+  switch (error.status) {
+    case 400:
+      category = "bad-request";
+      break;
+    case 401:
+      category = "unauthorized";
+      break;
+    case 403:
+      category = "policy";
+      break;
+    case 429:
+      category = "rate-limit";
+      break;
+    case 502:
+    case 503:
+    case 504:
+      category = "connection-failed";
+      break;
+    default:
+      if (error.status !== undefined && error.status >= 500) category = "internal";
+  }
+
+  return { category, httpStatusCode: error.status ?? null, providerCode: error.code ?? null };
+}
+
+export function sdkRecovery(error: SdkError): ProviderRecoveryHint | undefined {
+  const category = sdkErrorInfo(error).category;
+
+  if (category === "unauthorized")
+    return { kind: "authRequired", message: error.message, retryable: false };
+
+  if (category === "rate-limit")
+    return { kind: "rateLimited", message: error.message, retryable: false };
+
+  return undefined;
+}
 
 export const profileSchema = z.enum(["personal", "work"]);
 

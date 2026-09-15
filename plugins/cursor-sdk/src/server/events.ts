@@ -42,6 +42,7 @@ export class RunEvents {
   private text: { id: string; channel: "agentMessage" | "reasoningText" } | undefined;
   private tools = new Map<string, ToolItem>();
   private assistantSeen = false;
+  private lastProgress: string | undefined;
   private usageSeen = false;
   private total = {
     cachedInputTokens: 0,
@@ -54,6 +55,7 @@ export class RunEvents {
   constructor(private readonly emit: (deltas: ThreadDelta[]) => void) {}
 
   startRun() {
+    this.lastProgress = undefined;
     this.assistantSeen = false;
     this.usageSeen = false;
   }
@@ -138,6 +140,24 @@ export class RunEvents {
           this.tools.delete(event.call_id);
         }
 
+        break;
+      }
+
+      case "task": {
+        const status = event.status?.trim().slice(0, 160);
+        const text = event.text?.trim().slice(0, 8000);
+        const progress = text ? (status ? `${status}: ${text}` : text) : status;
+
+        if (!progress || progress === this.lastProgress) break;
+        this.lastProgress = progress;
+        this.closeText();
+        // Task events have no stable task identity. Show bounded milestones
+        // without inventing child tasks or treating progress as a final answer.
+        const key = { providerItemId: `${this.id}-progress-${++this.sequence}` };
+        this.emit([
+          { kind: "item.textDelta", key, channel: "agentMessage", text: progress },
+          { kind: "item.textClose", key, channel: "agentMessage" },
+        ]);
         break;
       }
 

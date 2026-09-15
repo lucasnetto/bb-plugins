@@ -97,7 +97,7 @@ a session. Keep that store on the same host to retain its checkpoints.
 
 ## Behavior and limits
 
-- Streams assistant text, thinking, tools, and reported usage into BB's timeline.
+- Streams assistant text, thinking, tools, task milestones, and reported usage into BB's timeline.
   Final text is not duplicated. Token usage and context occupancy are not guessed.
 - Discovers the account's model catalog. Thinking and speed use BB's reasoning
   controls and Fast mode toggle; context sizes stay in the model list. None turns
@@ -107,7 +107,18 @@ a session. Keep that store on the same host to retain its checkpoints.
   The bridge resolves controls to an actual SDK variant on start, resume, and
   each turn. Saved preset IDs remain usable but stay out of the model list.
 - Forwards BB dynamic tools through SDK custom tools, including questions and
-  plugin tools. Cursor rules and MCP configuration use normal SDK loading.
+  plugin tools. Local sessions explicitly load project, user, and plugin Cursor
+  settings, including their MCP servers, on start, resume, and fork. MCP OAuth
+  login must already exist in Cursor; the SDK does not open a login flow.
+- Task events appear as bounded progress messages. Consecutive duplicates are
+  suppressed, and task-only runs still display their final answer. Task events
+  do not supply stable IDs, so they are not shown as separate background agents.
+- SDK failures retain their error code, HTTP status, retryability, and request ID
+  where provided. Authentication and rate-limit failures emit BB recovery hints;
+  other failures retain their diagnostic category. The bridge does not replay a
+  failed turn or retry an uncertain steer. SDK-native transport retries remain
+  enabled. Terminal errors without HTTP status keep their code and an unknown
+  category rather than inferring an action from the error message.
 - Stop cancels the SDK run. Release closes its runtime without inventing a turn.
 - Fork local threads from their latest saved conversation state. The child gets
   its own agent ID and checkpoint blobs, and uses its selected workspace, model,
