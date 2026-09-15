@@ -1,4 +1,5 @@
 import { registerAutoSettle } from "./auto-settle";
+import { createPrSummaryCache } from "./pr-summary-cache";
 import { initializeReviewDatabase } from "./database";
 import { registerLinkTools } from "./links-tools";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -14,6 +15,7 @@ import {
   parsePrUrl,
   prSummarySchema,
   type LinkedPr,
+  completionTime,
 } from "../shared/links-contract";
 
 /** Normalize the URL and require membership in the caller's current linked-PR snapshot. */
@@ -35,6 +37,12 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
   const db = initializeReviewDatabase(bb);
   const host = bb.hosts.experimental_client({ contract: hostContract });
 
+  const summaries = createPrSummaryCache((hostId, url) =>
+    call("host.linkedSummary", (signal) =>
+      host.call("linkedSummary", { root: null, url }, { hostId, signal }),
+    ),
+  );
+
   const listRows = Effect.fn("LinkedPr.rows")(function* (threadId: string) {
     const rows = yield* sync("linked PR.list", () =>
       db.prepare("SELECT data FROM linked_prs WHERE thread_id = ? ORDER BY rowid").all(threadId),
@@ -52,9 +60,21 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
 
   const updateSummary = Effect.fn("LinkedPr.updateSummary")(function* (
     summary: Schema.Schema.Type<typeof prSummarySchema>,
+    hostId: string,
   ) {
     // Keep link provenance in each thread while refreshing shared GitHub metadata.
-    const { url, repository, number, title, state, isDraft } = summary;
+    const {
+      url,
+      repository,
+      number,
+      title,
+      state,
+      isDraft,
+      mergedAt = null,
+      closedAt = null,
+    } = summary;
+
+    yield* summaries.observe(hostId, summary);
 
     const rows = yield* sync("linked PR.summary rows", () =>
       db.prepare("SELECT thread_id, data FROM linked_prs WHERE url = ?").all(url),
@@ -65,28 +85,41 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
       Schema.Array(Schema.Struct({ thread_id: Schema.String, data: Schema.String })),
     )(rows);
 
-    yield* Effect.forEach(entries, (entry) =>
-      Effect.gen(function* () {
-        const current = yield* decodeSchema(
-          "linked PR.summary entry",
-          Schema.fromJsonString(linkedPrSchema),
-        )(entry.data);
+    yield* Effect.forEach(
+      entries,
+      (entry) =>
+        Effect.gen(function* () {
+          const current = yield* decodeSchema(
+            "linked PR.summary entry",
+            Schema.fromJsonString(linkedPrSchema),
+          )(entry.data);
 
-        const data = JSON.stringify({ ...current, url, repository, number, title, state, isDraft });
-
-        if (data !== entry.data)
-          yield* sync("linked PR.update summary", () => {
-            const result = db
-              .prepare(
-                "UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ? AND data = ?",
-              )
-              .run(data, entry.thread_id, url, entry.data);
-
-            if (result.changes > 0) changed(entry.thread_id);
+          const data = JSON.stringify({
+            ...current,
+            url,
+            repository,
+            number,
+            title,
+            state,
+            isDraft,
+            mergedAt,
+            closedAt,
           });
 
-        if (state === "MERGED" || state === "CLOSED") yield* autoSettle.observed(entry.thread_id);
-      }),
+          if (data !== entry.data)
+            yield* sync("linked PR.update summary", () => {
+              const result = db
+                .prepare(
+                  "UPDATE linked_prs SET data = ? WHERE thread_id = ? AND url = ? AND data = ?",
+                )
+                .run(data, entry.thread_id, url, entry.data);
+
+              if (result.changes > 0) changed(entry.thread_id);
+            });
+
+          if (state === "MERGED" || state === "CLOSED") yield* autoSettle.observed(entry.thread_id);
+        }),
+      { discard: true, concurrency: 8 },
     );
   });
 
@@ -247,7 +280,7 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
           ),
         );
 
-        yield* updateSummary({ ...detail.pr, ...ref });
+        yield* updateSummary({ ...detail.pr, ...ref }, env.hostId);
 
         return detail;
       }),
@@ -262,12 +295,9 @@ export function registerLinks(bb: BbPluginApi, runtime: ReturnType<typeof create
       const env = yield* environment(threadId);
 
       const refreshed = yield* Effect.forEach(rows, (row) =>
-        call("host.linkedSummary", (signal) =>
-          host.call(
-            "linkedSummary",
-            { root: env.root, url: row.url },
-            { hostId: env.hostId, signal },
-          ),
+        (row.state === "MERGED" && completionTime(row) !== null
+          ? Effect.succeed(row)
+          : summaries.get(env.hostId, row.url)
         ).pipe(
           Effect.flatMap((summary) =>
             decodeSchema(

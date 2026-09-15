@@ -119,7 +119,7 @@ export function checkState(value: string | null | undefined): Check["state"] {
 export const OVERVIEW_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   viewer{login}
   repository(owner:$owner,name:$name){viewerPermission mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
-    pullRequest(number:$number){id url number title body state isDraft updatedAt createdAt
+    pullRequest(number:$number){id url number title body state isDraft updatedAt createdAt mergedAt closedAt
       author{login avatarUrl} headRefName baseRefName headRefOid baseRefOid additions deletions changedFiles
       mergeable mergeStateStatus reviewDecision viewerCanUpdate viewerCanUpdateBranch autoMergeRequest{enabledAt}
       labels(first:100){nodes{name color}}
@@ -147,6 +147,8 @@ const overviewRaw = z.object({
       title: z.string(),
       body: z.string(),
       state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+      mergedAt: z.string().nullable().optional(),
+      closedAt: z.string().nullable().optional(),
       isDraft: z.boolean(),
       author: actorSchema.nullable(),
       updatedAt: z.string(),

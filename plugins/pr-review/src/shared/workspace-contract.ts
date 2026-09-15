@@ -23,6 +23,8 @@ export const overviewSchema = z.object({
   title: z.string(),
   body: z.string(),
   state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  mergedAt: z.string().nullable().optional(),
+  closedAt: z.string().nullable().optional(),
   isDraft: z.boolean(),
   author: actorSchema.nullable(),
   updatedAt: z.string(),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
-import { Schema } from "effect";
+import { Deferred, Effect, Schema } from "effect";
 import plugin from "../../server";
 import { parsePrUrl } from "../../src/shared/links-contract";
 import { overview, stack } from "../workspace-fixture";
@@ -11,7 +11,15 @@ const url = "https://github.com/org/api/pull/42";
 const other = "https://github.com/org/web/pull/7";
 
 async function setup() {
-  let thread = makeThreadResponse({ id: "t1", status: "idle", environmentId: "env" });
+  let thread = makeThreadResponse({
+    id: "t1",
+    status: "idle",
+    environmentId: "env",
+    createdAt: 1000,
+  });
+
+  let latestPromptAt = 1000;
+  let completedAt: string | null = "2026-09-15T12:00:00Z";
   let childBusy = false;
   const states = new Map<string, "OPEN" | "CLOSED" | "MERGED">();
   let failedUrl = "";
@@ -26,6 +34,7 @@ async function setup() {
     sdk: {
       threads: {
         get: async () => thread,
+        promptHistory: async () => [{ id: "prompt", createdAt: latestPromptAt, input: [] }],
         list: async () =>
           childBusy ? [makeThreadResponse({ id: "child", status: "active" })] : [],
         archive: async () => {
@@ -49,6 +58,8 @@ async function setup() {
         title: "Change",
         state: states.get(request.url) ?? "OPEN",
         isDraft: false,
+        mergedAt: states.get(request.url) === "MERGED" ? completedAt : null,
+        closedAt: states.get(request.url) === "CLOSED" ? completedAt : null,
       };
 
       if (method === "prOverview") return { ...overview, ...pr };
@@ -75,6 +86,12 @@ async function setup() {
 
   return {
     states,
+    latestPrompt: (value: number) => {
+      latestPromptAt = value;
+    },
+    completion: (value: string | null) => {
+      completedAt = value;
+    },
     enable: (autoSettle: boolean) => harness.behavior.setSettings({ autoSettle }),
     childBusy: (value: boolean) => {
       childBusy = value;
@@ -147,7 +164,7 @@ test.each(["prOverview", "prStack", "linkedDetail"] as const)(
       h.states.set(other, "CLOSED");
       await h.observe(method, other);
       assert.equal(h.archived(), true);
-      assert.equal(h.summaryCount(), summaries + 2);
+      assert.equal(h.summaryCount(), summaries + (method === "prStack" ? 2 : 1));
       await h.sweep();
       assert.equal(h.archiveCount(), 1);
     } finally {
@@ -165,7 +182,7 @@ test("observed completion verifies stale siblings and retries failed checks on t
     h.states.set(url, "CLOSED");
     await h.observe("prOverview");
     h.states.set(url, "OPEN");
-    h.states.set(other, "MERGED");
+    h.states.set(other, "CLOSED");
     await h.observe("linkedDetail", other);
     assert.equal(h.archived(), false);
     h.states.set(url, "MERGED");
@@ -216,6 +233,145 @@ test("simultaneous status observations and polling archive only once", async () 
     assert.equal(h.archiveCount(), 1);
   } finally {
     await h.dispose();
+  }
+});
+
+test("an old merge cannot settle a newer user request, including after reload", async () => {
+  const h = await setup();
+
+  try {
+    await h.link();
+    h.states.set(url, "MERGED");
+    h.latestPrompt(Date.parse("2026-09-15T13:00:00Z"));
+    await h.observe("prOverview");
+    assert.equal(h.archived(), false);
+    await h.reload();
+    await h.sweep();
+    assert.equal(h.archived(), false);
+    await h.link(other);
+    h.states.set(other, "CLOSED");
+    h.completion("2026-09-15T14:00:00Z");
+    await h.observe("linkedDetail", other);
+    assert.equal(h.archived(), true);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test.each([null, "invalid-date"])(
+  "missing or invalid completion time %s defers settlement",
+  async (time) => {
+    const h = await setup();
+
+    try {
+      await h.link();
+      h.states.set(url, "MERGED");
+      h.completion(time);
+      await h.sweep();
+      assert.equal(h.archived(), false);
+      h.completion("2026-09-15T12:00:00Z");
+      await h.sweep();
+      assert.equal(h.archived(), true);
+    } finally {
+      await h.dispose();
+    }
+  },
+);
+
+test("a confirmed merge is reused even if its host lookup later fails", async () => {
+  const h = await setup();
+
+  try {
+    await h.link();
+    h.childBusy(true);
+    h.states.set(url, "MERGED");
+    await h.observe("prOverview");
+    h.fail(url);
+    h.childBusy(false);
+    await h.reload();
+    await h.sweep();
+    assert.equal(h.archived(), true);
+    assert.equal(h.summaryCount(), 1); // Only the initial link fetched a summary.
+  } finally {
+    await h.dispose();
+  }
+});
+
+test("a slow thread does not block another thread from settling", async () => {
+  const threads = new Map(
+    ["slow", "fast"].map((id) => [
+      id,
+      makeThreadResponse({ id, status: "idle", environmentId: "env", createdAt: 1000 }),
+    ]),
+  );
+
+  const blocked = Effect.runSync(Deferred.make<void>());
+  const release = Effect.runSync(Deferred.make<void>());
+  const fastArchived = Effect.runSync(Deferred.make<void>());
+  let checking = false;
+
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "pr-review",
+    sdk: {
+      threads: {
+        get: async ({ threadId }) => threads.get(threadId),
+        promptHistory: async () => [],
+        list: async () => [],
+        archive: async ({ threadId }) => {
+          const thread = threads.get(threadId);
+
+          if (!thread) throw new Error("Missing thread");
+          thread.archivedAt = 10;
+
+          if (threadId === "fast") Effect.runSync(Deferred.succeed(fastArchived, undefined));
+
+          return { thread };
+        },
+      },
+      environments: { get: async () => ({ path: "/repo", hostId: "host" }) },
+    },
+    experimental_callHostRpc: async ({ input }) => {
+      const { url: requested } = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(
+        input,
+      );
+
+      if (checking && requested === url) {
+        Effect.runSync(Deferred.succeed(blocked, undefined));
+        await Effect.runPromise(Deferred.await(release));
+      }
+
+      return {
+        ...parsePrUrl(requested),
+        title: "Change",
+        state: checking ? "MERGED" : "OPEN",
+        isDraft: false,
+        mergedAt: checking ? "2026-09-15T12:00:00Z" : null,
+      };
+    },
+  });
+
+  await plugin(bb);
+  let sweep: Promise<void> | undefined;
+
+  try {
+    await harness.behavior.callRpc("linkedLink", { threadId: "slow", url, reason: "manual" });
+    await harness.behavior.callRpc("linkedLink", {
+      threadId: "fast",
+      url: other,
+      reason: "manual",
+    });
+    checking = true;
+    sweep = harness.behavior.runSchedule("settle-completed-prs");
+    await Effect.runPromise(Deferred.await(blocked));
+    await Effect.runPromise(Deferred.await(fastArchived));
+    assert.equal(threads.get("slow")?.archivedAt, null);
+    Effect.runSync(Deferred.succeed(release, undefined));
+    await sweep;
+    assert.equal(threads.get("slow")?.archivedAt, 10);
+  } finally {
+    Effect.runSync(Deferred.succeed(release, undefined));
+    await sweep;
+    await harness.lifecycle.dispose();
   }
 });
 

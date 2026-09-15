@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { Effect, Schema, Semaphore } from "effect";
-import type { LinkedPr } from "../shared/links-contract";
+import { completionTime, type LinkedPr } from "../shared/links-contract";
 import { call, sync, decodeSchema, type BackendError, type createRuntime } from "./server-effects";
 import type { initializeReviewDatabase } from "./database";
 
@@ -13,6 +13,14 @@ const fingerprint = (rows: readonly LinkedPr[]) =>
 
 const terminal = (rows: readonly LinkedPr[]) =>
   rows.length > 0 && rows.every(({ state }) => state === "MERGED" || state === "CLOSED");
+
+const latestCompletion = (rows: readonly LinkedPr[]) => {
+  const times = rows.map(completionTime);
+
+  return times.some((time) => time === null)
+    ? null
+    : Math.max(...times.filter((time) => time !== null));
+};
 
 /** React to observed PR completion, with polling as a fallback when no panel is open. */
 export function registerAutoSettle(
@@ -88,10 +96,24 @@ export function registerAutoSettle(
     const rows = yield* links.list(threadId);
 
     if (rows.length === 0) return;
-    // Every PR must be successfully fetched during this pass. Never trust stale terminal states.
+    // Confirm mutable PRs; a timestamped merge can be reused across checks.
     const refreshed = yield* links.refresh(threadId, rows);
 
     if (!terminal(refreshed)) return;
+    const completedAt = latestCompletion(refreshed);
+
+    if (completedAt === null) return;
+
+    const prompts = yield* call("threads.promptHistory", (signal) =>
+      bb.sdk.threads.promptHistory({ threadId, limit: "1", signal }),
+    );
+
+    const latestRequestAt = Math.max(
+      before.createdAt,
+      ...prompts.map((prompt) => prompt.createdAt),
+    );
+
+    if (completedAt < latestRequestAt) return;
     const key = fingerprint(refreshed);
 
     const previous = yield* sync("auto settle.previous", () =>
@@ -121,7 +143,14 @@ export function registerAutoSettle(
     if (!after || after.updatedAt !== before.updatedAt) return;
     const current = yield* links.list(threadId);
 
-    if (fingerprint(current) !== key || !terminal(current)) return;
+    if (
+      fingerprint(current) !== key ||
+      !terminal(current) ||
+      latestCompletion(current) !== completedAt
+    )
+      return;
+
+    if (!(yield* call("auto settle.settings", () => settings.get())).autoSettle) return;
     yield* call("threads.archive", () => bb.sdk.threads.archive({ threadId }));
     yield* sync("auto settle.remember", () => {
       db.prepare(
@@ -141,12 +170,27 @@ export function registerAutoSettle(
     });
   });
 
-  // A panel refresh and the fallback sweep can discover completion together.
-  const lock = Semaphore.makeUnsafe(1);
+  // Ref-count waiters as well as holders so a lock cannot be replaced while in use.
+  const locks = new Map<string, { semaphore: Semaphore.Semaphore; users: number }>();
+
+  const withThreadLock = (threadId: string, effect: Effect.Effect<void, BackendError>) =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const lock = locks.get(threadId) ?? { semaphore: Semaphore.makeUnsafe(1), users: 0 };
+        lock.users++;
+        locks.set(threadId, lock);
+
+        return lock;
+      }),
+      (lock) => effect.pipe(Semaphore.withPermit(lock.semaphore)),
+      (lock) =>
+        Effect.sync(() => {
+          if (--lock.users === 0) locks.delete(threadId);
+        }),
+    );
 
   const attempt = Effect.fn("AutoSettle.attempt")((threadId: string) =>
-    check(threadId).pipe(
-      Semaphore.withPermit(lock),
+    withThreadLock(threadId, check(threadId)).pipe(
       Effect.catchTag("BackendError", (error) =>
         sync("auto settle.log", () => {
           bb.log.warn(`Could not auto-settle ${threadId}; will retry next pass: ${error.message}`);
@@ -172,11 +216,14 @@ export function registerAutoSettle(
       Schema.Array(Schema.Struct({ thread_id: Schema.String })),
     )(raw);
 
-    yield* Effect.forEach(rows, ({ thread_id }) => attempt(thread_id), { discard: true });
+    yield* Effect.forEach(rows, ({ thread_id }) => attempt(thread_id), {
+      discard: true,
+      concurrency: 8,
+    });
   });
 
   let running = false;
-  bb.background.schedule("settle-completed-prs", "*/5 * * * *", async () => {
+  bb.background.schedule("settle-completed-prs", "* * * * *", async () => {
     if (running) return;
     running = true;
 

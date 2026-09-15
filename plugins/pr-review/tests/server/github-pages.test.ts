@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { linkedDetail } from "../../src/server/links-host";
+import { linkedDetail, linkedSummary } from "../../src/server/links-host";
 import { runHost } from "../../src/server/host-effects";
 
 const file = {
@@ -7,6 +7,31 @@ const file = {
   status: "modified",
   patch: '@@ -1 +1 @@\n-before\n+after "quoted" \\ text',
 };
+
+test.each([true, false])("preserves GitHub completion timestamps (merged=%s)", async (merged) => {
+  const timestamp = "2026-09-15T12:00:00Z";
+
+  const pr = await runHost(
+    linkedSummary("/repo", "https://github.com/org/api/pull/9"),
+    undefined,
+    async () =>
+      JSON.stringify({
+        title: "PR",
+        state: "closed",
+        merged,
+        draft: false,
+        body: "",
+        merged_at: merged ? timestamp : null,
+        closed_at: timestamp,
+        head: { ref: "fix", sha: "b".repeat(40) },
+        base: { ref: "main", sha: "a".repeat(40) },
+      }),
+  );
+
+  expect(pr.state).toBe(merged ? "MERGED" : "CLOSED");
+  expect(pr.mergedAt).toBe(merged ? timestamp : null);
+  expect(pr.closedAt).toBe(timestamp);
+});
 
 for (const pages of [[[], [file], [{ ...file, filename: "b.ts" }]], [[]]]) {
   test(`loads ${pages.flat().length} files across compact JSON pages`, async () => {

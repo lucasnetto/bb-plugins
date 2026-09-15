@@ -22,6 +22,8 @@ export const linkedPrSchema = Schema.Struct({
   ).check(Schema.isGreaterThan(0)),
   title: Schema.String,
   state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  mergedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  closedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   isDraft: Schema.Boolean,
   reason: reasonSchema,
   linkedAt: Schema.Finite,
@@ -52,6 +54,14 @@ export const linkedDetailSchema = Schema.Struct({
 });
 
 export type LinkedPr = Schema.Schema.Type<typeof linkedPrSchema>;
+
+export function completionTime(pr: Pick<LinkedPr, "state" | "mergedAt" | "closedAt">) {
+  if (pr.state === "OPEN") return null;
+  const value = pr.state === "MERGED" ? pr.mergedAt : pr.closedAt;
+  const timestamp = Date.parse(value ?? "");
+
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
 
 export type LinkedDetail = Schema.Schema.Type<typeof linkedDetailSchema>;
 

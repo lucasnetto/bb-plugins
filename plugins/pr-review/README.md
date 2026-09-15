@@ -42,7 +42,11 @@ Chapters pair explanations with selectable diffs. Reviewed checkboxes collapse c
 bb plugin config pr-review set autoSettle false
 ```
 
-PR overview, stack, and linked-detail refreshes trigger a settlement check as soon as all linked PRs are known merged or closed. The check freshly verifies every linked PR before archiving the thread. A five-minute server poll remains as a fallback when no panel is open or an earlier check was deferred; it is not a waiting period after detecting completion. A visible, idle thread with at least one PR settles only when all linked PRs are confirmed merged or closed. Failed lookups, queued messages, active agents, and busy descendants defer settling.
+PR overview, stack, and linked-detail refreshes trigger a settlement check as soon as all linked PRs are known merged or closed. A one-minute server poll remains as a fallback when no panel is open or an earlier check was deferred; it is not a waiting period after detecting completion. A visible, idle thread with at least one PR settles only when all linked PRs are confirmed merged or closed. Failed lookups, queued messages, active agents, and busy descendants defer settling.
+
+The latest PR merge or close must be at least as recent as the thread's creation and latest prompt. A follow-up requested after an old merge keeps the thread active. Missing or invalid completion timestamps defer settling; older saved links acquire their timestamps on the next successful lookup.
+
+Confirmed, timestamped merges are reused, including after a server restart. Open and closed PRs are rechecked because they can change. Concurrent lookups of the same PR on the same machine share a request, with at most eight settlement summary requests in flight. Each thread has its own settlement lock, so a slow lookup does not block every other thread.
 
 Manually un-settling a thread keeps it open across reloads. Another automatic settlement requires a PR URL never included in any previous settlement, with all current links closed or merged. Relinking or reopening/reclosing previously settled PRs does not cause another settlement.
 

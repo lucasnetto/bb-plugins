@@ -112,6 +112,8 @@ test("workspace metadata refreshes existing links across threads and preserves l
         ...pr,
         title: "Updated title",
         state: "MERGED",
+        mergedAt: null,
+        closedAt: null,
       }));
 
     const refreshed = decodeLinkedList(

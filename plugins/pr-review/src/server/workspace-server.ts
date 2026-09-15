@@ -52,7 +52,7 @@ export function registerWorkspace(
           host.call("prOverview", args, { hostId, signal }),
         );
 
-        yield* links.updateSummary(overview);
+        yield* links.updateSummary(overview, hostId);
 
         return overview;
       }),
@@ -77,7 +77,7 @@ export function registerWorkspace(
         if (stack) {
           const { repository } = parsePrUrl(args.url);
           yield* Effect.forEach(stack.layers, (layer) =>
-            links.updateSummary({ ...layer, repository }),
+            links.updateSummary({ ...layer, repository }, hostId),
           );
         }
 

@@ -2,13 +2,36 @@ import { expect, it } from "vite-plus/test";
 import { prAction, prMergeStatus, stackScope } from "../../src/server/workspace-actions";
 import {
   ACTION_PREFLIGHT_QUERY,
+  OVERVIEW_QUERY,
   checkState,
+  prOverview,
   prStack,
   prTimeline,
 } from "../../src/server/workspace-github";
 import { runHost, type Command } from "../../src/server/host-effects";
 import { overview, rawOverview, stack } from "../workspace-fixture";
 import type { Overview, WorkspaceAction } from "../../src/shared/workspace-contract";
+
+it("PR overview carries the actual merge and close timestamps", async () => {
+  const timestamp = "2026-09-15T12:00:00Z";
+
+  const result = await runHost(
+    prOverview("/repo", overview.url),
+    undefined,
+    async (_root, program, _args, _signal, body) => {
+      if (program === "git") return "https://github.com/other/repo.git";
+      expect(JSON.parse(body ?? "{}").query).toBe(OVERVIEW_QUERY);
+      expect(OVERVIEW_QUERY).toContain("mergedAt closedAt");
+
+      return JSON.stringify(
+        rawOverview({ state: "MERGED", mergedAt: timestamp, closedAt: timestamp }),
+      );
+    },
+  );
+
+  expect(result.mergedAt).toBe(timestamp);
+  expect(result.closedAt).toBe(timestamp);
+});
 
 const expected = {
   number: stack.number,
