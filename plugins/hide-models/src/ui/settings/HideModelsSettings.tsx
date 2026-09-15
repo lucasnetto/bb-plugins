@@ -12,9 +12,13 @@ function ProviderCard({
   provider,
   hiddenKeys,
   onToggle,
+  onHideAll,
+  loading,
 }: {
   provider: CatalogProvider;
   hiddenKeys: ReadonlySet<string>;
+  onHideAll: () => void;
+  loading: boolean;
   onToggle: (model: CatalogProvider["models"][number], hide: boolean) => void;
 }) {
   const hiddenCount = provider.models.filter((m) =>
@@ -39,6 +43,19 @@ function ProviderCard({
             : `${hiddenCount} of ${provider.models.length} hidden`}
         </span>
       </summary>
+      {provider.models.length > 0 && (
+        <div className="flex justify-end border-b border-border px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onHideAll}
+            disabled={loading || hiddenCount === provider.models.length}
+            aria-label={`Hide all ${provider.displayName} models`}
+          >
+            Hide all
+          </Button>
+        </div>
+      )}
       {provider.models.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">
           {provider.loadError ? `No models (${provider.loadError}).` : "No models discovered."}
@@ -109,6 +126,20 @@ export function HideModelsSettings() {
       );
     };
 
+  const hideAll = (provider: CatalogProvider) => {
+    if (hidden === null) return;
+    save([
+      ...hidden,
+      ...provider.models
+        .filter((model) => !hiddenKeys.has(keyOf(provider.id, model.model)))
+        .map((model) => ({
+          providerId: provider.id,
+          model: model.model,
+          displayName: model.displayName,
+        })),
+    ]);
+  };
+
   // Entries whose provider/model no longer appears in the catalog.
   const stale = useMemo(() => {
     if (catalog === null || hidden === null) return [];
@@ -148,6 +179,8 @@ export function HideModelsSettings() {
             provider={provider}
             hiddenKeys={hiddenKeys}
             onToggle={toggle(provider)}
+            onHideAll={() => hideAll(provider)}
+            loading={hidden === null}
           />
         ))
       )}

@@ -91,3 +91,70 @@ test("settings update the provider-scoped picker filter and disposal restores ro
     vi.unstubAllGlobals();
   }
 });
+
+test("hide all saves a provider in one update without removing existing hidden entries", async () => {
+  const existing: HiddenModel[] = [
+    { providerId: "other", model: "shared", displayName: "Other model" },
+    { providerId: "work", model: "old", displayName: "Retired model" },
+    { providerId: "work", model: "one", displayName: "One" },
+  ];
+
+  let hidden = [...existing];
+
+  const save = vi.fn(async (input: { hidden: HiddenModel[] }) => {
+    hidden = input.hidden;
+
+    return { hidden };
+  });
+
+  const app = await loadPluginApp(() => import("../../src/ui/app"));
+
+  const slot = renderSlot(
+    app.settingsSections[0]!,
+    {},
+    {
+      rpc: {
+        catalog: () => ({
+          providers: [
+            {
+              id: "work",
+              displayName: "Work",
+              available: true,
+              brandPrefix: null,
+              loadError: null,
+              models: ["one", "two"].map((model) => ({
+                model,
+                displayName: model === "one" ? "One" : "Two",
+                description: "",
+                isDefault: model === "two",
+              })),
+            },
+          ],
+        }),
+        hidden_get: () => ({ hidden }),
+        hidden_set: async (input) => {
+          const result = await rpcContract.hidden_set.input["~standard"].validate(input);
+
+          if (result.issues) throw new Error("Invalid hidden models");
+
+          return save(result.value);
+        },
+      },
+    },
+  );
+
+  try {
+    fireEvent.click(await slot.findByText("Work", { selector: "h3" }));
+    const button = await slot.findByRole("button", { name: "Hide all Work models" });
+    fireEvent.click(button);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(hidden).toEqual([...existing, { providerId: "work", model: "two", displayName: "Two" }]);
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(slot.getByRole("checkbox", { name: "Show Two" }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  } finally {
+    slot.lifecycle.unmount();
+    localStorage.clear();
+  }
+});
