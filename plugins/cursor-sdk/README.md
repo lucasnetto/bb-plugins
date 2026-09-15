@@ -105,7 +105,13 @@ a session. Keep that store on the same host to retain its checkpoints.
 - Forwards BB dynamic tools through SDK custom tools, including questions and
   plugin tools. Cursor rules and MCP configuration use normal SDK loading.
 - Stop cancels the SDK run. Release closes its runtime without inventing a turn.
-  Fork, rewind, manual compaction, and native archive/rename sync are not advertised.
+- Fork local threads from their latest saved conversation state. The child gets
+  its own agent ID and checkpoint blobs, and uses its selected workspace, model,
+  instructions, and tools. The source must be idle and have a saved checkpoint
+  on the same host/profile. Forks stay local even when Cloud agents is enabled.
+  Workspace files are managed by the selected BB environment, not copied by the
+  conversation fork. Cloud forks and forks from earlier messages are unsupported.
+  Rewind, manual compaction, and native archive/rename sync are not advertised.
 - Full access is the supported execution policy. SDK approvals are not equivalent
   to BB Accept edits or automatic approval policies, so those modes are not offered.
   Plan mode uses Cursor's native plan mode.
@@ -118,7 +124,8 @@ vp check plugins/cursor-sdk
 bb plugin build plugins/cursor-sdk
 ```
 
-Tests cover the public bridge conformance suite, resume, cancellation, custom
+Tests cover the public bridge conformance suite, local fork identity and isolation,
+checkpoint pagination, failure cleanup, resume, cancellation, custom
 tool forwarding, model controls, event translation, Git source validation, cloud
 launch recovery, remote identity retention, and detach versus cancellation.
 
@@ -138,3 +145,12 @@ updates, reconnect reconciliation, and failed saves without changing the draft.
 Design reference: [wyrd-company/ahp-cursor-sdk](https://github.com/wyrd-company/ahp-cursor-sdk).
 This implements BB's native bridge directly, without an AHP dependency or copied
 adapter source.
+
+A live local fork check using Composer 2.5 confirmed that an independent child
+recalls the source conversation. Run it explicitly with the Work profile key:
+
+```sh
+CURSOR_SDK_LIVE_FORK=1 vp test plugins/cursor-sdk/tests/server/fork.live.test.ts
+```
+
+This opt-in check sends two model requests and removes its temporary local store.

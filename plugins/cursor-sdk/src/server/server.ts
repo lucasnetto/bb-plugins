@@ -45,7 +45,7 @@ export default function plugin(bb: BbPluginApi) {
       supportsManualCompaction: false,
       supportsThreadArchive: false,
       supportsThreadRename: false,
-      fork: "none",
+      fork: "tip",
       permissionModes: ["full"],
       reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     },

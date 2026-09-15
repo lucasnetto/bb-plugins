@@ -19,6 +19,7 @@ import {
 import {
   threadDeltaSchema,
   threadStartParamsSchema,
+  threadForkParamsSchema,
   turnStartParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { Deferred, Effect } from "effect";
@@ -193,9 +194,29 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
       async create(value) {
         created.push(value);
 
-        return makeAgent(
-          value.agentId ?? (value.cloud ? `bc-${created.length}` : `agent-${created.length}`),
-        );
+        const agentId =
+          value.agentId ?? (value.cloud ? `bc-${created.length}` : `agent-${created.length}`);
+
+        if (value.local?.store) {
+          await value.local.store.checkpoints.create({
+            agentId,
+            blobId: "root",
+            data: new Uint8Array([1]),
+          });
+          await value.local.store.agents.create({
+            agent: {
+              agentId,
+              cwd: value.local.cwd ?? "/tmp",
+              status: "idle",
+              activeRunId: null,
+              createdAt: 1,
+              updatedAt: 1,
+              latestCheckpoint: { schemaVersion: 1, rootBlobId: "root" },
+            },
+          });
+        }
+
+        return makeAgent(agentId);
       },
       async resume(id, value) {
         resumed.push(id);
@@ -325,6 +346,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
 
   return {
     bridge,
+    dataDir,
     executionOptions,
     sourceCalls: () => sourceCalls,
     completeSend: () => completeSend?.(),
@@ -375,6 +397,98 @@ describe("provider bridge", () => {
       report.passed,
       experimental_formatConformanceReport(report) + JSON.stringify(f.errors),
     ).toBe(true);
+  });
+
+  test("forks a persisted local conversation into the child workspace and resumes its new identity", async () => {
+    const f = fixture();
+    const store = new JsonlLocalAgentStore(join(f.dataDir, "conversations", "personal"));
+    await store.checkpoints.create({
+      agentId: "source",
+      blobId: "root",
+      data: new Uint8Array([1, 2, 3]),
+    });
+    await store.agents.create({
+      agent: {
+        agentId: "source",
+        cwd: "/old",
+        status: "idle",
+        activeRunId: null,
+        createdAt: 1,
+        updatedAt: 1,
+        latestCheckpoint: { schemaVersion: 1, rootBlobId: "root" },
+      },
+    });
+    await f.init();
+
+    const fork = await f.request("thread/fork", {
+      threadId: "child",
+      sourceProviderThreadId: "source",
+      cwd: "/child",
+      instructionMode: "replace",
+      disallowedTools: ["Shell"],
+      options: {
+        ...options,
+        instructions: "Child instructions",
+        providerOptions: { profile: "personal", runtime: "cloud" },
+      },
+    } satisfies z.input<typeof threadForkParamsSchema>);
+
+    expect(fork.error).toBeUndefined();
+    const id = z.object({ providerThreadId: z.string() }).parse(fork.result).providerThreadId;
+    expect(id).not.toBe("source");
+    expect(f.resumed).toEqual([id]);
+    expect(f.resumedOptions[0]).toMatchObject({
+      local: { cwd: "/child" },
+      disallowedTools: ["Shell"],
+      systemPrompt: "Child instructions",
+    });
+    expect(f.messages).toContainEqual(
+      expect.objectContaining({
+        method: "thread/identity",
+        params: { threadId: "child", providerThreadId: id },
+      }),
+    );
+    expect(await store.agents.get({ agentId: "source" })).toMatchObject({
+      cwd: "/old",
+      updatedAt: 1,
+    });
+    await f.request("thread/stop", {
+      threadId: "child",
+      providerThreadId: id,
+      activeTurnId: null,
+      intent: "release",
+    });
+    await f.request("thread/resume", {
+      threadId: "child",
+      providerThreadId: id,
+      cwd: "/child",
+      instructionMode: "append",
+      options,
+    });
+    expect(f.resumed).toEqual([id, id]);
+  });
+
+  test("rejects cloud and historical forks without creating a conversation", async () => {
+    const f = fixture();
+    await f.init();
+
+    for (const source of [
+      { sourceProviderThreadId: "bc-source" },
+      { sourceProviderThreadId: "source", sourceProviderCheckpointId: "old" },
+    ]) {
+      const response = await f.request("thread/fork", {
+        ...source,
+        threadId: "child",
+        cwd: "/tmp",
+        instructionMode: "append",
+        options,
+      });
+
+      expect(response.error?.message).toMatch(/Cloud|latest saved state/);
+    }
+
+    expect(f.created).toHaveLength(0);
+    expect(f.resumed).toHaveLength(0);
   });
 
   test("retains the SDK identity on resume and does not duplicate final text", async () => {

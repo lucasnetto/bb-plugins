@@ -5,6 +5,9 @@ keeps SDK conversations available for follow-up messages.
 Choose a model from your account catalog, then use BB's reasoning controls and
 Fast mode toggle. BB tools are available to the
 SDK, Stop cancels its active run, and Cursor native plan mode is supported.
+Local threads can be forked from their latest saved conversation state after a
+turn finishes. The child keeps that context with its own identity and uses the
+selected BB environment. Cloud threads and earlier-message forks are not supported.
 This version uses Full access mode; other BB approval policies are not offered.
 
 Personal and Work use their existing dedicated Cursor credentials. The pinned

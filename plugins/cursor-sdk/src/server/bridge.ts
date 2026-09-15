@@ -20,6 +20,7 @@ import {
   providerInstallationRunParamsSchema,
   threadStartParamsSchema,
   threadResumeParamsSchema,
+  threadForkParamsSchema,
   threadStopParamsSchema,
   threadDiscardParamsSchema,
   turnStartParamsSchema,
@@ -56,12 +57,14 @@ import {
   type CloudSession,
   type CloudSource,
 } from "./cloud.js";
+import { forkLocalAgent } from "./fork.js";
 import { randomUUID } from "node:crypto";
 
 const requestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal("initialize"), params: initializeParamsSchema }),
   z.object({ method: z.literal("thread/start"), params: threadStartParamsSchema }),
   z.object({ method: z.literal("thread/resume"), params: threadResumeParamsSchema }),
+  z.object({ method: z.literal("thread/fork"), params: threadForkParamsSchema }),
   z.object({ method: z.literal("thread/stop"), params: threadStopParamsSchema }),
   z.object({ method: z.literal("thread/discard"), params: threadDiscardParamsSchema }),
   z.object({ method: z.literal("turn/start"), params: turnStartParamsSchema }),
@@ -83,6 +86,8 @@ type BridgeRequest = z.infer<typeof requestSchema>;
 type StartParams = z.infer<typeof threadStartParamsSchema>;
 
 type ResumeParams = z.infer<typeof threadResumeParamsSchema>;
+
+type ForkParams = z.infer<typeof threadForkParamsSchema>;
 
 type TurnParams = z.infer<typeof turnStartParamsSchema>;
 
@@ -221,7 +226,7 @@ export function createSdkBridge(
   });
 
   const openSession = Effect.fn("CursorSdk.openSession")(function* (
-    params: StartParams | ResumeParams,
+    params: StartParams | ResumeParams | ForkParams,
   ) {
     checkOptions(params.options);
 
@@ -229,6 +234,32 @@ export function createSdkBridge(
       return yield* Effect.fail(
         new SdkError({ message: "Release this SDK session before opening it again." }),
       );
+    }
+
+    if ("sourceProviderThreadId" in params) {
+      if (params.sourceProviderCheckpointId !== undefined)
+        return yield* Effect.fail(
+          new SdkError({
+            message: "Cursor SDK supports forking only from the latest saved state.",
+          }),
+        );
+
+      if (String(params.sourceProviderThreadId).startsWith("bc-"))
+        return yield* Effect.fail(
+          new SdkError({
+            message:
+              "Cursor Cloud conversations cannot be forked. Forking is available for local Cursor SDK threads.",
+          }),
+        );
+
+      const source = [...sessions.values()].find(
+        (session) => session.agent.agentId === params.sourceProviderThreadId,
+      );
+
+      if (source?.turn && !source.turn.ended)
+        return yield* Effect.fail(
+          new SdkError({ message: "Wait for the source thread to finish before forking." }),
+        );
     }
 
     constructing.add(params.threadId);
@@ -241,7 +272,9 @@ export function createSdkBridge(
       const isCloud =
         "providerThreadId" in params
           ? String(params.providerThreadId).startsWith("bc-")
-          : runtime === "cloud";
+          : "sourceProviderThreadId" in params
+            ? false
+            : runtime === "cloud";
 
       if (isCloud && (params.disallowedTools?.length || params.instructionMode === "replace"))
         return yield* Effect.fail(
@@ -313,9 +346,13 @@ export function createSdkBridge(
 
       const agent = cloud
         ? cloud.agent
-        : "providerThreadId" in params
-          ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
-          : yield* foreign(() => sdk.Agent.create(options));
+        : "sourceProviderThreadId" in params
+          ? yield* forkLocalAgent(store, String(params.sourceProviderThreadId), params.cwd, (id) =>
+              sdk.Agent.resume(id, options),
+            )
+          : "providerThreadId" in params
+            ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
+            : yield* foreign(() => sdk.Agent.create(options));
 
       const session: Session = {
         cloud,
@@ -580,7 +617,7 @@ export function createSdkBridge(
         capabilities: {
           grammarVersions: [3, 3],
           sessionRestore: true,
-          fork: "none",
+          fork: "tip",
           steerMode: "queue",
           approvalEnforcedBy: "provider",
           skills: { configure: false },
@@ -597,6 +634,7 @@ export function createSdkBridge(
     switch (request.method) {
       case "thread/start":
         return yield* openSession(request.params);
+      case "thread/fork":
       case "thread/resume":
         return yield* openSession(request.params);
       case "turn/start":
@@ -710,6 +748,7 @@ export function createSdkBridge(
     "initialize",
     "thread/start",
     "thread/resume",
+    "thread/fork",
     "thread/stop",
     "thread/discard",
     "turn/start",
