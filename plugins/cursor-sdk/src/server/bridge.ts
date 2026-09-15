@@ -51,7 +51,8 @@ import {
   SDK_VERSION,
   type SdkModule,
 } from "./runtime.js";
-import { resolveModel, modelCatalog, legacyModelCatalog } from "./models.js";
+import { resolveModel } from "./models.js";
+import { createModelCache } from "./model-cache.js";
 import { RunEvents, runStatus } from "./events.js";
 import {
   cloudRunSummary,
@@ -137,6 +138,7 @@ export function createSdkBridge(
 ) {
   const load = dependencies.load ?? loadSdk;
   const key = dependencies.key ?? readApiKey;
+  const modelCache = createModelCache(load);
   const io = createBridgeIo<unknown>({ write });
   const tools = createPendingToolCallTracker({ sendToolCall: io.send });
   const sessions = new Map<string, Session>();
@@ -807,12 +809,9 @@ export function createSdkBridge(
       case "model/list": {
         const params = request.params;
         const { profile } = optionsSchema.parse(params.providerOptions);
-        const sdk = yield* load(dataDir);
         const apiKey = yield* key(profile);
-        const sdkModels = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
-        const models = modelCatalog(sdkModels);
 
-        return { models, selectedOnlyModels: legacyModelCatalog(sdkModels, models) };
+        return yield* modelCache.get(dataDir, profile, apiKey);
       }
 
       case "provider/health": {
@@ -867,6 +866,7 @@ export function createSdkBridge(
 
   const shutdown = () => {
     closing = true;
+    modelCache.close();
 
     for (const controller of requests) controller.abort();
     void Effect.runPromise(
