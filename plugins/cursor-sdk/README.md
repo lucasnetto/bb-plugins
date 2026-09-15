@@ -20,7 +20,11 @@ bb machine provider-cli install <host-id> cursor-sdk
 Select **Cursor SDK** and a model in a new thread. Set reasoning and Fast mode
 with BB's standard controls. The provider uses **Full access**.
 Existing ACP threads retain their original provider and history. Plan mode is
-available; follow-up messages queue while a turn runs.
+available. Text follow-ups steer a running local agent through `run.steer()`.
+When Cursor declines live delivery, the bridge sends the message once the current
+SDK run ends, retaining the same BB turn. Cloud runs, attachments, and changed
+execution settings use this follow-up path. Stopping the turn discards follow-ups
+that the SDK has not yet accepted.
 
 The runtime can also be installed through Settings → Providers. Each host needs
 Node.js 22.13+ and npm. Exactly `@cursor/sdk@1.0.31` is installed in the plugin's

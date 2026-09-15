@@ -24,12 +24,15 @@ import {
   threadStopParamsSchema,
   threadDiscardParamsSchema,
   turnStartParamsSchema,
+  turnSteerParamsSchema,
+  experimental_BridgeRecoveryError,
+  BRIDGE_JSON_RPC_ERRORS,
   mimeTypeFromExtension,
   type ThreadDelta,
   type DynamicTool,
   type ProviderHealth,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { Cause, Effect, Fiber, Stream } from "effect";
+import { Cause, Deferred, Effect, Fiber, Stream } from "effect";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
@@ -68,6 +71,7 @@ const requestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal("thread/stop"), params: threadStopParamsSchema }),
   z.object({ method: z.literal("thread/discard"), params: threadDiscardParamsSchema }),
   z.object({ method: z.literal("turn/start"), params: turnStartParamsSchema }),
+  z.object({ method: z.literal("turn/steer"), params: turnSteerParamsSchema }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
   z.object({ method: z.literal("provider/health"), params: providerMaintenanceParamsSchema }),
   z.object({ method: z.literal("provider/usage"), params: providerMaintenanceParamsSchema }),
@@ -97,6 +101,10 @@ type TurnState = {
   clientRequestId: string;
   accepted: boolean;
   run?: Run;
+  providerTurnId?: string;
+  pending: TurnParams[];
+  options: TurnParams["options"];
+  steers: Set<Deferred.Deferred<void>>;
   events: RunEvents;
   interrupted: boolean;
   cancelRequested: boolean;
@@ -436,7 +444,7 @@ export function createSdkBridge(
       {
         kind: "input.accepted",
         clientRequestId: turn.clientRequestId,
-        providerTurnId: turn.run?.id,
+        providerTurnId: turn.providerTurnId,
       },
     ]);
   };
@@ -455,7 +463,7 @@ export function createSdkBridge(
     const boundary: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
       kind: "turn.boundary",
       status,
-      providerTurnId: turn.run?.id,
+      providerTurnId: turn.providerTurnId,
       claimIfIdle: true,
     };
 
@@ -464,12 +472,18 @@ export function createSdkBridge(
     if (!session.released) emit(session.threadId, [boundary]);
   };
 
-  const executeTurn = Effect.fn("CursorSdk.executeTurn")(function* (
+  const executeTurn: (
+    params: TurnParams,
+    session: Session,
+    turn: TurnState,
+  ) => Effect.Effect<void, SdkError> = Effect.fn("CursorSdk.executeTurn")(function* (
     params: TurnParams,
     session: Session,
     turn: TurnState,
   ) {
     if (session.released || turn.interrupted) return;
+    turn.options = params.options;
+    turn.events.startRun();
     const input = yield* prompt(params, session);
 
     const sendOptions: SendOptions = {
@@ -502,8 +516,13 @@ export function createSdkBridge(
     );
 
     turn.run = run;
+    const firstRun = turn.providerTurnId === undefined;
+    turn.providerTurnId ??= run.id;
 
     if (session.cloud) yield* session.cloud.markCreated();
+
+    if (firstRun)
+      emit(session.threadId, [{ kind: "turn.open", providerTurnId: turn.providerTurnId }]);
     acceptInput(session, turn);
     session.lastInstructions = input.instructions;
 
@@ -513,14 +532,23 @@ export function createSdkBridge(
       return;
     }
 
-    emit(session.threadId, [{ kind: "turn.open", providerTurnId: run.id }]);
-
     const cloudNote = (text: string) => {
       if (!text) return;
       const key = { providerItemId: `cloud-${randomUUID()}` };
       emit(session.threadId, [
-        { kind: "item.textDelta", key, channel: "agentMessage", text, providerTurnId: run.id },
-        { kind: "item.textClose", key, channel: "agentMessage", providerTurnId: run.id },
+        {
+          kind: "item.textDelta",
+          key,
+          channel: "agentMessage",
+          text,
+          providerTurnId: turn.providerTurnId,
+        },
+        {
+          kind: "item.textClose",
+          key,
+          channel: "agentMessage",
+          providerTurnId: turn.providerTurnId,
+        },
       ]);
     };
 
@@ -544,6 +572,20 @@ export function createSdkBridge(
         cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source, result));
     }
 
+    // A run can finish before Cursor acknowledges an in-flight steer. Keep
+    // its BB turn open until delivery ownership has been resolved.
+    while (turn.steers.size)
+      yield* Effect.forEach([...turn.steers], (pending) => Deferred.await(pending));
+
+    const next = turn.pending.shift();
+
+    if (next && !turn.interrupted && !session.released) {
+      turn.clientRequestId = next.clientRequestId;
+      turn.accepted = false;
+
+      return yield* executeTurn(next, session, turn);
+    }
+
     finish(
       session,
       turn,
@@ -565,11 +607,14 @@ export function createSdkBridge(
       const turn: TurnState = {
         clientRequestId: params.clientRequestId,
         accepted: false,
+        pending: [],
+        options: params.options,
+        steers: new Set(),
         events: new RunEvents((deltas) => {
           if (!session.released)
             emit(
               session.threadId,
-              deltas.map((delta) => ({ ...delta, providerTurnId: turn.run?.id })),
+              deltas.map((delta) => ({ ...delta, providerTurnId: turn.providerTurnId })),
             );
         }),
         interrupted: false,
@@ -602,6 +647,91 @@ export function createSdkBridge(
       return { accepted: true };
     });
 
+  const steerTurn = Effect.fn("CursorSdk.steerTurn")(function* (
+    params: z.infer<typeof turnSteerParamsSchema>,
+  ) {
+    checkOptions(params.options);
+    const session = getSession(params.threadId, params.providerThreadId);
+    const turn = session.turn;
+
+    if (!turn || turn.ended || turn.interrupted || turn.providerTurnId !== params.expectedTurnId)
+      return yield* Effect.fail(
+        new experimental_BridgeRecoveryError({
+          code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+          message: "The targeted Cursor SDK turn is no longer active.",
+          recovery: {
+            kind: "staleTurn",
+            message: "The targeted Cursor SDK turn is no longer active.",
+            retryable: false,
+          },
+        }),
+      );
+
+    const pending = Deferred.makeUnsafe<void>();
+    turn.steers.add(pending);
+
+    return yield* Effect.gen(function* () {
+      // Cursor's live input API is text-only. Preserve attachments and any
+      // execution-option changes by sending them at the next prompt boundary.
+      const textOnly = params.input.every((input) => input.type === "text");
+
+      const unchangedInstructions =
+        !params.options.instructions || params.options.instructions === session.lastInstructions;
+
+      const sameExecution = ["model", "reasoningLevel", "serviceTier", "promptMode"] as const;
+
+      const unchangedExecution = sameExecution.every(
+        (key) => params.options[key] === turn.options[key],
+      );
+
+      const run = turn.run;
+      const steer = run?.steer?.bind(run);
+
+      const outcome =
+        !session.cloud && textOnly && unchangedInstructions && unchangedExecution && steer
+          ? yield* foreign(() =>
+              steer(
+                params.input
+                  .flatMap((input) => (input.type === "text" ? [input.text] : []))
+                  .join("\n\n"),
+              ),
+            )
+          : "revert_to_followup";
+
+      if (outcome === "complete_delivered") {
+        emit(session.threadId, [
+          {
+            kind: "input.accepted",
+            clientRequestId: params.clientRequestId,
+            providerTurnId: turn.providerTurnId,
+          },
+        ]);
+      } else if (!session.released && !turn.interrupted) {
+        turn.pending.push(params);
+      } else {
+        return yield* Effect.fail(
+          new experimental_BridgeRecoveryError({
+            code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+            message: "The Cursor SDK turn stopped before accepting the follow-up.",
+            recovery: {
+              kind: "staleTurn",
+              message: "The Cursor SDK turn stopped before accepting the follow-up.",
+              retryable: false,
+            },
+          }),
+        );
+      }
+
+      return { accepted: true };
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => turn.steers.delete(pending)).pipe(
+          Effect.andThen(Deferred.succeed(pending, undefined)),
+        ),
+      ),
+    );
+  });
+
   const handle = Effect.fn("CursorSdk.handleRequest")(function* (request: BridgeRequest) {
     if (request.method === "initialize") {
       const params = request.params;
@@ -618,7 +748,7 @@ export function createSdkBridge(
           grammarVersions: [3, 3],
           sessionRestore: true,
           fork: "tip",
-          steerMode: "queue",
+          steerMode: "inject",
           approvalEnforcedBy: "provider",
           skills: { configure: false },
           threadArchive: false,
@@ -639,6 +769,8 @@ export function createSdkBridge(
         return yield* openSession(request.params);
       case "turn/start":
         return yield* startTurn(request.params);
+      case "turn/steer":
+        return yield* steerTurn(request.params);
       case "thread/stop": {
         const params = request.params;
         const session = sessions.get(params.threadId);
@@ -752,6 +884,7 @@ export function createSdkBridge(
     "thread/stop",
     "thread/discard",
     "turn/start",
+    "turn/steer",
     "model/list",
     "provider/health",
     "provider/usage",
@@ -820,8 +953,15 @@ export function createSdkBridge(
               const value = Cause.squash(cause);
               io.sendError(
                 request.id,
-                value instanceof z.ZodError ? -32602 : -32603,
+                value instanceof experimental_BridgeRecoveryError
+                  ? value.code
+                  : value instanceof z.ZodError
+                    ? -32602
+                    : -32603,
                 safeMessage(value),
+                value instanceof experimental_BridgeRecoveryError
+                  ? { recovery: value.recovery }
+                  : undefined,
               );
             },
           }),

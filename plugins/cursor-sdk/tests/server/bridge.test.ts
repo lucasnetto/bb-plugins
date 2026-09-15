@@ -10,6 +10,7 @@ import {
   type SDKModel,
   type AgentOptions,
   type SendOptions,
+  type SteerAckOutcome,
 } from "@cursor/sdk";
 import {
   experimental_runBridgeConformance,
@@ -75,6 +76,13 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const resumed: string[] = [];
   const resumedOptions: AgentOptions[] = [];
   const sent: Array<{ text: string; options?: SendOptions }> = [];
+  let steerOutcome: SteerAckOutcome = "complete_delivered";
+  let steerEnabled = true;
+  let steerFailure = false;
+  let releaseRun: (() => void) | undefined;
+  let acknowledgeSteer: (() => void) | undefined;
+  let deferSteer = false;
+  const steered: string[] = [];
   let cancelled = 0;
   let disposed = 0;
   const disposal = Deferred.makeUnsafe<void>();
@@ -107,6 +115,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
         const block = new Promise<void>((resolve) => {
           release = resolve;
           detach.add(resolve);
+          releaseRun = resolve;
         });
 
         const run: Run = {
@@ -152,6 +161,20 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           },
           onDidChangeStatus: () => () => {},
         };
+
+        if (steerEnabled)
+          run.steer = async (message) => {
+            steered.push(message);
+
+            if (steerFailure) throw new Error("Steer transport failed");
+
+            if (deferSteer)
+              await new Promise<void>((resolve) => {
+                acknowledgeSteer = resolve;
+              });
+
+            return steerOutcome;
+          };
 
         return run;
       },
@@ -369,6 +392,33 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     waitFor,
     settled,
     deltas,
+    steered,
+    releaseRun: () => releaseRun?.(),
+    acknowledgeSteer: () => acknowledgeSteer?.(),
+    steerBehavior: (
+      outcome: SteerAckOutcome,
+      enabled = true,
+      deferred = false,
+      failure = false,
+    ) => {
+      steerOutcome = outcome;
+      steerEnabled = enabled;
+      deferSteer = deferred;
+      steerFailure = failure;
+    },
+    steer: (
+      input: TurnInput["input"] = [{ type: "text", text: "Skip admin", mentions: [] }],
+      expectedTurnId = "run-1",
+    ) =>
+      request("turn/steer", {
+        threadId: "thread",
+        providerThreadId,
+        expectedTurnId,
+        clientRequestId: "creq_steering23",
+        input,
+        options: executionOptions,
+      }),
+    running: () => waitFor(() => deltas().some((d) => d.kind === "turn.open")),
     cancelled: () => cancelled,
     disposed: () => disposed,
     waitForDisposal: () => Effect.runPromise(Deferred.await(disposal)),
@@ -398,6 +448,142 @@ describe("provider bridge", () => {
       experimental_formatConformanceReport(report) + JSON.stringify(f.errors),
     ).toBe(true);
   });
+
+  test("injects a steer into the active run without starting or cancelling a run", async () => {
+    const f = fixture();
+    expect((await f.init()).result).toMatchObject({ capabilities: { steerMode: "inject" } });
+    await f.start();
+    await f.turn("hold");
+    await f.running();
+    expect((await f.steer()).result).toEqual({ accepted: true });
+    expect(f.steered).toEqual(["Skip admin"]);
+    expect(f.sent).toHaveLength(1);
+    expect(f.cancelled()).toBe(0);
+    expect(f.deltas().filter((d) => d.kind === "input.accepted")).toEqual([
+      { kind: "input.accepted", clientRequestId: "creq_abcdefghij", providerTurnId: "run-1" },
+      { kind: "input.accepted", clientRequestId: "creq_steering23", providerTurnId: "run-1" },
+    ]);
+    f.releaseRun();
+    await f.settled();
+    expect(f.deltas().filter((d) => d.kind === "turn.boundary")).toHaveLength(1);
+  });
+
+  test.each(["declined", "missing", "cloud"])(
+    "delivers %s steering as one follow-up after the run",
+    async (mode) => {
+      const f = fixture(undefined, mode === "cloud");
+      f.steerBehavior("revert_to_followup", mode !== "missing");
+      await f.init();
+      await f.start();
+      await f.turn("hold");
+      await f.running();
+      expect((await f.steer()).error).toBeUndefined();
+      expect(f.sent).toHaveLength(1);
+      expect(f.deltas().filter((d) => d.kind === "input.accepted")).toHaveLength(1);
+      f.releaseRun();
+      await f.settled();
+      expect(f.sent).toHaveLength(2);
+      expect(f.sent[1]?.text).toContain("Skip admin");
+      expect(f.steered).toHaveLength(mode === "declined" ? 1 : 0);
+      expect(f.deltas().filter((d) => d.kind === "input.accepted")).toHaveLength(2);
+      expect(f.deltas().filter((d) => d.kind === "turn.open")).toHaveLength(1);
+      expect(f.deltas().filter((d) => d.kind === "turn.boundary")).toHaveLength(1);
+    },
+  );
+
+  test("preserves attachments in a follow-up instead of silently dropping them", async () => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.running();
+    expect(
+      (
+        await f.steer([
+          { type: "text", text: "Use this file", mentions: [] },
+          { type: "localFile", path: "/tmp/instructions.md" },
+        ])
+      ).error,
+    ).toBeUndefined();
+    expect(f.steered).toEqual([]);
+    f.releaseRun();
+    await f.settled();
+    expect(f.sent[1]?.text).toBe("Use this file\n\nAttached file: /tmp/instructions.md");
+  });
+
+  test("does not resend a steer when transport failure leaves delivery uncertain", async () => {
+    const f = fixture();
+    f.steerBehavior("complete_delivered", true, false, true);
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.running();
+    expect((await f.steer()).error?.message).toContain("Steer transport failed");
+    f.releaseRun();
+    await f.settled();
+    expect(f.sent).toHaveLength(1);
+    expect(f.cancelled()).toBe(0);
+    expect(f.deltas().filter((d) => d.kind === "input.accepted")).toHaveLength(1);
+  });
+
+  test("does not execute a queued follow-up after an explicit stop", async () => {
+    const f = fixture();
+    f.steerBehavior("revert_to_followup");
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.running();
+    await f.steer();
+    await f.request("thread/stop", {
+      threadId: "thread",
+      providerThreadId: "agent-1",
+      intent: "interrupt",
+      activeTurnId: "run-1",
+    });
+    await f.settled();
+    expect(f.sent).toHaveLength(1);
+    expect(f.deltas().filter((d) => d.kind === "input.accepted")).toHaveLength(1);
+  });
+
+  test("rejects a stale target without sending input or stopping the live turn", async () => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    await f.turn("hold");
+    await f.running();
+    expect((await f.steer(undefined, "old-run")).error?.code).toBe(-32001);
+    expect(f.steered).toEqual([]);
+    expect(f.sent).toHaveLength(1);
+    expect(f.deltas().some((d) => d.kind === "turn.boundary")).toBe(false);
+  });
+
+  test.each(["complete_delivered", "revert_to_followup"] as const)(
+    "keeps the turn open for a late %s acknowledgement",
+    async (outcome) => {
+      const f = fixture();
+      f.steerBehavior(outcome, true, true);
+      await f.init();
+      await f.start();
+      await f.turn("hold");
+      await f.running();
+      const steering = f.steer();
+      // The bridge starts the SDK call synchronously before yielding its acknowledgement.
+      expect(f.steered).toEqual(["Skip admin"]);
+      f.releaseRun();
+      await f.waitFor(() => f.deltas().some((d) => d.kind === "item.textClose"));
+      expect(f.deltas().some((d) => d.kind === "turn.boundary")).toBe(false);
+      f.acknowledgeSteer();
+      await steering;
+      await f.settled();
+      const deltas = f.deltas();
+      expect(
+        deltas.findIndex(
+          (d) => d.kind === "input.accepted" && d.clientRequestId === "creq_steering23",
+        ),
+      ).toBeLessThan(deltas.findIndex((d) => d.kind === "turn.boundary"));
+      expect(f.sent).toHaveLength(outcome === "complete_delivered" ? 1 : 2);
+    },
+  );
 
   test("forks a persisted local conversation into the child workspace and resumes its new identity", async () => {
     const f = fixture();
@@ -1020,3 +1206,35 @@ test.each([false, true])(
     expect(f.created).toHaveLength(1);
   },
 );
+
+test("follow-up runs retain result-only text and cumulative usage", () => {
+  const deltas: z.infer<typeof threadDeltaSchema>[] = [];
+  const events = new RunEvents((batch) => deltas.push(...batch));
+
+  const usage = {
+    inputTokens: 2,
+    outputTokens: 3,
+    totalTokens: 5,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
+
+  events.startRun();
+  events.accept({
+    type: "assistant",
+    agent_id: "agent",
+    run_id: "first",
+    message: { role: "assistant", content: [{ type: "text", text: "First" }] },
+  });
+  events.accept({ type: "usage", agent_id: "agent", run_id: "first", usage });
+  events.finish({ id: "first", status: "finished", result: "First", usage });
+  events.startRun();
+  events.finish({ id: "second", status: "finished", result: "Second", usage });
+  expect(deltas.flatMap((d) => (d.kind === "item.textDelta" ? [d.text] : []))).toEqual([
+    "First",
+    "Second",
+  ]);
+  expect(deltas.filter((d) => d.kind === "usage").at(-1)).toMatchObject({
+    total: { totalTokens: 10 },
+  });
+});

@@ -53,6 +53,11 @@ export class RunEvents {
 
   constructor(private readonly emit: (deltas: ThreadDelta[]) => void) {}
 
+  startRun() {
+    this.assistantSeen = false;
+    this.usageSeen = false;
+  }
+
   closeText() {
     if (!this.text) return;
     this.emit([
