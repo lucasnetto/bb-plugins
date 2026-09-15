@@ -165,29 +165,29 @@ export function CardThreadLayout({
       </div>
       {/* Line 2: title */}
       <div className="mt-1 flex min-w-0">{titleNode}</div>
-      {/* Line 3: branch/machine · PR · provider */}
-      <div className="mt-0.5 flex h-4 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      {/* Environment and PRs share a line without squeezing the environment. */}
+      <div className="mt-0.5 flex min-h-4 min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
         {branch ? (
-          <>
+          <div className="mr-auto flex min-w-0 max-w-full shrink-0 items-start gap-1.5">
             <Icon
               name={
                 thread.environment?.workspaceDisplayKind === "other" ? "GitBranch" : "FolderGit"
               }
-              className="size-3 shrink-0 text-muted-foreground/50"
+              className="mt-0.5 size-3 shrink-0 text-muted-foreground/50"
             />
-            <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
+            <span className="min-w-0 flex-1 whitespace-normal break-all text-muted-foreground/50">
               {branch}
             </span>
-          </>
+          </div>
         ) : machine ? (
-          <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/50">
+          <span className="mr-auto min-w-0 max-w-full shrink-0 whitespace-normal break-all text-muted-foreground/50">
             {machine}
           </span>
         ) : (
           <span className="flex-1" />
         )}
         <PullRequestBadge threadId={thread.id} />
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+        <span className="inline-flex shrink-0 items-center gap-1">
           <ProviderMark provider={provider} />
         </span>
       </div>
@@ -257,7 +257,7 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
               requestLinkedReview(threadId, pr.url, (id) => actions.open(id));
             }}
             className={cn(
-              "shrink-0 text-xs tabular-nums hover:underline",
+              "max-w-full shrink-0 break-all text-xs tabular-nums hover:underline",
               pullRequestBadgeClass(pr),
             )}
             title={`${pr.title} (${pr.state}, last fetched)`}
