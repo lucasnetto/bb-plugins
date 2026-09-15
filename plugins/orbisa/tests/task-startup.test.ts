@@ -48,6 +48,13 @@ void test("skills archive is reused and invalidates for edits, additions, remova
     assert.notEqual((await cachedSkillArchive(home, signal, cache)).digest, added.digest);
     await unlink(link);
     assert.equal((await cachedSkillArchive(home, signal, cache)).digest, edited.digest);
+    const workSkills = join(home, ".codex_work/skills");
+    await mkdir(workSkills, { recursive: true });
+    await writeFile(join(workSkills, "SKILL.md"), "work skill");
+    const withWork = await cachedSkillArchive(home, signal, cache);
+    assert.notEqual(withWork.digest, edited.digest);
+    await writeFile(join(workSkills, "SKILL.md"), "updated work skill");
+    assert.notEqual((await cachedSkillArchive(home, signal, cache)).digest, withWork.digest);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -76,7 +76,7 @@ def walk(path,logical,parents):
         if identity in parents: raise RuntimeError('Skill symlink cycle')
         for name in sorted(os.listdir(path)): walk(path/name,logical+'/'+name,parents|{identity})
     elif not stat.S_ISREG(s.st_mode): raise RuntimeError('Unsupported skill file')
-for root in ['.cursor/skills','.agents/skills','.claude/skills','.codex/skills']:
+for root in ['.cursor/skills','.agents/skills','.claude/skills','.codex/skills','.codex_work/skills']:
     path=home/root
     if not path.exists():
         if path.is_symlink(): raise RuntimeError('Broken skill symlink')

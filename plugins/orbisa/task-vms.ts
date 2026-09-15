@@ -317,6 +317,7 @@ export function createTaskDriver(
           ".agents/skills",
           ".claude/skills",
           ".codex/skills",
+          ".codex_work/skills",
         ]) {
           try {
             await access(join(homedir(), path));
