@@ -12,6 +12,12 @@ export const githubCommentSchema = Schema.Struct({
   body,
   path: Schema.String,
   outdated: Schema.Boolean,
+  threadId: Schema.String,
+  createdAt: Schema.String,
+  resolved: Schema.Boolean,
+  canReply: Schema.Boolean,
+  canResolve: Schema.Boolean,
+  canUnresolve: Schema.Boolean,
   subjectType: Schema.Literals(["LINE", "FILE"]),
   line: Schema.NullOr(id),
   original_line: Schema.NullOr(id),
@@ -50,6 +56,19 @@ export const githubReviewTarget = Schema.Struct({
 const expected = { login: Schema.String, reviewId: Schema.NullOr(id) };
 
 export const githubReviewAction = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("reply"),
+    ...expected,
+    threadId: Schema.String,
+    body,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("resolve"),
+    ...expected,
+    threadId: Schema.String,
+    resolved: Schema.Boolean,
+    previousResolved: Schema.Boolean,
+  }),
   Schema.Struct({
     kind: Schema.Literal("add"),
     ...expected,

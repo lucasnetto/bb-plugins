@@ -85,8 +85,7 @@ function PrReviewContent({
 
   const diff = useReviewDiff({
     comments: github.state?.head === detail?.headRefOid ? github.state?.comments : undefined,
-    pendingReviewId: github.state?.pending?.id,
-    onOpenReview: () => github.setOpen(true),
+    review: github,
     detail,
     threadId,
     url,

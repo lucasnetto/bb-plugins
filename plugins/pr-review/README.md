@@ -108,8 +108,15 @@ The styled Pierre diff viewer and tree are adapted from T3 Code commit `f3bbdb60
 
 Select lines and choose **Add to review** to save a private pending comment on
 GitHub, or **Add to chat** to send the selected code to the agent composer.
-The GitHub review section shows pending and published comments, supports editing
-and removing pending comments, and submits or discards the shared pending review.
+The diff and GitHub review section group comments into conversations with avatars,
+timestamps, per-comment menus, an inline reply field, and a shared resolution footer.
+The chevron header collapses each conversation to a single row while preserving unsaved replies and edits.
+They show pending and published comments with
+**Reply**, **Edit**, **Delete**, and **Resolve thread** / **Reopen thread** actions.
+Editing and deletion are limited to your own comments, including published ones;
+deletion asks for confirmation. Thread actions follow GitHub permissions. Replies
+join your pending review when one exists; otherwise **Post reply** publishes
+immediately. The review section submits or discards the shared pending review.
 It includes comments started on GitHub under the same authenticated `gh` account.
 
 Line-comment drafts live on GitHub. The overall summary is temporary editor text

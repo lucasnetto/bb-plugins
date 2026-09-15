@@ -18,7 +18,8 @@ import type { StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
 import { useReviewContents } from "./useReviewContents";
 import { parseReviewFile, ContextHeader, diffRecordVersion } from "./diff-adapter";
 import { selectedFileEnd } from "./expandedSelection";
-import { ReviewCommentBody } from "./ReviewCommentBody";
+import { GithubReviewThread, groupReviewComments } from "./GithubReviewThread";
+import type { GithubReview } from "./GithubReviewPanel";
 
 export type ReviewSelection = NonNullable<CodeViewProps<undefined, undefined>["selectedLines"]>;
 
@@ -28,8 +29,7 @@ export type ReviewAnnotationRenderer = NonNullable<
 
 export function useReviewDiff({
   comments = [],
-  pendingReviewId,
-  onOpenReview,
+  review,
   detail,
   threadId,
   url,
@@ -39,8 +39,7 @@ export function useReviewDiff({
   setNotice,
 }: {
   comments?: GithubComment[];
-  pendingReviewId?: number;
-  onOpenReview?: () => void;
+  review?: GithubReview;
   detail: LinkedDetail | null;
   threadId: string | null;
   url: string;
@@ -96,7 +95,15 @@ export function useReviewDiff({
     return anchor ? { ...anchor, id: selection.id } : null;
   }, [selection, selecting, parsed, contextRevision, fullDiffs, loadedContentsRevision]);
 
-  const annotationSignature = JSON.stringify([comments, selectionAnchor]);
+  const annotationSignature = JSON.stringify([
+    comments,
+    selectionAnchor,
+    review?.state?.login,
+    review?.state?.pending,
+    review?.busy,
+    review?.synced,
+  ]);
+
   const annotationVersion = useRef({ signature: "", version: 0 });
 
   if (annotationVersion.current.signature !== annotationSignature) {
@@ -246,25 +253,11 @@ export function useReviewDiff({
         selectionAnchor.lineNumber === anchor.lineNumber
           ? selectionContent
           : null}
-        {matching.map((comment) => (
-          <div
-            key={comment.id}
-            className="min-w-0 rounded-md border border-border bg-background p-3"
-          >
-            <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                {comment.user?.login} ·{" "}
-                {comment.pull_request_review_id === pendingReviewId
-                  ? "Pending · only you"
-                  : "Published"}
-              </span>
-              <button className="underline" onClick={onOpenReview}>
-                View review
-              </button>
-            </div>
-            <ReviewCommentBody content={comment.body} />
-          </div>
-        ))}
+        {groupReviewComments(matching).map((comments) =>
+          review ? (
+            <GithubReviewThread key={comments[0].threadId} comments={comments} review={review} />
+          ) : null,
+        )}
       </div>
     );
   };

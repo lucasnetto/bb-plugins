@@ -30,7 +30,7 @@ const review = {
   html_url: url,
 };
 
-function fixture(pending = true) {
+function fixture(pending = true, published = false) {
   const writes: { route: string; payload: unknown; args: string[] }[] = [];
 
   const run: Command = async (_root, _program, args, _signal, stdin) => {
@@ -42,33 +42,39 @@ function fixture(pending = true) {
           repository: {
             pullRequest: {
               reviewThreads: {
-                nodes: pending
-                  ? [
-                      {
-                        id: "T1",
-                        path: comment.path,
-                        line: comment.line,
-                        originalLine: comment.original_line,
-                        diffSide: comment.side,
-                        startLine: null,
-                        isOutdated: false,
-                        subjectType: "LINE",
-                        comments: {
-                          nodes: [
-                            {
-                              databaseId: comment.id,
-                              id: comment.node_id,
-                              body: comment.body,
-                              url,
-                              author: comment.user,
-                              pullRequestReview: { databaseId: review.id },
-                            },
-                          ],
-                          pageInfo: { hasNextPage: false, endCursor: null },
+                nodes:
+                  pending || published
+                    ? [
+                        {
+                          id: "T1",
+                          path: comment.path,
+                          line: comment.line,
+                          originalLine: comment.original_line,
+                          diffSide: comment.side,
+                          startLine: null,
+                          isOutdated: false,
+                          isResolved: false,
+                          viewerCanReply: true,
+                          viewerCanResolve: true,
+                          viewerCanUnresolve: false,
+                          subjectType: "LINE",
+                          comments: {
+                            nodes: [
+                              {
+                                databaseId: comment.id,
+                                createdAt: "2026-09-15T18:00:00Z",
+                                id: comment.node_id,
+                                body: comment.body,
+                                url,
+                                author: comment.user,
+                                pullRequestReview: { databaseId: review.id },
+                              },
+                            ],
+                            pageInfo: { hasNextPage: false, endCursor: null },
+                          },
                         },
-                      },
-                    ]
-                  : [],
+                      ]
+                    : [],
                 pageInfo: { hasNextPage: false, endCursor: null },
               },
             },
@@ -285,4 +291,149 @@ test("rejects a submit against a newer head even if its refreshed review snapsho
     ),
   ).rejects.toThrow("New commits arrived");
   expect(f.writes).toHaveLength(0);
+});
+
+test("edits and deletes own published comments without a pending review", async () => {
+  for (const kind of ["edit", "remove"] as const) {
+    const f = fixture(false, true);
+    await runHost(
+      githubReviewMutate("/repo", url, {
+        kind,
+        login: "reviewer",
+        reviewId: null,
+        commentId: 20,
+        previousBody: "draft",
+        body: "updated",
+      }),
+      undefined,
+      f.run,
+    );
+    expect(f.writes).toHaveLength(1);
+    expect(f.writes[0].payload).toMatchObject({
+      variables: {
+        input:
+          kind === "edit" ? { pullRequestReviewCommentId: "C20", body: "updated" } : { id: "C20" },
+      },
+    });
+  }
+});
+
+test("replies to the GitHub thread and joins only an existing pending review", async () => {
+  for (const pending of [true, false]) {
+    const f = fixture(pending, true);
+    await runHost(
+      githubReviewMutate("/repo", url, {
+        kind: "reply",
+        login: "reviewer",
+        reviewId: pending ? 10 : null,
+        threadId: "T1",
+        body: "reply",
+      }),
+      undefined,
+      f.run,
+    );
+    expect(f.writes).toHaveLength(1);
+    expect(f.writes[0].payload).toEqual({
+      query: expect.stringContaining("addPullRequestReviewThreadReply"),
+      variables: {
+        input: {
+          pullRequestReviewThreadId: "T1",
+          body: "reply",
+          pullRequestReviewId: pending ? "R10" : undefined,
+        },
+      },
+    });
+  }
+});
+
+function changeThread(
+  run: Command,
+  overrides: Partial<{
+    isResolved: boolean;
+    viewerCanReply: boolean;
+    viewerCanResolve: boolean;
+    viewerCanUnresolve: boolean;
+  }>,
+): Command {
+  return async (...args) => {
+    const raw = await run(...args);
+
+    if (args[4]?.includes("reviewThreads(first:")) {
+      const parsed = JSON.parse(raw);
+      Object.assign(parsed.data.repository.pullRequest.reviewThreads.nodes[0], overrides);
+
+      return JSON.stringify(parsed);
+    }
+
+    return raw;
+  };
+}
+
+test("resolves and reopens threads with GitHub permissions and observed state", async () => {
+  for (const resolved of [true, false]) {
+    const f = fixture(false, true);
+    await runHost(
+      githubReviewMutate("/repo", url, {
+        kind: "resolve",
+        login: "reviewer",
+        reviewId: null,
+        threadId: "T1",
+        resolved,
+        previousResolved: !resolved,
+      }),
+      undefined,
+      changeThread(f.run, {
+        isResolved: !resolved,
+        viewerCanResolve: resolved,
+        viewerCanUnresolve: !resolved,
+      }),
+    );
+    expect(f.writes[0].payload).toEqual({
+      query: expect.stringContaining(
+        resolved ? "{resolveReviewThread(" : "{unresolveReviewThread(",
+      ),
+      variables: { input: { threadId: "T1" } },
+    });
+  }
+});
+
+test("rejects stale, unrelated, blank and unauthorized comment actions before writing", async () => {
+  const actions = [
+    { kind: "reply", threadId: "missing", body: "reply" },
+    { kind: "reply", threadId: "T1", body: " " },
+    { kind: "reply", threadId: "T1", body: "reply" },
+    { kind: "resolve", threadId: "T1", resolved: true, previousResolved: true },
+    { kind: "resolve", threadId: "T1", resolved: true, previousResolved: false },
+    { kind: "edit", commentId: 20, previousBody: "draft", body: "changed" },
+    { kind: "remove", commentId: 20, previousBody: "draft" },
+  ] as const;
+
+  for (const action of actions) {
+    const f = fixture(false, true);
+
+    const run: Command = async (...args) => {
+      const raw = await changeThread(f.run, { viewerCanReply: false, viewerCanResolve: false })(
+        ...args,
+      );
+
+      if (args[4]?.includes("reviewThreads(first:")) {
+        const parsed = JSON.parse(raw);
+        parsed.data.repository.pullRequest.reviewThreads.nodes[0].comments.nodes[0].author.login =
+          "someone-else";
+
+        return JSON.stringify(parsed);
+      }
+
+      return raw;
+    };
+
+    await expect(
+      runHost(
+        githubReviewMutate("/repo", url, { ...action, login: "reviewer", reviewId: null }),
+        undefined,
+        run,
+      ),
+    ).rejects.toThrow();
+    expect(f.writes).toHaveLength(0);
+  }
 });

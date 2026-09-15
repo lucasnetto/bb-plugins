@@ -1,111 +1,11 @@
 import { useState } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "../components/ui/button";
-import { reviewFingerprint, type GithubComment } from "../../shared/github-review-contract";
+import { reviewFingerprint } from "../../shared/github-review-contract";
 import type { useGithubReview } from "./useGithubReview";
-import { ReviewCommentBody } from "./ReviewCommentBody";
+import { GithubReviewThread, groupReviewComments } from "./GithubReviewThread";
 
 export type GithubReview = ReturnType<typeof useGithubReview>;
-
-function DraftComment({
-  comment,
-  review,
-  onReveal,
-}: {
-  comment: GithubComment;
-  review: GithubReview;
-  head?: string;
-  onReveal: (path: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(comment.body);
-  const [original, setOriginal] = useState(comment.body);
-  const state = review.state;
-
-  if (!state) return null;
-  const pending = comment.pull_request_review_id === state.pending?.id;
-
-  const expected = {
-    login: state.login,
-    reviewId: state.pending?.id ?? null,
-    commentId: comment.id,
-    previousBody: original,
-  };
-
-  return (
-    <article className="space-y-2 rounded-md border border-border p-3 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="break-all text-left font-mono underline underline-offset-2"
-          onClick={() => onReveal(comment.path)}
-        >
-          {comment.path}
-          {comment.subjectType === "FILE" ? "" : `:${comment.line ?? comment.original_line}`}
-        </button>
-        <span className="text-muted-foreground">
-          {comment.user?.login} · {pending ? "Pending" : "Published"}
-          {comment.outdated ? " · Outdated" : ""}
-        </span>
-        {!pending && <UrlLink href={comment.html_url}>GitHub ↗</UrlLink>}
-      </div>
-      {editing ? (
-        <>
-          <textarea
-            aria-label={`Edit comment on ${comment.path}`}
-            disabled={review.busy}
-            className="w-full rounded-md border border-input bg-background p-2 text-sm"
-            rows={3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          {comment.body !== original && (
-            <p role="alert">This comment changed on GitHub. Cancel to load the latest version.</p>
-          )}
-          <Button
-            size="sm"
-            disabled={review.busy || !review.synced || !text.trim() || comment.body !== original}
-            onClick={async () => {
-              if (await review.mutate({ kind: "edit", ...expected, body: text })) setEditing(false);
-            }}
-          >
-            Save comment
-          </Button>{" "}
-          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-        </>
-      ) : (
-        <ReviewCommentBody content={comment.body} />
-      )}
-      {pending && !editing && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={review.busy || !review.synced}
-            onClick={() => {
-              setText(comment.body);
-              setOriginal(comment.body);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={review.busy || !review.synced}
-            onClick={() =>
-              void review.mutate({ kind: "remove", ...expected, previousBody: comment.body })
-            }
-          >
-            Remove
-          </Button>
-        </div>
-      )}
-    </article>
-  );
-}
 
 function ReviewBody({
   head,
@@ -271,11 +171,16 @@ function ReviewBody({
       }
       {state.comments.length ? (
         <div className="space-y-2">
-          {[
+          {groupReviewComments([
             ...pending,
             ...state.comments.filter((c) => c.pull_request_review_id !== state.pending?.id),
-          ].map((comment) => (
-            <DraftComment key={comment.id} comment={comment} review={review} onReveal={onReveal} />
+          ]).map((comments) => (
+            <GithubReviewThread
+              key={comments[0].threadId}
+              comments={comments}
+              review={review}
+              onReveal={onReveal}
+            />
           ))}
         </div>
       ) : (

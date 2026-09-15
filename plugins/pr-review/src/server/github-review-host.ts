@@ -17,7 +17,9 @@ type ReviewMutationInput =
   | (ReviewThreadInput & { pullRequestReviewId: string })
   | { pullRequestId: string; commitOID: string; threads: ReviewThreadInput[] }
   | { pullRequestReviewCommentId: string; body: string }
-  | { id: string };
+  | { id: string }
+  | { threadId: string }
+  | { pullRequestReviewThreadId: string; body: string; pullRequestReviewId?: string };
 
 type ReviewGraphqlVariables =
   | { owner: string | undefined; name: string | undefined; number: number; after: string | null }
@@ -102,6 +104,7 @@ const pageInfo = Schema.Struct({
 
 const graphComment = Schema.Struct({
   databaseId: Schema.Number,
+  createdAt: Schema.String,
   id: Schema.String,
   body: Schema.String,
   url: Schema.String,
@@ -119,16 +122,20 @@ const graphThread = Schema.Struct({
   diffSide: Schema.Literals(["LEFT", "RIGHT"]),
   startLine: Schema.NullOr(Schema.Number),
   isOutdated: Schema.Boolean,
+  isResolved: Schema.Boolean,
+  viewerCanReply: Schema.Boolean,
+  viewerCanResolve: Schema.Boolean,
+  viewerCanUnresolve: Schema.Boolean,
   subjectType: Schema.Literals(["LINE", "FILE"]),
   comments: graphComments,
 });
 
 const commentFields =
-  "nodes { databaseId id body url author { login } pullRequestReview { databaseId } } pageInfo { hasNextPage endCursor }";
+  "nodes { databaseId createdAt id body url author { login } pullRequestReview { databaseId } } pageInfo { hasNextPage endCursor }";
 
 const threadQuery = `query($owner:String!,$name:String!,$number:Int!,$after:String) {
   repository(owner:$owner,name:$name) { pullRequest(number:$number) {
-    reviewThreads(first:100,after:$after) { nodes { id path line originalLine diffSide startLine isOutdated subjectType comments(first:100) { ${commentFields} } } pageInfo { hasNextPage endCursor } }
+    reviewThreads(first:100,after:$after) { nodes { id path line originalLine diffSide startLine isOutdated isResolved viewerCanReply viewerCanResolve viewerCanUnresolve subjectType comments(first:100) { ${commentFields} } } pageInfo { hasNextPage endCursor } }
   } }
 }`;
 
@@ -168,10 +175,16 @@ export const githubReview = Effect.fn("GithubReview.get")(function* (root: strin
           if (!c.pullRequestReview) continue;
           comments.push({
             id: c.databaseId,
+            createdAt: c.createdAt,
             node_id: c.id,
             body: c.body,
             path: thread.path,
             outdated: thread.isOutdated,
+            threadId: thread.id,
+            resolved: thread.isResolved,
+            canReply: thread.viewerCanReply,
+            canResolve: thread.viewerCanResolve,
+            canUnresolve: thread.viewerCanUnresolve,
             subjectType: thread.subjectType,
             line: thread.isOutdated ? null : thread.line,
             original_line: thread.originalLine,
@@ -261,6 +274,72 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
     return yield* invalid("New commits arrived. Refresh the diff before submitting your review.");
   const pending = state.pending;
 
+  if (action.kind === "reply" || action.kind === "resolve") {
+    const thread = state.comments.find((c) => c.threadId === action.threadId);
+
+    if (!thread) return yield* invalid("This thread is no longer available. Refresh the review.");
+
+    if (action.kind === "reply") {
+      if (!thread.canReply) return yield* invalid("You cannot reply to this thread.");
+
+      if (!action.body.trim()) return yield* invalid("Write a reply first.");
+
+      let input: ReviewMutationInput = {
+        pullRequestReviewThreadId: thread.threadId,
+        body: action.body,
+      };
+
+      if (pending) input = { ...input, pullRequestReviewId: pending.node_id };
+      yield* graphql(
+        root,
+        "mutation($input:AddPullRequestReviewThreadReplyInput!){addPullRequestReviewThreadReply(input:$input){comment{id}}}",
+        input,
+      );
+    } else {
+      if (thread.resolved !== action.previousResolved)
+        return yield* invalid("This thread changed on GitHub. Refresh before continuing.");
+
+      if (action.resolved ? !thread.canResolve : !thread.canUnresolve)
+        return yield* invalid("You cannot change the resolution of this thread.");
+      yield* graphql(
+        root,
+        action.resolved
+          ? "mutation($input:ResolveReviewThreadInput!){resolveReviewThread(input:$input){thread{id}}}"
+          : "mutation($input:UnresolveReviewThreadInput!){unresolveReviewThread(input:$input){thread{id}}}",
+        { threadId: thread.threadId },
+      );
+    }
+
+    return { url: thread.html_url };
+  }
+
+  if (action.kind === "edit" || action.kind === "remove") {
+    const comment = state.comments.find(
+      (c) => c.id === action.commentId && c.user?.login === state.login,
+    );
+
+    if (!comment || comment.body !== action.previousBody)
+      return yield* invalid("This comment changed on GitHub. Reload it before editing.");
+
+    if (action.kind === "edit" && !action.body.trim())
+      return yield* invalid("Write a comment first.");
+
+    if (action.kind === "edit")
+      yield* graphql(
+        root,
+        "mutation($input:UpdatePullRequestReviewCommentInput!){updatePullRequestReviewComment(input:$input){pullRequestReviewComment{id}}}",
+        { pullRequestReviewCommentId: comment.node_id, body: action.body },
+      );
+    else
+      yield* graphql(
+        root,
+        "mutation($input:DeletePullRequestReviewCommentInput!){deletePullRequestReviewComment(input:$input){clientMutationId}}",
+        { id: comment.node_id },
+      );
+
+    return { url: comment.html_url };
+  }
+
   if (action.kind === "add") {
     if (action.head !== state.head)
       return yield* invalid("New commits arrived. Refresh the diff before adding to this review.");
@@ -324,49 +403,21 @@ export const githubReviewMutate = Effect.fn("GithubReview.mutate")(function* (
     if (!pending)
       return yield* invalid("There is no pending review. Refresh to see its current state.");
 
-    if (action.kind === "edit" || action.kind === "remove") {
-      const comment = state.comments.find(
-        (c) =>
-          c.id === action.commentId &&
-          c.pull_request_review_id === pending.id &&
-          c.user?.login === state.login,
+    if (reviewFingerprint(state) !== action.fingerprint)
+      return yield* invalid(
+        "Your review changed on GitHub. Refresh and review all comments before continuing.",
       );
 
-      if (!comment || comment.body !== action.previousBody)
-        return yield* invalid("This draft comment changed on GitHub. Reload it before editing.");
-
-      if (action.kind === "edit" && !action.body.trim())
-        return yield* invalid("Write a comment first.");
-
-      if (action.kind === "edit")
-        yield* graphql(
-          root,
-          "mutation($input:UpdatePullRequestReviewCommentInput!){updatePullRequestReviewComment(input:$input){pullRequestReviewComment{id}}}",
-          { pullRequestReviewCommentId: comment.node_id, body: action.body },
-        );
-      else
-        yield* graphql(
-          root,
-          "mutation($input:DeletePullRequestReviewCommentInput!){deletePullRequestReviewComment(input:$input){clientMutationId}}",
-          { id: comment.node_id },
-        );
-    } else {
-      if (reviewFingerprint(state) !== action.fingerprint)
+    if (action.kind === "discard") yield* api(root, `${path}/reviews/${pending.id}`, "DELETE");
+    else {
+      if (action.event !== "COMMENT" && state.login === state.author)
         return yield* invalid(
-          "Your review changed on GitHub. Refresh and review all comments before continuing.",
+          "GitHub does not allow approving or requesting changes on your own PR.",
         );
-
-      if (action.kind === "discard") yield* api(root, `${path}/reviews/${pending.id}`, "DELETE");
-      else {
-        if (action.event !== "COMMENT" && state.login === state.author)
-          return yield* invalid(
-            "GitHub does not allow approving or requesting changes on your own PR.",
-          );
-        yield* api(root, `${path}/reviews/${pending.id}/events`, "POST", {
-          event: action.event,
-          body: action.body,
-        });
-      }
+      yield* api(root, `${path}/reviews/${pending.id}/events`, "POST", {
+        event: action.event,
+        body: action.body,
+      });
     }
   }
 
