@@ -4,11 +4,29 @@ import {
   CUSTOM_FONT,
   DEFAULT_FONT,
   INTERFACE_FONTS,
+  INTERFACE_FONT_SIZES,
+  CODE_FONT_SIZES,
   customFontSchema,
 } from "../shared/fonts";
 
 export default function plugin(bb: BbPluginApi) {
   bb.settings.define({
+    interfaceFontSize: {
+      type: "select",
+      label: "Interface size",
+      description:
+        "Root size in pixels (12–20). Scales rem-based text and spacing, not every label to the same size. Choose BB default to reset.",
+      options: [...INTERFACE_FONT_SIZES],
+      default: DEFAULT_FONT,
+    },
+    codeFontSize: {
+      type: "select",
+      label: "Code size",
+      description:
+        "Size in pixels for code blocks, inline code, diffs and source previews. Limited to 10–16px to fit BB's fixed source-viewer rows. Choose BB default to reset.",
+      options: [...CODE_FONT_SIZES],
+      default: DEFAULT_FONT,
+    },
     interfaceFont: {
       type: "select",
       label: "Interface font",

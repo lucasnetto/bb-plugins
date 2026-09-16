@@ -1,10 +1,18 @@
 import { definePluginApp, useSettings } from "@get-bb/plugin-sdk/app";
-import { fontSettingsSchema, resolveFonts, type FontSettings } from "../shared/fonts";
+import {
+  fontSettingsSchema,
+  resolveFonts,
+  resolveFontSize,
+  type FontSettings,
+} from "../shared/fonts";
 
 export function FontStyles({ values }: { values?: FontSettings }) {
   const fonts = resolveFonts(values);
+  const fontSize = resolveFontSize(values?.interfaceFontSize, "interface");
+  const codeSize = resolveFontSize(values?.codeFontSize, "code");
 
   const declarations = [
+    fontSize && `font-size: ${fontSize} !important;`,
     fonts.ui && `--font-sans: ${fonts.ui} !important;`,
     fonts.code && `--font-mono: ${fonts.code} !important;`,
     // BB's source/diff viewer uses Pierre's own font tokens inside a shadow
@@ -15,11 +23,19 @@ export function FontStyles({ values }: { values?: FontSettings }) {
     .filter(Boolean)
     .join("\n");
 
-  // React owns this node: reset, disable and reload remove our overrides and
-  // reveal the current theme's fonts, without restoring a stale theme snapshot.
-  return declarations === "" ? null : (
-    <style data-bb-fonts="">{`:root:root { ${declarations} }`}</style>
-  );
+  // Set the token on Pierre's public shadow host, not only on :root:
+  // BB overrides the inherited token on intermediate viewer wrappers.
+  // Leave line height alone because BB also hardcodes virtualization metrics.
+  const css = [
+    declarations && `:root:root { ${declarations} }`,
+    codeSize && `:root pre, :root code { font-size: ${codeSize} !important; }`,
+    codeSize && `:root diffs-container { --diffs-font-size: ${codeSize} !important; }`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // React owns this node: resetting or unmounting reveals current theme defaults.
+  return css === "" ? null : <style data-bb-fonts="">{css}</style>;
 }
 
 function LiveFonts() {
@@ -66,7 +82,9 @@ function FontPreview() {
       <p className="text-sm text-muted-foreground">
         Changes save automatically for this profile and apply to its open windows. Fonts must be
         available on the device displaying BB; unavailable families use a fallback. This plugin does
-        not download fonts. Choose BB default to use your current theme’s font.
+        not download fonts. Interface size scales rem-based text and spacing. Code size
+        independently sets code blocks, inline code, diffs and source previews; terminals and
+        embedded pages are unaffected. Choose BB default to restore your theme’s fonts and sizes.
       </p>
     </div>
   );

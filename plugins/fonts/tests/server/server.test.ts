@@ -12,6 +12,8 @@ it("accepts installed font names and rejects CSS and unsupported presets", async
       interfaceFont: "Custom",
       customInterfaceFont: "Avenir Next",
       codeFont: "Menlo",
+      interfaceFontSize: "20px",
+      codeFontSize: "14px",
     });
     await expect(
       harness.behavior.setSettings({ customInterfaceFont: 'x"; } body { display: none }' }),
@@ -22,7 +24,17 @@ it("accepts installed font names and rejects CSS and unsupported presets", async
     await expect(
       harness.behavior.setSettings({ interfaceFont: "Unknown preset" }),
     ).rejects.toThrow();
-    await harness.behavior.setSettings({ interfaceFont: "BB default", codeFont: "BB default" });
+    for (const size of ["0px", "999px", "14px; color: red", 14, "125%"]) {
+      await expect(harness.behavior.setSettings({ interfaceFontSize: size })).rejects.toThrow();
+      await expect(harness.behavior.setSettings({ codeFontSize: size })).rejects.toThrow();
+    }
+    await expect(harness.behavior.setSettings({ codeFontSize: "17px" })).rejects.toThrow();
+    await harness.behavior.setSettings({
+      interfaceFont: "BB default",
+      codeFont: "BB default",
+      interfaceFontSize: "BB default",
+      codeFontSize: "BB default",
+    });
   } finally {
     await harness.lifecycle.dispose();
   }

@@ -4,6 +4,40 @@ export const DEFAULT_FONT = "BB default";
 
 export const CUSTOM_FONT = "Custom";
 
+export const INTERFACE_FONT_SIZES = [
+  DEFAULT_FONT,
+  "12px",
+  "13px",
+  "14px",
+  "15px",
+  "16px",
+  "17px",
+  "18px",
+  "19px",
+  "20px",
+] as const;
+// BB's virtual source viewer has a fixed 18px row height. Stay within it:
+// changing the CSS line height would desynchronize virtual scrolling metrics.
+export const CODE_FONT_SIZES = [
+  DEFAULT_FONT,
+  "10px",
+  "11px",
+  "12px",
+  "13px",
+  "14px",
+  "15px",
+  "16px",
+] as const;
+export const interfaceFontSizeSchema = z.enum(INTERFACE_FONT_SIZES);
+export const codeFontSizeSchema = z.enum(CODE_FONT_SIZES);
+
+export function resolveFontSize(value: unknown, kind: "interface" | "code"): string | undefined {
+  const parsed = (kind === "interface" ? interfaceFontSizeSchema : codeFontSizeSchema).safeParse(
+    value,
+  );
+  return parsed.success && parsed.data !== DEFAULT_FONT ? parsed.data : undefined;
+}
+
 export const INTERFACE_FONTS = {
   "System UI": "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
   Inter: '"Inter", system-ui, sans-serif',
@@ -37,6 +71,8 @@ export const customFontSchema = z
 // corrupt interface setting never prevents a valid code font from applying.
 export const fontSettingsSchema = z
   .object({
+    interfaceFontSize: interfaceFontSizeSchema.optional().catch(undefined),
+    codeFontSize: codeFontSizeSchema.optional().catch(undefined),
     interfaceFont: z.string().optional().catch(undefined),
     customInterfaceFont: customFontSchema.optional().catch(undefined),
     codeFont: z.string().optional().catch(undefined),
