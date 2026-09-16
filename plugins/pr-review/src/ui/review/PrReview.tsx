@@ -27,13 +27,14 @@ export function PrReview({ threadId, url }: { threadId: string; url: string }) {
       threadId={threadId}
       url={url}
       linkAction={<PrLinkButton link={link} />}
-      code={
+      code={(refreshRevision) => (
         <PrReviewContent
+          refreshRevision={refreshRevision}
           threadId={threadId}
           agentThreadId={link.linked ? threadId : null}
           url={url}
         />
-      }
+      )}
     />
   );
 }
@@ -45,7 +46,9 @@ export function StandalonePrReview({ url, active = true }: { url: string; active
       threadId={null}
       url={url}
       active={active}
-      code={<PrReviewContent threadId={null} url={url} />}
+      code={(refreshRevision) => (
+        <PrReviewContent threadId={null} url={url} refreshRevision={refreshRevision} />
+      )}
     />
   );
 }
@@ -54,13 +57,15 @@ function PrReviewContent({
   threadId,
   agentThreadId = null,
   url,
+  refreshRevision,
 }: {
   threadId: string | null;
   agentThreadId?: string | null;
   url: string;
+  refreshRevision: number;
 }) {
-  const { detail, error, setError, loading, revision, refresh, selectedPath, setSelectedPath } =
-    useReviewData(threadId, url);
+  const { detail, error, setError, loading, revision, selectedPath, setSelectedPath } =
+    useReviewData(threadId, url, refreshRevision);
 
   const github = useGithubReview(threadId, url);
   const [notice, setNotice] = useState("");
@@ -194,7 +199,6 @@ function PrReviewContent({
         treeOpen={treeOpen}
         onToggleTree={() => setTreeOpen(!treeOpen)}
         loading={loading}
-        refresh={refresh}
         display={diff.display}
       />
       {error ? (

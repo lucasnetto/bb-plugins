@@ -65,7 +65,7 @@ export function PullRequestDetail({
   threadId: string | null;
   url: string;
   active?: boolean;
-  code: ReactNode;
+  code: ReactNode | ((refreshRevision: number) => ReactNode);
   linkAction?: ReactNode;
 }) {
   const navigate = useBbNavigate();
@@ -74,6 +74,12 @@ export function PullRequestDetail({
   const { detail, stack } = data;
   const [tab, setTab] = useState("summary");
   const [codeVisited, setCodeVisited] = useState(false);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const refresh = () => {
+    void data.refresh();
+    setTimelineRetry((value) => value + 1);
+    setRefreshRevision((value) => value + 1);
+  };
   const [dialog, setDialog] = useState<DialogAction | null>(null);
   const [timelinePages, setTimelinePages] = useState(1);
 
@@ -303,10 +309,7 @@ export function PullRequestDetail({
               <PrMenuItem
                 icon="ArrowReloadHorizontal"
                 disabled={data.loading}
-                onSelect={() => {
-                  void data.refresh();
-                  setTimelineRetry((value) => value + 1);
-                }}
+                onSelect={refresh}
               >
                 Refresh
               </PrMenuItem>
@@ -393,6 +396,16 @@ export function PullRequestDetail({
               <span>{detail.author?.login ?? "ghost"}</span>
               <span>·</span>
               <span>updated {relativeTime(detail.updatedAt)}</span>
+              <button
+                type="button"
+                className="pr-icon-button"
+                aria-label="Refresh pull request"
+                title="Refresh pull request"
+                disabled={data.loading}
+                onClick={refresh}
+              >
+                <Icon name="ArrowReloadHorizontal" className="size-3.5" />
+              </button>
               {detail.isDraft && <span className="pr-small-badge">Draft</span>}
               {detail.state !== "OPEN" && <PrGlyph state={detail.state} />}
               <button
@@ -728,7 +741,7 @@ export function PullRequestDetail({
         id={`${tabId}-code-panel`}
         aria-labelledby={`${tabId}-code`}
       >
-        {codeVisited && code}
+        {codeVisited && (typeof code === "function" ? code(refreshRevision) : code)}
       </div>
       {dialog && detail && (
         <ActionDialog

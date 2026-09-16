@@ -9,7 +9,7 @@ const details = new Map<string, { value?: LinkedDetail; request: Promise<LinkedD
 
 const cacheKey = (threadId: string | null, url: string) => JSON.stringify([threadId, url]);
 
-export function useReviewData(threadId: string | null, url: string) {
+export function useReviewData(threadId: string | null, url: string, refreshRevision = 0) {
   const rpc = useRpc<typeof rpcContract>();
   const key = cacheKey(threadId, url);
   const [detail, setDetail] = useState<LinkedDetail | null>(() => details.get(key)?.value ?? null);
@@ -20,7 +20,12 @@ export function useReviewData(threadId: string | null, url: string) {
   const currentDetail = useRef(detail);
   const refreshing = useRef(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const previousRefreshRevision = useRef(0);
   useEffect(() => {
+    if (previousRefreshRevision.current !== refreshRevision) {
+      details.delete(key);
+      previousRefreshRevision.current = refreshRevision;
+    }
     let disposed = false;
     let entry = details.get(key);
 
@@ -82,7 +87,7 @@ export function useReviewData(threadId: string | null, url: string) {
     return () => {
       disposed = true;
     };
-  }, [rpc, threadId, url, key, requestRevision]);
+  }, [rpc, threadId, url, key, requestRevision, refreshRevision]);
 
   const refresh = useCallback(() => {
     if (refreshing.current) return;

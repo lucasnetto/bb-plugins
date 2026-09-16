@@ -8,7 +8,6 @@ export function ReviewToolbar({
   treeOpen,
   onToggleTree,
   loading,
-  refresh,
   display,
 }: {
   fileCount: number;
@@ -17,7 +16,6 @@ export function ReviewToolbar({
   treeOpen: boolean;
   onToggleTree: () => void;
   loading: boolean;
-  refresh: () => void;
   display: ReturnType<typeof useReviewDiff>["display"];
 }) {
   return (
@@ -66,9 +64,6 @@ export function ReviewToolbar({
         onClick={onToggleTree}
       >
         Files
-      </Button>
-      <Button size="sm" variant="ghost" disabled={loading} onClick={refresh}>
-        Refresh
       </Button>
       <Button size="sm" variant="ghost" disabled={loading} onClick={display.expandContext}>
         Expand context

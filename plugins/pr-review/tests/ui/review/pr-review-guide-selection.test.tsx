@@ -1,3 +1,4 @@
+import { overview } from "../../workspace-fixture";
 // @vitest-environment jsdom
 import { test, expect, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
@@ -104,6 +105,9 @@ test("background guides preserve code selection; toggles and active guide replac
     { threadId: "guide-selection", url },
     {
       rpc: {
+        prOverview: () => ({ ...overview, url }),
+        prStack: () => null,
+        prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
         linkedList: () => [{ ...detail.pr, reason: "manual", linkedAt: 1 }],
         linkedDetail: () => detail,
         guideGet: () => data,
@@ -184,12 +188,12 @@ test("background guides preserve code selection; toggles and active guide replac
       slot.inspection.rpcCalls.filter((call) => call.method === "linkedDetail").length;
 
     const beforeRefresh = detailCalls();
-    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(slot.getByRole("button", { name: "Refresh pull request" }));
     await waitFor(() => expect(detailCalls()).toBe(beforeRefresh + 1));
     await waitFor(() => expect(slot.queryByText("Loading diff…")).toBeNull());
     expect(slot.getByText("Added to your draft.")).toBeTruthy();
     detail.headRefOid = "c".repeat(40);
-    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(slot.getByRole("button", { name: "Refresh pull request" }));
     await waitFor(() => expect(detailCalls()).toBe(beforeRefresh + 2));
     await waitFor(() => expect(slot.queryByText("Added to your draft.")).toBeNull());
   } finally {

@@ -1,3 +1,4 @@
+import { overview } from "../../workspace-fixture";
 // @vitest-environment jsdom
 import { test, expect, vi } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
@@ -90,6 +91,9 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     { threadId: "t1", url },
     {
       rpc: {
+        prOverview: () => ({ ...overview, url }),
+        prStack: () => null,
+        prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
         linkedList: () => [
           {
             url,
@@ -153,7 +157,11 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     ).toHaveProperty("value", "Check this line");
     expect(slot.getAllByLabelText("Comment on selected code")).toHaveLength(1);
     const input = slot.getByLabelText("Comment on selected code");
-    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    const refresh = slot.getByRole("button", { name: "Refresh pull request" });
+    expect(refresh.previousElementSibling?.textContent).toMatch(/^updated /);
+    expect(refresh.textContent).toBe("");
+    expect(slot.queryByRole("button", { name: "Refresh", exact: true })).toBeNull();
+    fireEvent.click(refresh);
     await waitFor(() =>
       expect(
         slot.inspection.rpcCalls.filter((call) => call.method === "linkedDetail"),
@@ -200,7 +208,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     expect(contentsRequests).toHaveLength(1);
     head = "c".repeat(40);
     contextLine = "updated before";
-    fireEvent.click(slot.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(slot.getByRole("button", { name: "Refresh pull request" }));
     await waitFor(() => expect(contentsRequests).toHaveLength(2));
     const selectUpdated = slot.getByRole("button", { name: "Select unchanged line in api.ts" });
     await waitFor(() => expect(selectUpdated.hasAttribute("disabled")).toBe(false));
@@ -224,6 +232,9 @@ test("standalone review selects code without offering thread draft actions", asy
     { url },
     {
       rpc: {
+        prOverview: () => ({ ...overview, url }),
+        prStack: () => null,
+        prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
         reviewDraftDetail: () => ({
           pr: {
             url,
