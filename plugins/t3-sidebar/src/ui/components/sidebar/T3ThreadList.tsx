@@ -4,6 +4,7 @@ import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
 import { useSidebarClock } from "@/ui/hooks/useSidebarClock";
 import { useSettledThreads } from "@/ui/hooks/useSettledThreads";
 import { useSnoozedMap } from "@/ui/lib/use-snoozed-map";
+import { groupByMachine } from "@/ui/lib/machine-groups";
 import type { SidebarSection } from "@/ui/lib/sidebar-logic";
 import { ProjectDialog } from "./ProjectDialog";
 import { LinkedPrProvider } from "./LinkedPrs";
@@ -14,6 +15,7 @@ import {
   experimental_useSidebarThreadActions,
   experimental_useSidebarThreads,
   useBbNavigate,
+  useSettings,
 } from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@/ui/components/ui/tooltip";
 import { Icon } from "@/ui/components/ui/icon";
@@ -70,6 +72,8 @@ export function T3ThreadList(props: PluginThreadListProps) {
 }
 
 function T3ThreadListContent(props: PluginThreadListProps) {
+  const { values } = useSettings();
+  const grouped = values?.groupByMachine === true;
   const [projectDialog, setProjectDialog] = useState(false);
   const navigate = useBbNavigate();
   const { activeThreadId, onNavigate } = props;
@@ -138,6 +142,11 @@ function T3ThreadListContent(props: PluginThreadListProps) {
         nowMs,
       }),
     [effectiveScope, nowMs, snoozed, threads],
+  );
+
+  const machineGroups = useMemo(
+    () => (grouped ? groupByMachine(partition.active) : []),
+    [grouped, partition.active],
   );
 
   const { rows: settledRows, hiddenCount: hiddenSettledCount } = useMemo(
@@ -237,7 +246,23 @@ function T3ThreadListContent(props: PluginThreadListProps) {
           {partition.pinned.length > 0 ? (
             <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
           ) : null}
-          {partition.active.map((thread) => renderRow(thread, "active"))}
+          {grouped
+            ? machineGroups.map((group) => (
+                <li key={group.key} className="list-none">
+                  <section aria-label={group.label} className="mt-3">
+                    <h3
+                      className="truncate px-2.5 pb-1 text-[calc(0.75rem+2px)] font-bold text-muted-foreground"
+                      title={group.label}
+                    >
+                      {group.label}
+                    </h3>
+                    <ul role="list" className="flex flex-col gap-px">
+                      {group.threads.map((thread) => renderRow(thread, "active"))}
+                    </ul>
+                  </section>
+                </li>
+              ))
+            : partition.active.map((thread) => renderRow(thread, "active"))}
           {partition.snoozed.length > 0 ? (
             <ShelfHeader
               label="Snoozed"

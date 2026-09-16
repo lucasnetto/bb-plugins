@@ -58,6 +58,8 @@
     "server": "./src/server/server.ts",
     "host": "./src/server/host.ts",
     "app": "./src/ui/app.tsx",
-    "skills": []
+    "skills": [
+      "skills"
+    ]
   }
 }

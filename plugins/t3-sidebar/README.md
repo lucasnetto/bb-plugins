@@ -4,8 +4,12 @@ A [t3code](https://github.com/pingdotgg/t3code)-style thread list for bb's
 sidebar. Replaces bb's grouped list (`app.slots.experimental_threadList`) with
 t3code's inbox model:
 
-- **One flat stream across projects.** No per-project groups; a project
-  scope picker at the top narrows the list when you want it.
+- **One flat stream across projects by default.** A project scope picker at
+  the top narrows the list. Enable **Group by machine** on the T3 Sidebar
+  plugin settings page to group only active threads under machine headings.
+  Threads from different environments and projects on the same machine appear
+  together. Pinned, Snoozed and Settled sections keep their existing layout.
+  Threads without machine information appear under **No machine**.
 - **Cards, not rows.** Every live thread is a three-line card: project ·
   status/time, title, branch · PR · provider.
 - **Pinned block** on top, closed by a thin divider.

@@ -12,6 +12,15 @@ import { createSettledHandlers } from "./lib/settled";
 import { rpcContract } from "../shared/rpc-contract";
 
 export default function plugin(bb: BbPluginApi) {
+  bb.settings.define({
+    groupByMachine: {
+      type: "boolean",
+      label: "Group by machine",
+      description:
+        "Group active threads by machine across environments. Pinned, Snoozed and Settled sections stay unchanged.",
+      default: false,
+    },
+  });
   const runtime = createRuntime(bb);
   bb.rpc.register(rpcContract, {
     ...createSnoozeHandlers(bb),
