@@ -131,8 +131,7 @@ it("shows the exact native merge scope, waits for the result, and keeps the code
 
   try {
     await slot.findByRole("heading", { name: "Fix API" });
-    expect(slot.queryByRole("textbox", { name: "Draft review" })).toBeNull();
-    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
+    expect(slot.getByRole("tab", { name: "Code" }).getAttribute("aria-selected")).toBe("true");
     const draft = slot.getByRole("textbox", { name: "Draft review" });
     fireEvent.change(draft, { target: { value: "Unsaved review" } });
     fireEvent.mouseDown(slot.getByRole("tab", { name: "Summary" }), { button: 0, ctrlKey: false });
@@ -186,6 +185,7 @@ it("renders HTML and Markdown in the conversation, timeline, description and com
   );
 
   try {
+    fireEvent.mouseDown(slot.getByRole("tab", { name: "Summary" }), { button: 0, ctrlKey: false });
     expect((await slot.findByText("description")).closest("sup")).toBeTruthy();
     const summary = within(slot.getByRole("tabpanel", { name: "Summary" }));
     expect(

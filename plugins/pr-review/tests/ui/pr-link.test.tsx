@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { overview } from "../workspace-fixture";
 import { invalidateWorkspace } from "../../src/ui/workspace/workspace-cache";
+
+// Code mounts immediately; jsdom does not provide the browser layout observer.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 
 installTestPluginRuntime();
 
@@ -38,6 +48,25 @@ test("viewing stays unlinked until Link PR is clicked; Unlink PR keeps the panel
 
           return { removed: true };
         },
+        linkedDetail: () => ({
+          pr: overview,
+          body: "",
+          baseRefName: overview.baseRefName,
+          headRefName: overview.headRefName,
+          baseRefOid: overview.baseRefOid,
+          headRefOid: overview.headRefOid,
+          repositoryRoot: null,
+          files: [],
+        }),
+        githubReview: () => ({
+          login: "reviewer",
+          author: "author",
+          head: overview.headRefOid,
+          pending: null,
+          comments: [],
+        }),
+        guideGet: () => null,
+        guideJob: () => null,
         prOverview: () => overview,
         prStack: () => null,
         prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
@@ -47,6 +76,7 @@ test("viewing stays unlinked until Link PR is clicked; Unlink PR keeps the panel
 
   try {
     const heading = await slot.findByRole("heading", { name: "Fix API" });
+    expect(slot.getByRole("tab", { name: "Code" }).getAttribute("aria-selected")).toBe("true");
     const link = slot.getByRole("button", { name: "Link PR" });
     await waitFor(() => expect(link.hasAttribute("disabled")).toBe(false));
     expect(writes).toBe(0);

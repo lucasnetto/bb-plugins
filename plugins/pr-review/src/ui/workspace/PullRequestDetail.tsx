@@ -73,8 +73,7 @@ export function PullRequestDetail({
   const rpc = useRpc<typeof workspaceRpcContract>();
   const data = useWorkspaceData(threadId, url, active);
   const { detail, stack } = data;
-  const [tab, setTab] = useState("summary");
-  const [codeVisited, setCodeVisited] = useState(false);
+  const [tab, setTab] = useState("code");
   const [refreshRevision, setRefreshRevision] = useState(0);
 
   const refresh = () => {
@@ -166,10 +165,7 @@ export function PullRequestDetail({
   ]);
   const summary = checksSummary(detail?.checks ?? []);
 
-  const changeTab = (value: string) => {
-    if (value === "code") setCodeVisited(true);
-    setTab(value);
-  };
+  const changeTab = (value: string) => setTab(value);
 
   const openStackPr = (next: string) => {
     if (next === url) return;
@@ -747,7 +743,7 @@ export function PullRequestDetail({
         id={`${tabId}-code-panel`}
         aria-labelledby={`${tabId}-code`}
       >
-        {codeVisited && (typeof code === "function" ? code(refreshRevision) : code)}
+        {typeof code === "function" ? code(refreshRevision) : code}
       </div>
       {dialog && detail && (
         <ActionDialog
