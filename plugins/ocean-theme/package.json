@@ -1,0 +1,23 @@
+{
+  "name": "bb-plugin-ocean-theme",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.43",
+    "bbPluginSdk": ">=0.4.87"
+  },
+  "bb": {
+    "name": "Ocean Theme",
+    "description": "T3 Code's Ocean palette for BB, in light and dark mode.",
+    "branding": { "icon": "Palette" },
+    "server": "./server.ts",
+    "themes": [
+      {
+        "id": "ocean",
+        "name": "Ocean (T3 Code)",
+        "description": "Cool slate surfaces, blue highlights, and teal accents from T3 Code.",
+        "css": "./themes/ocean.css"
+      }
+    ]
+  }
+}
