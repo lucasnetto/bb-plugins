@@ -78,7 +78,7 @@ On first load, PR Review copies links, guides and review progress, guide jobs, s
 
 **Unsent Multirepo drafts and their code chips are not migrated.** Recreate any needed draft comments in PR Review. Old plugin routes and commands have no compatibility aliases.
 
-Opening a PR never creates a thread association. Use **Link PR** beside **Check out** to associate it with the current thread; the button then becomes **Unlink PR**. Unlinking leaves the review panel open. Agent comments and guided reviews require a linked PR. The linked-PR picker and agent linking tool also support explicit linking.
+Opening a PR never creates a thread association. Use **Link PR** in the PR header to associate it with the current thread; the button then becomes **Unlink PR**. Unlinking leaves the review panel open. Agent comments and guided reviews require a linked PR. The linked-PR picker and agent linking tool also support explicit linking.
 
 ## Sidebar integration
 

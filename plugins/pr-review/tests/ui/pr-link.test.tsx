@@ -50,8 +50,7 @@ test("viewing stays unlinked until Link PR is clicked; Unlink PR keeps the panel
     const link = slot.getByRole("button", { name: "Link PR" });
     await waitFor(() => expect(link.hasAttribute("disabled")).toBe(false));
     expect(writes).toBe(0);
-    const checkout = slot.getByRole("button", { name: "Check out" });
-    expect(link.compareDocumentPosition(checkout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Check out" })).toBeNull();
     fireEvent.click(link);
     const unlink = await slot.findByRole("button", { name: "Unlink PR" });
     expect(writes).toBe(1);

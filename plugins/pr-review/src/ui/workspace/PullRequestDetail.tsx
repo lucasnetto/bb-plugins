@@ -263,21 +263,6 @@ export function PullRequestDetail({
           </UrlLink>
           <div className="pr-detail-actions">
             {linkAction}
-            <PrMenu label="Check out" icon="GitBranch" disabled={!detail || data.busy}>
-              <PrMenuItem
-                icon="Copy"
-                onSelect={() => void copy(`gh pr checkout ${url}`, "Checkout command copied")}
-              >
-                Copy checkout command
-              </PrMenuItem>
-              <PrMenuItem
-                icon="GitBranch"
-                disabled={!detail?.checkoutRoot}
-                onSelect={() => setDialog("checkout")}
-              >
-                Check out in this environment
-              </PrMenuItem>
-            </PrMenu>
             <button
               className={`pr-control pr-header-primary ${primary === "merge" && canMergeNow ? "pr-merge-button" : ""}`}
               disabled={disabled}
