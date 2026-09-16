@@ -5,6 +5,7 @@ import { GithubMarkdown } from "../components/GithubMarkdown";
 import { toast } from "sonner";
 import type { Timeline, workspaceRpcContract } from "../../shared/workspace-contract";
 import { draftPath } from "./navigation";
+import { StackPicker } from "./StackPicker";
 import { Icon, type IconName } from "../components/ui/icon";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ActionDialog, type DialogAction } from "./ActionDialog";
@@ -75,11 +76,13 @@ export function PullRequestDetail({
   const [tab, setTab] = useState("summary");
   const [codeVisited, setCodeVisited] = useState(false);
   const [refreshRevision, setRefreshRevision] = useState(0);
+
   const refresh = () => {
     void data.refresh();
     setTimelineRetry((value) => value + 1);
     setRefreshRevision((value) => value + 1);
   };
+
   const [dialog, setDialog] = useState<DialogAction | null>(null);
   const [timelinePages, setTimelinePages] = useState(1);
 
@@ -168,7 +171,19 @@ export function PullRequestDetail({
     setTab(value);
   };
 
-  const openStackPr = (next: string) => navigate.toPluginPanel("prs", { subPath: draftPath(next) });
+  const openStackPr = (next: string) => {
+    if (next === url) return;
+
+    if (threadId) {
+      navigate.openThreadPanel({
+        actionId: "linked-prs",
+        title: `${detail?.repository ?? "PR"} #${next.split("/").at(-1)}`,
+        params: { url: next },
+      });
+    } else {
+      navigate.toPluginPanel("prs", { subPath: draftPath(next) });
+    }
+  };
 
   const canMerge =
     !!detail &&
@@ -186,17 +201,26 @@ export function PullRequestDetail({
 
   const primary = detail?.state === "CLOSED" ? "reopen" : detail?.isDraft ? "ready" : "merge";
   const disabled = data.busy || !detail || (primary === "merge" ? !canMergeNow : !detail.canEdit);
+
   const mergeLabel = (() => {
     if (!detail) return "Loading…";
+
     if (detail.state === "MERGED") return "Merged";
+
     if (detail.mergeable === "CONFLICTING" || detail.mergeStateStatus === "DIRTY")
       return "Conflicts";
+
     if (detail.mergeStateStatus === "BEHIND") return "Branch out of date";
+
     if (detail.mergeStateStatus === "BLOCKED" || detail.mergeStateStatus === "DRAFT")
       return "Merge blocked";
+
     if (!detail.canMerge) return "No merge permission";
+
     if (data.stackError) return "Merge unavailable";
+
     if (!canMergeNow) return "Checking mergeability…";
+
     return "Merge";
   })();
 
@@ -291,11 +315,7 @@ export function PullRequestDetail({
               <PrMenuItem icon="Copy" onSelect={() => void copy(url, "Pull request URL copied")}>
                 Copy link
               </PrMenuItem>
-              <PrMenuItem
-                icon="ArrowReloadHorizontal"
-                disabled={data.loading}
-                onSelect={refresh}
-              >
+              <PrMenuItem icon="ArrowReloadHorizontal" disabled={data.loading} onSelect={refresh}>
                 Refresh
               </PrMenuItem>
               <PrMenuSeparator />
@@ -393,6 +413,7 @@ export function PullRequestDetail({
               </button>
               {detail.isDraft && <span className="pr-small-badge">Draft</span>}
               {detail.state !== "OPEN" && <PrGlyph state={detail.state} />}
+              {stack && <StackPicker stack={stack} number={detail.number} onSelect={openStackPr} />}
               <button
                 className="pr-checkout-copy"
                 onClick={() =>
