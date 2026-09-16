@@ -10,7 +10,10 @@ import { T3ThreadList } from "@/ui/components/sidebar/T3ThreadList";
 import { ProjectsPanel } from "@/ui/components/projects/ProjectsPanel";
 import { PromoteSideThread } from "@/ui/components/sidebar/PromoteSideThread";
 
+import { hideHeaderCommit } from "@/ui/lib/hide-header-commit";
+
 export default definePluginApp((app) => {
+  app.contentScripts.register({ id: "hide-header-commit", mount: hideHeaderCommit });
   app.composer.customize({
     id: "promote-side-thread",
     scopes: ["thread", "side-chat"],
