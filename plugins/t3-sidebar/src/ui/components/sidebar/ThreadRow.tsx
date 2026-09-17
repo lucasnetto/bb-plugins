@@ -51,7 +51,7 @@ export interface ThreadRowProps {
 
 export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   const { thread, section, isActive, actions } = props;
-  const isCard = section === "active" || section === "pinned";
+  const isCard = section !== "settled";
   const isSnoozed = section === "snoozed";
   const status = resolveThreadStatus(thread);
   const topStatus = resolveTopStatus({ status, isUnread: thread.isUnread, isActive });
@@ -153,10 +153,12 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     !isActive && isInFlightStatus(status) && "opacity-70 transition-opacity hover:opacity-100",
   );
 
-  const timeLabel =
+  const wakeLabel =
     isSnoozed && props.snoozedUntil !== undefined
       ? snoozeWakeLabel(props.snoozedUntil, props.nowMs)
-      : formatCompactTime(props.timeAnchorMs, props.nowMs);
+      : undefined;
+
+  const timeLabel = formatCompactTime(props.timeAnchorMs, props.nowMs);
 
   const anchorProps = {
     href: `#thread-${thread.id}`,
@@ -179,6 +181,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       provider={props.provider}
       recede={recede}
       topStatus={topStatus}
+      wakeLabel={wakeLabel}
       timeLabel={timeLabel}
       titleNode={titleNode}
       pinIndicator={pinIndicator}
@@ -189,7 +192,6 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       actions={actions}
       projectName={props.projectName}
       isActive={isActive}
-      isSnoozed={isSnoozed}
       timeLabel={timeLabel}
       titleNode={titleNode}
       pinIndicator={pinIndicator}

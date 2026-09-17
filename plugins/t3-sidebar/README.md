@@ -46,6 +46,7 @@ t3code's inbox model:
   this evening (18:00), tomorrow (09:00), or next Monday (09:00), in your
   local timezone. The evening option disappears when it is less than an hour away.
   Threads move to a collapsible **Snoozed** shelf, ordered by wake time;
+  cards use the active-thread layout with an added wake-time line.
   _Wake now_ returns them immediately. Snoozing preserves pinned state.
   Running work continues, including completion while snoozed. A new turn,
   input request, or failure wakes the thread early. Threads awaiting input

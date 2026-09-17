@@ -24,13 +24,11 @@ export function CompactThreadLayout({
   actions,
   projectName,
   isActive,
-  isSnoozed,
   titleNode,
   pinIndicator,
   timeLabel,
 }: ThreadLayoutProps & {
   isActive: boolean;
-  isSnoozed: boolean;
 }) {
   return (
     <>
@@ -48,12 +46,11 @@ export function CompactThreadLayout({
         </span>
         <span className="pointer-events-none absolute inset-y-0 right-0 -mr-1 flex items-center opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
           <HoverAction
-            label={isSnoozed ? "Wake now" : "Un-settle thread"}
+            label="Un-settle thread"
             onClick={(event) => {
               event.stopPropagation();
 
-              if (isSnoozed) actions.setSnoozed(thread.id, null);
-              else actions.setSettled(thread.id, false);
+              actions.setSettled(thread.id, false);
             }}
           >
             <Icon name="ArrowTurnBackward" className="mb-px size-3.5" />
@@ -71,6 +68,7 @@ export function CardThreadLayout({
   provider,
   recede,
   topStatus,
+  wakeLabel,
   timeLabel,
   titleNode,
   pinIndicator,
@@ -78,6 +76,7 @@ export function CardThreadLayout({
   provider: ThreadRowProvider | null;
   recede: boolean;
   topStatus: TopStatus | null;
+  wakeLabel?: string;
 }) {
   const branch = thread.environment?.branchName ?? null;
   const machine = thread.host?.name ?? thread.environment?.name ?? null;
@@ -146,6 +145,17 @@ export function CardThreadLayout({
                 <Icon name="Check" className="size-3.5" />
               </HoverAction>
             ) : null}
+            {wakeLabel !== undefined ? (
+              <HoverAction
+                label="Wake now"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  actions.setSnoozed(thread.id, null);
+                }}
+              >
+                <Icon name="ArrowTurnBackward" className="size-3.5" />
+              </HoverAction>
+            ) : null}
             {!thread.hasPendingInteraction && thread.indicator !== "waiting-for-input" ? (
               <ThreadSnoozeMenu onSnooze={(until) => actions.setSnoozed(thread.id, until)} />
             ) : null}
@@ -165,6 +175,9 @@ export function CardThreadLayout({
       </div>
       {/* Line 2: title */}
       <div className="mt-1 flex min-w-0">{titleNode}</div>
+      {wakeLabel !== undefined ? (
+        <div className="mt-1 text-xs tabular-nums text-muted-foreground">Wakes {wakeLabel}</div>
+      ) : null}
       {/* Environment and PRs share a line without squeezing the environment. */}
       <div className="mt-0.5 flex min-h-4 min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
         {branch ? (
