@@ -1,4 +1,5 @@
 import { Button } from "../components/ui/button";
+import { Icon } from "../components/ui/icon";
 import type { useReviewDiff } from "./useReviewDiff";
 
 export function ReviewToolbar({
@@ -33,30 +34,42 @@ export function ReviewToolbar({
           Guide
         </Button>
       ) : null}
-      <Button
-        size="sm"
-        variant={display.style === "unified" ? "secondary" : "ghost"}
-        aria-pressed={display.style === "unified"}
-        onClick={() => display.setStyle("unified")}
-      >
-        Unified
-      </Button>
-      <Button
-        size="sm"
-        variant={display.style === "split" ? "secondary" : "ghost"}
-        aria-pressed={display.style === "split"}
-        onClick={() => display.setStyle("split")}
-      >
-        Split
-      </Button>
-      <Button
-        size="sm"
-        variant={display.wrap ? "secondary" : "ghost"}
-        aria-pressed={display.wrap}
-        onClick={() => display.setWrap(!display.wrap)}
-      >
-        Wrap
-      </Button>
+      <span title="Unified">
+        <Button
+          size="sm"
+          className="w-8 px-0"
+          aria-label="Unified"
+          variant={display.style === "unified" ? "secondary" : "ghost"}
+          aria-pressed={display.style === "unified"}
+          onClick={() => display.setStyle("unified")}
+        >
+          <Icon name="Rows2" aria-hidden="true" />
+        </Button>
+      </span>
+      <span title="Split">
+        <Button
+          size="sm"
+          className="w-8 px-0"
+          aria-label="Split"
+          variant={display.style === "split" ? "secondary" : "ghost"}
+          aria-pressed={display.style === "split"}
+          onClick={() => display.setStyle("split")}
+        >
+          <Icon name="Columns2" aria-hidden="true" />
+        </Button>
+      </span>
+      <span title="Wrap">
+        <Button
+          size="sm"
+          className="w-8 px-0"
+          aria-label="Wrap"
+          variant={display.wrap ? "secondary" : "ghost"}
+          aria-pressed={display.wrap}
+          onClick={() => display.setWrap(!display.wrap)}
+        >
+          <Icon name="TextWrap" aria-hidden="true" />
+        </Button>
+      </span>
       <Button
         size="sm"
         variant={treeOpen ? "secondary" : "ghost"}
