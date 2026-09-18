@@ -14,7 +14,12 @@ export const runStatus = (status: RunResult["status"]) =>
 
 type ToolItem = Extract<ThreadDelta, { kind: "item.open" }>["item"];
 
-const toolValueSchema = z.json().optional();
+// SDK results can contain nested undefined fields (for example grep match.line).
+// Normalize them using the same JSON representation sent over the bridge.
+const toolValueSchema = z.preprocess(
+  (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value))),
+  z.json().optional(),
+);
 
 type ToolValue = z.infer<typeof toolValueSchema>;
 

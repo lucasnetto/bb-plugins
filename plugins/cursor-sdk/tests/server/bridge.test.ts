@@ -1044,6 +1044,65 @@ test("tool values retain JSON data and bound oversized payloads", () => {
   ).toThrow();
 });
 
+test("completes SDK grep results containing nested undefined fields", () => {
+  const deltas: z.infer<typeof threadDeltaSchema>[] = [];
+  const events = new RunEvents((batch) => deltas.push(...batch));
+
+  const base = {
+    type: "tool_call",
+    agent_id: "agent",
+    run_id: "run",
+    call_id: "grep-1",
+    name: "grep",
+    args: { pattern: "retomar", context: undefined },
+  } as const;
+
+  const match = { file: "postpone-analysis.tsx", line: undefined };
+
+  events.accept({ ...base, status: "running" });
+  events.accept({
+    ...base,
+    status: "completed",
+    result: {
+      status: "success",
+      value: {
+        workspaceResults: {
+          "/workspace": { type: "content", output: { matches: [match], totalMatches: 0 } },
+        },
+      },
+    },
+  });
+  events.finish({ id: "run", status: "finished", result: "Analysis completed" });
+
+  expect(deltas[0]).toMatchObject({
+    kind: "item.open",
+    item: { args: { pattern: "retomar" }, result: undefined },
+  });
+  expect(deltas[1]).toMatchObject({
+    kind: "item.close",
+    status: "completed",
+    item: {
+      result: {
+        status: "success",
+        value: {
+          workspaceResults: {
+            "/workspace": {
+              type: "content",
+              output: { matches: [{ file: "postpone-analysis.tsx" }], totalMatches: 0 },
+            },
+          },
+        },
+      },
+    },
+  });
+  expect(deltas).toContainEqual(
+    expect.objectContaining({ kind: "item.textDelta", text: "Analysis completed" }),
+  );
+
+  for (const delta of deltas) expect(threadDeltaSchema.safeParse(delta).success).toBe(true);
+  expect(Object.hasOwn(match, "line")).toBe(true);
+});
+
 test("normalizes and redacts foreign errors before reporting them", () => {
   expect(safeMessage(new Error("crsr_secret Bearer token"))).toBe("[redacted] Bearer [redacted]");
   expect(safeMessage("crsr_secret")).toBe("[redacted]");
