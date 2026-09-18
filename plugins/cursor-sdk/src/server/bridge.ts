@@ -109,6 +109,7 @@ type TurnState = {
   pending: TurnParams[];
   options: TurnParams["options"];
   steers: Set<Deferred.Deferred<void>>;
+  steerFibers: Set<Fiber.Fiber<void, never>>;
   events: RunEvents;
   interrupted: boolean;
   cancelRequested: boolean;
@@ -211,6 +212,8 @@ export function createSdkBridge(
 
   const closeSession = Effect.fn("CursorSdk.closeSession")(function* (session: Session) {
     session.released = true;
+
+    if (session.turn) yield* Effect.forEach([...session.turn.steerFibers], Fiber.interrupt);
     tools.resolvePendingToolCalls(session, "The Cursor SDK session was released.");
     yield* Effect.gen(function* () {
       if (session.turn && !session.turn.ended) {
@@ -638,6 +641,7 @@ export function createSdkBridge(
         pending: [],
         options: params.options,
         steers: new Set(),
+        steerFibers: new Set(),
         events: new RunEvents((deltas) => {
           if (!session.released)
             emit(
@@ -698,7 +702,7 @@ export function createSdkBridge(
     const pending = Deferred.makeUnsafe<void>();
     turn.steers.add(pending);
 
-    return yield* Effect.gen(function* () {
+    const delivery = Effect.gen(function* () {
       // Cursor's live input API is text-only. Preserve attachments and any
       // execution-option changes by sending them at the next prompt boundary.
       const textOnly = params.input.every((input) => input.type === "text");
@@ -726,6 +730,8 @@ export function createSdkBridge(
             )
           : "revert_to_followup";
 
+      if (session.released || turn.interrupted || turn.ended) return;
+
       if (outcome === "complete_delivered") {
         emit(session.threadId, [
           {
@@ -734,30 +740,41 @@ export function createSdkBridge(
             providerTurnId: turn.providerTurnId,
           },
         ]);
-      } else if (!session.released && !turn.interrupted) {
-        turn.pending.push(params);
       } else {
-        return yield* Effect.fail(
-          new experimental_BridgeRecoveryError({
-            code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-            message: "The Cursor SDK turn stopped before accepting the follow-up.",
-            recovery: {
-              kind: "staleTurn",
-              message: "The Cursor SDK turn stopped before accepting the follow-up.",
-              retryable: false,
-            },
-          }),
-        );
+        turn.pending.push(params);
       }
-
-      return { accepted: true };
     }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (session.released || turn.interrupted || turn.ended) return;
+          // Delivery is uncertain. Report it without replaying the message or
+          // making BB mark the still-running turn as a failed submit.
+          emit(session.threadId, [
+            {
+              kind: "provider.error",
+              message: `Cursor could not confirm steering delivery: ${error.message}`,
+              providerTurnId: turn.providerTurnId,
+              settlesTurn: false,
+              willRetry: false,
+              detail: `Steering request ${params.clientRequestId} was not resent.`,
+            },
+          ]);
+        }),
+      ),
       Effect.ensuring(
         Effect.sync(() => turn.steers.delete(pending)).pipe(
           Effect.andThen(Deferred.succeed(pending, undefined)),
         ),
       ),
     );
+
+    // Run.steer waits for consumption, potentially until a long-running tool
+    // finishes. Acknowledge receipt now; input.accepted records actual delivery.
+    const fiber = Effect.runFork(delivery);
+    turn.steerFibers.add(fiber);
+    fiber.addObserver(() => turn.steerFibers.delete(fiber));
+
+    return { accepted: true };
   });
 
   const handle = Effect.fn("CursorSdk.handleRequest")(function* (request: BridgeRequest) {

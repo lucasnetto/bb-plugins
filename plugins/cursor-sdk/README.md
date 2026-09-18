@@ -21,6 +21,9 @@ Select **Cursor SDK** and a model in a new thread. Set reasoning and Fast mode
 with BB's standard controls. The provider uses **Full access**.
 Existing ACP threads retain their original provider and history. Plan mode is
 available. Text follow-ups steer a running local agent through `run.steer()`.
+The bridge acknowledges receipt immediately and tracks delivery separately, so
+steering during a long-running tool does not time out BB's request. Delivery
+errors are reported without failing the active turn or resending uncertain input.
 When Cursor declines live delivery, the bridge sends the message once the current
 SDK run ends, retaining the same BB turn. Cloud runs, attachments, and changed
 execution settings use this follow-up path. Stopping the turn discards follow-ups

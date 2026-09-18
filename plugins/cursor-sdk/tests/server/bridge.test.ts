@@ -635,7 +635,17 @@ describe("provider bridge", () => {
     await f.start();
     await f.turn("hold");
     await f.running();
-    expect((await f.steer()).error?.message).toContain("Steer transport failed");
+    expect((await f.steer()).result).toEqual({ accepted: true });
+    await f.waitFor(() => f.deltas().some((d) => d.kind === "provider.error"));
+    expect(f.deltas()).toContainEqual(
+      expect.objectContaining({
+        kind: "provider.error",
+        message: "Cursor could not confirm steering delivery: Steer transport failed",
+        settlesTurn: false,
+        willRetry: false,
+      }),
+    );
+    expect(f.deltas().some((d) => d.kind === "turn.boundary")).toBe(false);
     f.releaseRun();
     await f.settled();
     expect(f.sent).toHaveLength(1);
@@ -686,6 +696,10 @@ describe("provider bridge", () => {
       const steering = f.steer();
       // The bridge starts the SDK call synchronously before yielding its acknowledgement.
       expect(f.steered).toEqual(["Skip admin"]);
+      // Receipt must not wait for consumption: that may take longer than BB's
+      // RPC deadline when the agent is running a tool.
+      expect((await steering).result).toEqual({ accepted: true });
+      expect(f.deltas().filter((d) => d.kind === "input.accepted")).toHaveLength(1);
       f.releaseRun();
       await f.waitFor(() => f.deltas().some((d) => d.kind === "item.textClose"));
       expect(f.deltas().some((d) => d.kind === "turn.boundary")).toBe(false);
@@ -699,6 +713,47 @@ describe("provider bridge", () => {
         ),
       ).toBeLessThan(deltas.findIndex((d) => d.kind === "turn.boundary"));
       expect(f.sent).toHaveLength(outcome === "complete_delivered" ? 1 : 2);
+    },
+  );
+
+  test.each(["complete_delivered", "revert_to_followup"] as const)(
+    "stops with an unacknowledged steer and ignores late %s delivery",
+    async (outcome) => {
+      const f = fixture();
+      f.steerBehavior(outcome, true, true);
+      await f.init();
+      await f.start();
+      await f.turn("hold");
+      await f.running();
+      expect((await f.steer()).result).toEqual({ accepted: true });
+      await f.request("thread/stop", {
+        threadId: "thread",
+        providerThreadId: "agent-1",
+        intent: "interrupt",
+        activeTurnId: "run-1",
+      });
+      await f.settled();
+      f.acknowledgeSteer();
+      // Starting another turn provides an async barrier and verifies recovery.
+      expect(
+        (
+          await f.request("thread/resume", {
+            threadId: "thread",
+            providerThreadId: "agent-1",
+            cwd: "/tmp",
+            instructionMode: "append",
+            options: f.executionOptions,
+          })
+        ).error,
+      ).toBeUndefined();
+      expect((await f.turn("hello")).error).toBeUndefined();
+      await f.waitFor(() => f.deltas().filter((d) => d.kind === "turn.boundary").length === 2);
+      expect(f.sent.map((message) => message.text)).toEqual(["hold", "hello"]);
+      expect(
+        f
+          .deltas()
+          .filter((d) => d.kind === "input.accepted" && d.clientRequestId === "creq_steering23"),
+      ).toHaveLength(0);
     },
   );
 
