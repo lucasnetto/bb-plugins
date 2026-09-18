@@ -123,6 +123,9 @@ a session. Keep that store on the same host to retain its checkpoints.
   enabled. Terminal errors without HTTP status keep their code and an unknown
   category rather than inferring an action from the error message.
 - Stop cancels the SDK run. Release closes its runtime without inventing a turn.
+- Each thread runs its SDK session in a separate child process, so concurrent
+  threads retain their own environment variables and tool callbacks. Release
+  disposes that process; a crashed session does not stop other threads.
 - Fork local threads from their latest saved conversation state. The child gets
   its own agent ID and checkpoint blobs, and uses its selected workspace, model,
   instructions, and tools. The source must be idle and have a saved checkpoint
