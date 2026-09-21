@@ -17,39 +17,44 @@ import { useReviewData } from "./useReviewData";
 import { useReviewDiff, type ReviewAnnotationRenderer } from "./useReviewDiff";
 import { useReviewComposer } from "./useReviewComposer";
 import { PullRequestDetail } from "../workspace/PullRequestDetail";
+import { ReviewMachine } from "./ReviewMachine";
 
 export function PrReview({ threadId, url }: { threadId: string; url: string }) {
   const link = usePrLink(threadId, url);
 
   return (
-    <PullRequestDetail
-      key={`${threadId}:${url}`}
-      threadId={threadId}
-      url={url}
-      linkAction={<PrLinkButton link={link} />}
-      code={(refreshRevision) => (
-        <PrReviewContent
-          refreshRevision={refreshRevision}
-          threadId={threadId}
-          agentThreadId={link.linked ? threadId : null}
-          url={url}
-        />
-      )}
-    />
+    <ReviewMachine key={`${threadId}:${url}`} threadId={threadId} url={url}>
+      <PullRequestDetail
+        key={`${threadId}:${url}`}
+        threadId={threadId}
+        url={url}
+        linkAction={<PrLinkButton link={link} />}
+        code={(refreshRevision) => (
+          <PrReviewContent
+            refreshRevision={refreshRevision}
+            threadId={threadId}
+            agentThreadId={link.linked ? threadId : null}
+            url={url}
+          />
+        )}
+      />
+    </ReviewMachine>
   );
 }
 
 export function StandalonePrReview({ url, active = true }: { url: string; active?: boolean }) {
   return (
-    <PullRequestDetail
-      key={url}
-      threadId={null}
-      url={url}
-      active={active}
-      code={(refreshRevision) => (
-        <PrReviewContent threadId={null} url={url} refreshRevision={refreshRevision} />
-      )}
-    />
+    <ReviewMachine key={url} threadId={null} url={url} active={active}>
+      <PullRequestDetail
+        key={url}
+        threadId={null}
+        url={url}
+        active={active}
+        code={(refreshRevision) => (
+          <PrReviewContent threadId={null} url={url} refreshRevision={refreshRevision} />
+        )}
+      />
+    </ReviewMachine>
   );
 }
 

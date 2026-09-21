@@ -31,6 +31,7 @@ test("viewing stays unlinked until Link PR is clicked; Unlink PR keeps the panel
     { threadId: "link-toggle", params: { url: overview.url } },
     {
       rpc: {
+        prPrepare: () => ({ status: "ready" }),
         linkedList: () => (linked ? [row] : []),
         linkedLink: (input) => {
           expect(input).toEqual({ threadId: "link-toggle", url: overview.url, reason: "manual" });

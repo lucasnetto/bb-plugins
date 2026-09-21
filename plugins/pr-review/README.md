@@ -16,6 +16,8 @@ Merge confirmation lists the exact affected stack layers. Native GitHub stacks m
 
 Lists are saved in SQLite per primary machine, view, and PR state. Opening the page displays the saved list, then refreshes it when older than 60 seconds. Manual Refresh bypasses that window. Failed refreshes preserve the last successful list.
 
+Opening a PR waits for its machine to be active and connected. Suspended machines wake automatically, with a **Waking machine…** status while the panel waits. Linked PRs use the thread’s environment host; standalone PRs use the primary host. Concurrent opens share the wake operation. Background refreshes never wake machines. Offline or removed machines show recovery instructions, and a failed or slow wake can be retried.
+
 Use **Open a pull request by URL** in Pull Requests to view any GitHub PR in the integrated detail pane.
 
 ## PRs linked to a conversation

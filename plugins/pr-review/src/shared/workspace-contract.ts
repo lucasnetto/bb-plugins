@@ -156,6 +156,10 @@ const candidates = z.object({
 });
 
 export const workspaceRpcContract = defineRpcContract({
+  prPrepare: {
+    input: target.extend({ wake: z.boolean() }),
+    output: z.object({ status: z.enum(["ready", "waking"]) }),
+  },
   prOverview: { input: target, output: overviewSchema },
   prTimeline: { input: target.extend({ page: number.default(1) }), output: timelineSchema },
   prStack: { input: target, output: stackSchema.nullable() },

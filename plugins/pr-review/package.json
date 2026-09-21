@@ -22,7 +22,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "catalog:",
+    "@get-bb/plugin-sdk": "catalog:machines",
     "@pierre/diffs": "catalog:",
     "@radix-ui/react-alert-dialog": "catalog:",
     "@radix-ui/react-context-menu": "catalog:",
@@ -54,7 +54,7 @@
   },
   "engines": {
     "bb": ">=0.42",
-    "bbPluginSdk": ">=0.4.47"
+    "bbPluginSdk": ">=0.4.84"
   },
   "bb": {
     "name": "PR Review",

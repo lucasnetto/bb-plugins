@@ -16,6 +16,7 @@ it("groups authored and requested reviews, filters locally, and selects a PR wit
     { subPath: "" },
     {
       rpc: {
+        prPrepare: () => ({ status: "ready" }),
         savedList: (input) => {
           const { view } = rpcContract.savedList.input.parse(input);
 
@@ -101,6 +102,7 @@ it("shows SQLite rows on every mount while refresh is pending and rereads realti
       { subPath: "" },
       {
         rpc: {
+          prPrepare: () => ({ status: "ready" }),
           savedList: (input) => ({
             scope: "s",
             view: "authored",

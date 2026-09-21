@@ -91,6 +91,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     { threadId: "t1", url },
     {
       rpc: {
+        prPrepare: () => ({ status: "ready" }),
         prOverview: () => ({ ...overview, url }),
         prStack: () => null,
         prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
@@ -144,7 +145,10 @@ test("expanded context reaches the draft with exact revisions and refresh reload
   );
 
   try {
-    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Code" }), {
+      button: 0,
+      ctrlKey: false,
+    });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });
     await waitFor(() => expect(select.hasAttribute("disabled")).toBe(false));
     await slot.behavior.setComposerText("Existing draft");
@@ -160,7 +164,7 @@ test("expanded context reaches the draft with exact revisions and refresh reload
     const refresh = slot.getByRole("button", { name: "Refresh pull request" });
     expect(refresh.previousElementSibling?.textContent).toMatch(/^updated /);
     expect(refresh.textContent).toBe("");
-    expect(slot.queryByRole("button", { name: "Refresh", exact: true })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Refresh" })).toBeNull();
     fireEvent.click(refresh);
     await waitFor(() =>
       expect(
@@ -232,6 +236,7 @@ test("standalone review selects code without offering thread draft actions", asy
     { url },
     {
       rpc: {
+        prPrepare: () => ({ status: "ready" }),
         prOverview: () => ({ ...overview, url }),
         prStack: () => null,
         prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
@@ -261,7 +266,10 @@ test("standalone review selects code without offering thread draft actions", asy
   );
 
   try {
-    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Code" }), {
+      button: 0,
+      ctrlKey: false,
+    });
     const select = await slot.findByRole("button", { name: "Select unchanged line in api.ts" });
     await waitFor(() => expect(select.hasAttribute("disabled")).toBe(false));
     fireEvent.click(select);
@@ -276,6 +284,7 @@ test("standalone review selects code without offering thread draft actions", asy
         .map((call) => call.method)
         .every((method) =>
           [
+            "prPrepare",
             "reviewDraftDetail",
             "reviewDraftContents",
             "githubReview",

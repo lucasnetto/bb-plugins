@@ -105,6 +105,7 @@ test("background guides preserve code selection; toggles and active guide replac
     { threadId: "guide-selection", url },
     {
       rpc: {
+        prPrepare: () => ({ status: "ready" }),
         prOverview: () => ({ ...overview, url }),
         prStack: () => null,
         prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
@@ -136,7 +137,10 @@ test("background guides preserve code selection; toggles and active guide replac
   };
 
   try {
-    fireEvent.mouseDown(slot.getByRole("tab", { name: "Code" }), { button: 0, ctrlKey: false });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Code" }), {
+      button: 0,
+      ctrlKey: false,
+    });
     await slot.findByRole("button", { name: "Select line in api.ts" });
     select();
     const input = await slot.findByLabelText("Comment on selected code");

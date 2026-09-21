@@ -6,6 +6,7 @@ import { call, sync, fail, handler } from "./server-effects";
 import type { createRuntime } from "./server-effects";
 import type { registerLinks } from "./links-server";
 import { LIST_CHANGED } from "../../contract";
+import { createReviewMachine } from "./review-machine";
 
 export function registerWorkspace(
   bb: BbPluginApi,
@@ -13,6 +14,7 @@ export function registerWorkspace(
   links: Pick<ReturnType<typeof registerLinks>, "updateSummary">,
 ) {
   const host = bb.hosts.experimental_client({ contract: workspaceHostContract });
+  const prepareMachine = createReviewMachine(bb);
 
   const target = Effect.fn("PrWorkspace.target")(function* (input: {
     threadId: string | null;
@@ -44,6 +46,13 @@ export function registerWorkspace(
   });
 
   bb.rpc.register(workspaceRpcContract, {
+    prPrepare: handler(runtime, (input) =>
+      Effect.gen(function* () {
+        const { hostId } = yield* target(input);
+
+        return yield* call("PR machine readiness", () => prepareMachine(hostId, input.wake));
+      }),
+    ),
     prOverview: handler(runtime, (input) =>
       Effect.gen(function* () {
         const { hostId, ...args } = yield* target(input);
