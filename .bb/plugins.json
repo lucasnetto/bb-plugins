@@ -8,10 +8,6 @@
       "source": "./plugins/fonts"
     },
     {
-      "name": "cursor-account-labels",
-      "source": "./plugins/cursor-account-labels"
-    },
-    {
       "name": "hide-models",
       "source": "./plugins/hide-models"
     },
