@@ -4,7 +4,7 @@ import { EditableThreadTitle, useThreadRename } from "./EditableThreadTitle";
 import { ThreadContextMenu } from "./ThreadContextMenu";
 import { snoozeWakeLabel } from "@/ui/lib/snooze";
 import { memo, useCallback } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { experimental_useSidebarThreadSplit } from "@get-bb/plugin-sdk/app";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/components/ui/tooltip";
@@ -47,6 +47,13 @@ export interface ThreadRowProps {
   nowMs: number;
   snoozedUntil?: number;
   actions: ThreadRowActions;
+  reorder?: {
+    group: string;
+    dragging: boolean;
+    edge: "before" | "after" | null;
+    onPointerDown: (event: PointerEvent) => void;
+    onMove: (direction: -1 | 1) => void;
+  };
 }
 
 export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
@@ -85,7 +92,11 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     (event: KeyboardEvent<HTMLAnchorElement>) => {
       if (rename.draft !== null) return;
 
-      if (event.key === "Enter" || event.key === " ") {
+      if (props.reorder && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        event.stopPropagation();
+        props.reorder.onMove(event.key === "ArrowUp" ? -1 : 1);
+      } else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         actions.open(thread.id);
       } else if (event.key === "F2") {
@@ -93,7 +104,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
         rename.start();
       }
     },
-    [actions, rename, thread.id, title],
+    [actions, rename, thread.id, props.reorder],
   );
 
   const titleNode = (
@@ -169,6 +180,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
     onClick: handleClick,
     onDoubleClick: handleDoubleClick,
     onKeyDown: handleKeyDown,
+    "aria-keyshortcuts": props.reorder ? "Alt+ArrowUp Alt+ArrowDown" : undefined,
   };
 
   if (!thread.isArchived) Object.assign(anchorProps, splitProps);
@@ -199,7 +211,28 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   );
 
   return (
-    <li data-thread-item className={isCard ? "list-none py-0.5" : "list-none"}>
+    <li
+      data-thread-item
+      data-reorder-id={props.reorder ? thread.id : undefined}
+      data-reorder-group={props.reorder?.group}
+      onPointerDown={rename.draft === null ? props.reorder?.onPointerDown : undefined}
+      onDragStart={props.reorder ? (event) => event.preventDefault() : undefined}
+      className={cn(
+        "relative list-none",
+        isCard && "py-0.5",
+        props.reorder?.dragging && "opacity-40",
+      )}
+    >
+      {props.reorder?.edge ? (
+        <span
+          aria-hidden
+          data-reorder-edge={props.reorder.edge}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded bg-primary",
+            props.reorder.edge === "before" ? "top-0" : "bottom-0",
+          )}
+        />
+      ) : null}
       <ThreadContextMenu
         thread={thread}
         section={section}

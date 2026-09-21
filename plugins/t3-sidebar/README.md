@@ -18,8 +18,14 @@ t3code's inbox model:
   provider session and workspace stay intact, and running work continues. The
   existing side-chat tab still points to the same conversation. Only live side
   chats show this action; workers and archived threads are excluded.
-- **Static order.** Active cards sort by creation, newest first. Activity
-  never reorders the list; status lives in each card's label.
+- **Manual order.** Drag active or pinned cards up/down to reorder within their
+  section (and within a machine when grouped). A line shows the insertion point;
+  hold near the scroll edge to scroll, or press Escape to cancel. Focus a card
+  and use Alt+Up/Down as a keyboard alternative. New threads start at the top;
+  activity never reorders cards. Ordering survives reloads in this browser and
+  project filtering preserves hidden threads' positions. Snoozed and Settled
+  remain time-ordered. Dragging out of the list still uses BB's split gesture.
+  Touch retains normal scrolling; use the keyboard alternative to reorder.
 - **Status vocabulary** (t3code hues): `Working` (sky), `Monitoring` (sky),
   `Input` (indigo), `Plan Ready` (violet), `Failed` (red), `Done` (emerald,
   unread only). Read, idle threads recede.
@@ -85,6 +91,8 @@ It never switches branches or resets the checkout.
 - `src/server/lib/snooze.ts` — persisted snooze state, validated RPCs, and early-wake events.
 - `src/ui/lib/sidebar-logic.ts` — pure logic ported from t3code's
   `Sidebar.logic.ts`: status resolution, partition, sorting, shelf paging.
+- `src/ui/hooks/useThreadReorder.ts` — whole-card pointer sorting inspired by
+  t3code’s `Sidebar.pointer.ts`, with BB split handoff and keyboard ordering.
 - `src/ui/components/sidebar/` — `ThreadRow` (card + slim variants) and
   `T3ThreadList` (scope picker, sections, shelf).
 - `src/ui/components/ui/` — vendored shadcn source from the `@bb` registry.

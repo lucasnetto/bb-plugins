@@ -15,3 +15,11 @@ Threads without machine information appear under **No machine**. Disabling
 this setting restores the flat active-thread list.
 
 CLI: `bb plugin config t3-sidebar set groupByMachine true` (or `false`).
+
+Active and pinned cards support manual ordering: drag within the same section
+(or machine group), or focus a card and press Alt+Up/Down. The insertion line
+shows the drop position; Escape cancels. Order is stored in this browser,
+separately for active and pinned, and survives project scope changes. New
+threads appear first. Snoozed and Settled keep their time-based sorting.
+Dragging out of the list continues to use BB's drag-to-split behavior. Touch
+keeps scrolling rather than starting a reorder.

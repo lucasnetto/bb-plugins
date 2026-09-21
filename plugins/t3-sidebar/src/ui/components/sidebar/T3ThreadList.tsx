@@ -1,3 +1,5 @@
+import { applyThreadOrder, moveThread } from "@/ui/lib/thread-order";
+import { useThreadReorder } from "@/ui/hooks/useThreadReorder";
 import { ProjectScopePicker } from "./ProjectScopePicker";
 import { Schema } from "effect";
 import { useLocalStorageState } from "@/ui/hooks/useLocalStorageState";
@@ -144,9 +146,28 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [effectiveScope, nowMs, snoozed, threads],
   );
 
+  const [savedOrder, setSavedOrder] = useLocalStorageState<{ active: string[]; pinned: string[] }>(
+    "t3-sidebar:thread-order",
+    { active: [], pinned: [] },
+    Schema.Struct({
+      active: Schema.mutable(Schema.Array(Schema.String)),
+      pinned: Schema.mutable(Schema.Array(Schema.String)),
+    }),
+  );
+
+  const orderedActive = useMemo(
+    () => applyThreadOrder(partition.active, savedOrder.active),
+    [partition.active, savedOrder.active],
+  );
+
+  const orderedPinned = useMemo(
+    () => applyThreadOrder(partition.pinned, savedOrder.pinned),
+    [partition.pinned, savedOrder.pinned],
+  );
+
   const machineGroups = useMemo(
-    () => (grouped ? groupByMachine(partition.active) : []),
-    [grouped, partition.active],
+    () => (grouped ? groupByMachine(orderedActive) : []),
+    [grouped, orderedActive],
   );
 
   const { rows: settledRows, hiddenCount: hiddenSettledCount } = useMemo(
@@ -195,6 +216,36 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [hostActions, onNavigate, setSettled, setSnoozed, archivedIds, navigate, refetch],
   );
 
+  const reorderGroup = (thread: PluginSidebarThread, section: SidebarSection) =>
+    section === "pinned"
+      ? "pinned"
+      : grouped
+        ? `machine:${JSON.stringify(thread.host?.id ?? null)}`
+        : "active";
+
+  const reorder = (source: string, target: string, after: boolean, group: string) => {
+    const section = group === "pinned" ? "pinned" : "active";
+
+    const visible = (section === "pinned" ? orderedPinned : orderedActive)
+      .filter((thread) => reorderGroup(thread, section) === group)
+      .map((thread) => thread.id);
+
+    // Materialize the complete order before applying a filtered move. Retain dormant
+    // IDs so snooze/pin/project filters don't silently erase their saved placement.
+    const all = partitionThreads({ threads, snoozed, scopeProjectId: null, nowMs })[section];
+    setSavedOrder((current) => {
+      const ordered = applyThreadOrder(all, current[section]).map((thread) => thread.id);
+      const saved = new Set(current[section]);
+      const full = [...ordered.filter((id) => !saved.has(id)), ...current[section]];
+
+      return { ...current, [section]: moveThread(full, visible, source, target, after) };
+    });
+  };
+
+  const drag = useThreadReorder(({ source, target, after, group }) =>
+    reorder(source, target, after, group),
+  );
+
   const renderRow = (thread: PluginSidebarThread, section: SidebarSection) => (
     <ThreadRow
       key={`${thread.id}:${section === "settled" ? "slim" : "card"}`}
@@ -207,6 +258,33 @@ function T3ThreadListContent(props: PluginThreadListProps) {
       snoozedUntil={section === "snoozed" ? snoozed[thread.id]?.until : undefined}
       nowMs={nowMs}
       actions={rowActions}
+      reorder={
+        section === "active" || section === "pinned"
+          ? {
+              group: reorderGroup(thread, section),
+              dragging: drag.preview?.source === thread.id,
+              edge:
+                drag.preview?.target === thread.id && drag.preview.source !== thread.id
+                  ? drag.preview.after
+                    ? "after"
+                    : "before"
+                  : null,
+              onPointerDown: (event) =>
+                drag.onPointerDown(event, thread.id, reorderGroup(thread, section)),
+              onMove: (direction) => {
+                const group = reorderGroup(thread, section);
+
+                const rows = (section === "pinned" ? orderedPinned : orderedActive).filter(
+                  (row) => reorderGroup(row, section) === group,
+                );
+
+                const target = rows[rows.findIndex((row) => row.id === thread.id) + direction];
+
+                if (target) reorder(thread.id, target.id, direction > 0, group);
+              },
+            }
+          : undefined
+      }
     />
   );
 
@@ -241,8 +319,8 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             onNavigate();
           }}
         />
-        <ul role="list" className="flex flex-col gap-px px-1.5">
-          {partition.pinned.map((thread) => renderRow(thread, "pinned"))}
+        <ul ref={drag.listRef} role="list" className="flex flex-col gap-px px-1.5">
+          {orderedPinned.map((thread) => renderRow(thread, "pinned"))}
           {partition.pinned.length > 0 ? (
             <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
           ) : null}
@@ -262,7 +340,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
                   </section>
                 </li>
               ))
-            : partition.active.map((thread) => renderRow(thread, "active"))}
+            : orderedActive.map((thread) => renderRow(thread, "active"))}
           {partition.snoozed.length > 0 ? (
             <ShelfHeader
               label="Snoozed"
