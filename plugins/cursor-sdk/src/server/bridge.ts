@@ -105,6 +105,7 @@ type TurnState = {
   clientRequestId: string;
   accepted: boolean;
   run?: Run;
+  pendingRun?: Promise<Run>;
   providerTurnId?: string;
   pending: TurnParams[];
   options: TurnParams["options"];
@@ -112,7 +113,6 @@ type TurnState = {
   steerFibers: Set<Fiber.Fiber<void, never>>;
   events: RunEvents;
   interrupted: boolean;
-  cancelRequested: boolean;
   ended: boolean;
   fiber?: Fiber.Fiber<void, never>;
 };
@@ -210,19 +210,32 @@ export function createSdkBridge(
       ]),
     );
 
+  const pendingRun = Effect.fn("CursorSdk.pendingRun")(function* (turn: TurnState) {
+    const pending = turn.pendingRun;
+
+    if (!pending) return turn.run;
+
+    // A rejected send produced no handle; executeTurn reports that failure.
+    return yield* foreign(() => pending).pipe(Effect.catch(() => Effect.succeed(undefined)));
+  });
+
   const closeSession = Effect.fn("CursorSdk.closeSession")(function* (session: Session) {
+    const turn = session.turn;
+
+    if (turn && !turn.ended) {
+      turn.interrupted = true;
+      // A successful stop reply lets the isolated bridge kill this process.
+      // Resolve run creation and cancellation before allowing that reply.
+      const run = yield* pendingRun(turn);
+
+      if (run && !session.cloud) yield* foreign(() => run.cancel());
+    }
+
     session.released = true;
 
-    if (session.turn) yield* Effect.forEach([...session.turn.steerFibers], Fiber.interrupt);
+    if (turn) yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
     tools.resolvePendingToolCalls(session, "The Cursor SDK session was released.");
-    yield* Effect.gen(function* () {
-      if (session.turn && !session.turn.ended) {
-        session.turn.interrupted = true;
-        const run = session.turn.run;
-
-        if (run && !session.cloud) yield* foreign(() => run.cancel());
-      }
-    }).pipe(
+    yield* Effect.void.pipe(
       Effect.ensuring(
         foreign(() => session.agent[Symbol.asyncDispose]()).pipe(Effect.catch(() => Effect.void)),
       ),
@@ -535,36 +548,24 @@ export function createSdkBridge(
 
     if (!session.cloud) sendOptions.local = { customTools: session.customTools };
 
-    const run = yield* foreign(() =>
-      session.agent.send(input.message, sendOptions).then(async (run) => {
-        // Stop can arrive while Cursor is still creating the run. Keep cleanup
-        // attached to the SDK promise even if BB interrupts the waiting fiber.
-        turn.run = run;
-
-        if (turn.cancelRequested || (session.released && !session.cloud)) await run.cancel();
-
-        if (session.released) await session.agent[Symbol.asyncDispose]();
-
-        return run;
-      }),
-    );
-
+    if (session.released || turn.interrupted) return;
+    const creating = session.agent.send(input.message, sendOptions);
+    turn.pendingRun = creating;
+    const run = yield* foreign(() => creating);
     turn.run = run;
-    const firstRun = turn.providerTurnId === undefined;
-    turn.providerTurnId ??= run.id;
 
     if (session.cloud) yield* session.cloud.markCreated();
+
+    // Stop owns cancellation and the terminal boundary once interruption begins.
+    if (turn.interrupted || session.released) return;
+
+    const firstRun = turn.providerTurnId === undefined;
+    turn.providerTurnId ??= run.id;
 
     if (firstRun)
       emit(session.threadId, [{ kind: "turn.open", providerTurnId: turn.providerTurnId }]);
     acceptInput(session, turn);
     session.lastInstructions = input.instructions;
-
-    if (turn.interrupted || session.released) {
-      finish(session, turn, "interrupted");
-
-      return;
-    }
 
     const cloudNote = (text: string) => {
       if (!text) return;
@@ -596,7 +597,9 @@ export function createSdkBridge(
     );
     const result = yield* foreign(() => run.wait());
 
-    if (!turn.ended && !session.released) {
+    if (turn.interrupted || session.released) return;
+
+    if (!turn.ended) {
       turn.events.finish(result);
 
       if (session.cloud && result.git?.branches.length)
@@ -650,7 +653,6 @@ export function createSdkBridge(
             );
         }),
         interrupted: false,
-        cancelRequested: false,
         ended: false,
       };
 
@@ -826,9 +828,8 @@ export function createSdkBridge(
         else if (session.turn && !session.turn.ended) {
           const turn = session.turn;
           turn.interrupted = true;
-          turn.cancelRequested = true;
           tools.resolvePendingToolCalls(session, "The turn was interrupted.");
-          const run = turn.run;
+          const run = yield* pendingRun(turn);
 
           if (run) yield* foreign(() => run.cancel());
           finish(session, turn, "interrupted");

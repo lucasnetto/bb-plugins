@@ -84,11 +84,16 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   let deferSteer = false;
   const steered: string[] = [];
   let cancelled = 0;
+  let cancelGate: Promise<void> | undefined;
+  let completeCancel: (() => void) | undefined;
   let disposed = 0;
   const disposal = Deferred.makeUnsafe<void>();
   const cancellation = Deferred.makeUnsafe<void>();
+  const cancelStarted = Deferred.makeUnsafe<void>();
   let sequence = 0;
-  const failures: Partial<Record<"models" | "send" | "stream" | "result", SdkError>> = {};
+
+  const failures: Partial<Record<"models" | "send" | "stream" | "result" | "cancel", SdkError>> =
+    {};
 
   const makeAgent = (agentId: string): SDKAgent => {
     const detach = new Set<() => void>();
@@ -164,6 +169,11 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
           },
           async cancel() {
             cancelled++;
+            await Effect.runPromise(Deferred.succeed(cancelStarted, undefined));
+
+            if (cancelGate) await cancelGate;
+
+            if (failures.cancel) throw failures.cancel;
             interrupted = true;
             release?.();
             await Effect.runPromise(Deferred.succeed(cancellation, undefined));
@@ -388,6 +398,12 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     executionOptions,
     sourceCalls: () => sourceCalls,
     completeSend: () => completeSend?.(),
+    deferCancellation: () => {
+      cancelGate = new Promise<void>((resolve) => {
+        completeCancel = resolve;
+      });
+    },
+    completeCancel: () => completeCancel?.(),
     remoteStatus: (status: "running" | "finished") => {
       remoteStatus = status;
     },
@@ -437,6 +453,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     cancelled: () => cancelled,
     disposed: () => disposed,
     waitForDisposal: () => Effect.runPromise(Deferred.await(disposal)),
+    waitForCancelStarted: () => Effect.runPromise(Deferred.await(cancelStarted)),
     waitForCancellation: () => Effect.runPromise(Deferred.await(cancellation)),
   };
 }
@@ -1380,22 +1397,96 @@ describe("cloud bridge", () => {
   );
 });
 
-test("stop during cloud launch cancels a run returned after the waiting fiber was released", async () => {
-  const f = fixture(undefined, true);
+test.each([false, true])(
+  "stop waits for run creation and cancellation (cloud=%s)",
+  async (cloud) => {
+    const f = fixture(undefined, cloud);
+    await f.init();
+    await f.start();
+    f.deferCancellation();
+    await f.turn("slow-send");
+    let stopped = false;
+
+    const stop = f
+      .request("thread/stop", {
+        threadId: "thread",
+        providerThreadId: cloud ? "bc-1" : "agent-1",
+        activeTurnId: null,
+        intent: "interrupt",
+      })
+      .then((reply) => {
+        stopped = true;
+
+        return reply;
+      });
+
+    await f.init();
+    expect(stopped).toBe(false);
+    expect(f.disposed()).toBe(0);
+    f.completeSend();
+    await f.waitForCancelStarted();
+    expect(stopped).toBe(false);
+    expect(f.disposed()).toBe(0);
+    f.completeCancel();
+    expect((await stop).error).toBeUndefined();
+    expect(f.cancelled()).toBe(1);
+    expect(f.disposed()).toBe(1);
+    expect(f.deltas().filter((delta) => delta.kind === "turn.boundary")).toHaveLength(1);
+  },
+);
+
+test.each([false, true])("release waits for pending launch (cloud=%s)", async (cloud) => {
+  const f = fixture(undefined, cloud);
   await f.init();
   await f.start();
   await f.turn("slow-send");
-  await f.request("thread/stop", {
+  let released = false;
+
+  const release = f
+    .request("thread/stop", {
+      threadId: "thread",
+      providerThreadId: cloud ? "bc-1" : "agent-1",
+      activeTurnId: null,
+      intent: "release",
+    })
+    .then((reply) => {
+      released = true;
+
+      return reply;
+    });
+
+  await f.init();
+  expect(released).toBe(false);
+  expect(f.disposed()).toBe(0);
+  f.completeSend();
+  expect((await release).error).toBeUndefined();
+  expect(f.cancelled()).toBe(cloud ? 0 : 1);
+  expect(f.disposed()).toBe(1);
+});
+
+test("failed cancellation keeps the session available for another stop", async () => {
+  const f = fixture();
+  await f.init();
+  await f.start();
+  await f.turn("hold");
+  await f.running();
+
+  const params = {
     threadId: "thread",
-    providerThreadId: "bc-1",
+    providerThreadId: "agent-1",
     activeTurnId: null,
     intent: "interrupt",
-  });
-  f.completeSend();
-  await f.waitForCancellation();
-  await f.settled();
-  expect(f.cancelled()).toBe(1);
-  expect(f.deltas().filter((delta) => delta.kind === "turn.boundary")).toHaveLength(1);
+  };
+
+  f.failures.cancel = new SdkError({ message: "Cancellation unavailable" });
+  expect((await f.request("thread/stop", params)).error?.message).toContain(
+    "Cancellation unavailable",
+  );
+  expect(f.disposed()).toBe(0);
+  expect(f.deltas().filter((delta) => delta.kind === "turn.boundary")).toHaveLength(0);
+  delete f.failures.cancel;
+  expect((await f.request("thread/stop", params)).error).toBeUndefined();
+  expect(f.disposed()).toBe(1);
 });
 
 test.each([false, true])(
