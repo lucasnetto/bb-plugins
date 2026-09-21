@@ -6,6 +6,8 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { createSdkBridge } from "./bridge.js";
+import { phaseEventSchema, type StartupPhase } from "../shared/diagnostics.js";
+import { phaseDeadlines, recordDiagnostic } from "./diagnostics.js";
 
 const messageSchema = z
   .object({
@@ -41,7 +43,9 @@ function launcher(moduleUrl: string): LaunchSession {
   return (context, receive, exited) => {
     const script = `
       const { createSdkBridge } = await import(${JSON.stringify(moduleUrl)});
-      const bridge = createSdkBridge({}, line => process.send?.(line));
+      const bridge = createSdkBridge({
+        phase: (threadId, event) => process.send?.(JSON.stringify({ jsonrpc: "2.0", method: "cursor/phase", params: { threadId, ...event } })),
+      }, line => process.send?.(line));
       bridge.start(${JSON.stringify(context)});
       process.on("message", line => bridge.handleLine(line));
       let closing = false;
@@ -114,6 +118,7 @@ export function createIsolatedBridge(
   write: (line: string) => void = (line) => process.stdout.write(`${line}\n`),
   launch: LaunchSession = launcher(moduleUrl),
   stopTimeoutMs = 10_000,
+  startupTimeouts: Partial<Record<StartupPhase, number>> = {},
 ) {
   const maintenance = createSdkBridge({}, write);
   let context: ProviderBridgeContext;
@@ -132,6 +137,9 @@ export function createIsolatedBridge(
     recycle?: boolean;
     stopTimer?: ReturnType<typeof setTimeout>;
     forcedStop?: boolean;
+    phase?: { name: StartupPhase; started: number };
+    deadline?: ReturnType<typeof setTimeout>;
+    timedOut?: string;
   };
 
   const sessions = new Map<string, Session>();
@@ -147,6 +155,15 @@ export function createIsolatedBridge(
     if (sessions.get(threadId) !== session) return;
     sessions.delete(threadId);
     clearTimeout(session.stopTimer);
+    clearTimeout(session.deadline);
+
+    if (!closing)
+      for (const id of session.pending.keys())
+        fail(
+          id,
+          "Cursor session closed before this request finished. The request was not replayed.",
+        );
+    session.pending.clear();
 
     for (const [id, callback] of callbacks) {
       if (callback.session === session) callbacks.delete(id);
@@ -159,6 +176,40 @@ export function createIsolatedBridge(
     });
   };
 
+  const watchPhase = (threadId: string, session: Session, name: StartupPhase) => {
+    clearTimeout(session.deadline);
+    session.phase = { name, started: Date.now() };
+    recordDiagnostic(context.dataDir, threadId, { phase: name, state: "started" });
+
+    // Cloud cleanup can wait on a remote cancellation. Killing its local process
+    // does not cancel the remote run and must never imply that it did.
+    if (name === "cleanup" && session.providerThreadId?.startsWith("bc-")) return;
+    session.deadline = setTimeout(() => {
+      const durationMs = Date.now() - (session.phase?.started ?? Date.now());
+      session.timedOut = `Cursor ${name} timed out after ${Math.round(durationMs / 1000)}s. The session process was stopped; the request was not replayed. Run bb cursor-sdk diagnostics ${threadId} for details.`;
+
+      const runtime = z
+        .object({
+          options: z
+            .object({ providerOptions: z.object({ runtime: z.string().optional() }).optional() })
+            .optional(),
+        })
+        .safeParse(session.construction?.params);
+
+      if (
+        session.providerThreadId?.startsWith("bc-") ||
+        runtime.data?.options?.providerOptions?.runtime === "cloud"
+      )
+        session.timedOut +=
+          " Remote Cloud work may still be running; check Cursor before retrying.";
+      recordDiagnostic(context.dataDir, threadId, { phase: name, state: "timed-out", durationMs });
+      // SDK create/send cannot be aborted reliably. Retain ownership until OS exit;
+      // never release a lease while an abandoned promise can still write a checkpoint.
+      void session.process.close();
+    }, startupTimeouts[name] ?? phaseDeadlines[name]);
+    session.deadline.unref();
+  };
+
   const open = (threadId: string, restore?: Message) => {
     const initId = `cursor-init-${++sequence}`;
     const resumeId = `cursor-resume-${++sequence}`;
@@ -168,11 +219,30 @@ export function createIsolatedBridge(
         context,
         (line) => {
           if (sessions.get(threadId) !== session) return;
+
+          if (session.timedOut) return;
           const message = messageSchema.parse(JSON.parse(line));
+
+          if (message.method === "cursor/phase") {
+            const event = phaseEventSchema.parse(message.params);
+
+            if (event.state === "started") watchPhase(threadId, session, event.phase);
+            else {
+              recordDiagnostic(context.dataDir, threadId, event);
+
+              if (session.phase?.name === event.phase) {
+                clearTimeout(session.deadline);
+                session.phase = undefined;
+              }
+            }
+
+            return;
+          }
 
           if (message.id === initId || message.id === resumeId) {
             if (message.error) {
               for (const id of session.pending.keys()) send({ ...message, id });
+              session.pending.clear();
               release(threadId, session);
 
               return;
@@ -186,7 +256,20 @@ export function createIsolatedBridge(
 
             session.ready = true;
 
-            for (const queued of session.queue.splice(0)) session.process.send(queued);
+            if (session.phase?.name === "process-start") {
+              recordDiagnostic(context.dataDir, threadId, {
+                phase: "process-start",
+                state: "succeeded",
+                durationMs: Date.now() - session.phase.started,
+              });
+              // Keep the watchdog until the first construction phase/reply.
+            }
+
+            for (const queued of session.queue.splice(0)) {
+              if (messageSchema.parse(JSON.parse(queued)).method === "turn/start")
+                watchPhase(threadId, session, "run-start");
+              session.process.send(queued);
+            }
 
             return;
           }
@@ -194,6 +277,9 @@ export function createIsolatedBridge(
           if (message.method && message.id != null) {
             const id = `cursor-callback-${++sequence}`;
             callbacks.set(id, { session, id: message.id });
+
+            // A host tool (including a user question) may legitimately wait.
+            if (session.phase?.name === "run-start") clearTimeout(session.deadline);
             send({ ...message, id });
 
             return;
@@ -208,7 +294,11 @@ export function createIsolatedBridge(
               .array(z.object({ kind: z.string(), status: z.string().optional() }))
               .parse(message.params?.deltas);
 
-            if (deltas.some((delta) => delta.kind === "turn.boundary")) session.active = false;
+            if (deltas.some((delta) => delta.kind === "turn.boundary")) {
+              session.active = false;
+              clearTimeout(session.deadline);
+              session.phase = undefined;
+            }
 
             if (
               deltas.some((delta) => delta.kind === "turn.boundary" && delta.status === "failed") &&
@@ -222,6 +312,11 @@ export function createIsolatedBridge(
           if (message.id != null) {
             const method = session.pending.get(message.id);
             session.pending.delete(message.id);
+
+            if (["thread/start", "thread/resume", "thread/fork"].includes(method ?? "")) {
+              clearTimeout(session.deadline);
+              session.phase = undefined;
+            }
 
             if (
               !message.error &&
@@ -242,7 +337,11 @@ export function createIsolatedBridge(
               });
             }
 
-            if (method === "turn/start" && message.error) session.active = false;
+            if (method === "turn/start" && message.error) {
+              session.active = false;
+              clearTimeout(session.deadline);
+              session.phase = undefined;
+            }
 
             if (
               (!message.error && (method === "thread/stop" || method === "thread/discard")) ||
@@ -259,6 +358,13 @@ export function createIsolatedBridge(
         () => {
           if (sessions.get(threadId) !== session) return;
 
+          if (session.phase && !session.timedOut)
+            recordDiagnostic(context.dataDir, threadId, {
+              phase: session.phase.name,
+              state: "process-exited",
+              durationMs: Date.now() - session.phase.started,
+            });
+
           if (session.active) {
             const boundary: Extract<ThreadDelta, { kind: "turn.boundary" }> = {
               kind: "turn.boundary",
@@ -269,6 +375,7 @@ export function createIsolatedBridge(
             if (!session.forcedStop)
               boundary.error = {
                 message:
+                  session.timedOut ??
                   "Cursor session process exited unexpectedly. The saved conversation can be resumed.",
               };
             send({
@@ -287,10 +394,12 @@ export function createIsolatedBridge(
             else
               fail(
                 id,
-                "Cursor session process exited unexpectedly. Send a new message to resume the saved conversation.",
+                session.timedOut ??
+                  "Cursor session process exited unexpectedly. Send a new message to resume the saved conversation.",
               );
           }
 
+          session.pending.clear();
           release(threadId, session);
         },
       ),
@@ -302,6 +411,7 @@ export function createIsolatedBridge(
     };
 
     sessions.set(threadId, session);
+    watchPhase(threadId, session, "process-start");
     session.process.send(JSON.stringify({ ...initialize, id: initId }));
 
     return session;
@@ -339,6 +449,19 @@ export function createIsolatedBridge(
 
         if (callback) {
           callbacks.delete(String(message.id));
+
+          if (
+            !callback.session.timedOut &&
+            callback.session.phase?.name === "run-start" &&
+            ![...callbacks.values()].some((value) => value.session === callback.session)
+          ) {
+            const entry = [...sessions.entries()].find(
+              ([, session]) => session === callback.session,
+            );
+
+            if (entry) watchPhase(entry[0], callback.session, "run-start");
+          }
+
           callback.session.process.send(JSON.stringify({ ...message, id: callback.id }));
         }
 
@@ -406,7 +529,11 @@ export function createIsolatedBridge(
         if (["thread/start", "thread/resume", "thread/fork"].includes(message.method ?? ""))
           session.construction = message;
 
-        if (message.method === "turn/start") session.active = true;
+        if (message.method === "turn/start") {
+          session.active = true;
+
+          if (session.ready) watchPhase(threadId, session, "run-start");
+        }
 
         if (
           ["thread/stop", "thread/discard"].includes(message.method ?? "") &&

@@ -118,7 +118,7 @@ test("keeps the saved catalog on refresh failure and reports cold failures", asy
 
   expect(await Effect.runPromise(next.get(path, "work", "secret"))).toEqual(saved);
   expect(await Effect.runPromise(next.get(path, "work", "secret"))).toEqual(saved);
-  expect(JSON.parse(await readFile((await files(path))[0], "utf8"))).toEqual(saved);
+  expect(JSON.parse(await readFile((await files(path))[0], "utf8"))).toMatchObject(saved);
   await expect(Effect.runPromise(next.get(path, "personal", "secret"))).rejects.toThrow("Offline");
 });
 
@@ -158,5 +158,67 @@ test("does not replace a saved catalog with an empty response", async () => {
   const next = cache(async () => []);
   expect(await Effect.runPromise(next.get(path, "work", "secret"))).toEqual(saved);
   await expect(Effect.runPromise(next.get(path, "personal", "secret"))).rejects.toThrow();
-  expect(JSON.parse(await readFile((await files(path))[0], "utf8"))).toEqual(saved);
+  expect(JSON.parse(await readFile((await files(path))[0], "utf8"))).toMatchObject(saved);
+});
+
+test("native startup uses persisted model parameters while discovery is offline", async () => {
+  const path = await directory();
+
+  const models: SDKModel[] = [
+    {
+      id: "param",
+      displayName: "Parameter model",
+      parameters: [{ id: "fast", values: [{ value: "true" }, { value: "false" }] }],
+      variants: [{ displayName: "Fast", params: [{ id: "fast", value: "true" }] }],
+    },
+  ];
+
+  await Effect.runPromise(cache(async () => models).native(path, "work", "secret"));
+
+  const offline = cache(async () => {
+    throw new Error("Offline");
+  });
+
+  expect(await Effect.runPromise(offline.native(path, "work", "secret"))).toEqual(models);
+  await expect(Effect.runPromise(offline.native(path, "work", "new-key"))).rejects.toThrow(
+    "Offline",
+  );
+});
+
+test("force refresh resolves a newly selected model and rejects over-age saved catalogs", async () => {
+  const path = await directory();
+  await seed(path);
+  const next = cache(async () => updated);
+  expect(await Effect.runPromise(next.native(path, "work", "secret", true))).toEqual(updated);
+  const file = (await files(path))[0];
+  const saved = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ ...saved, savedAt: 0 }));
+  await expect(
+    Effect.runPromise(
+      cache(async () => {
+        throw new Error("Offline");
+      }).native(path, "work", "secret"),
+    ),
+  ).rejects.toThrow("Offline");
+});
+
+test("cold model discovery has a deadline and a late response cannot write its cache", async () => {
+  const path = await directory();
+  const pending = Deferred.makeUnsafe<SDKModel[]>();
+
+  const next = createModelCache(
+    () =>
+      Effect.succeed({
+        Cursor: { models: { list: () => Effect.runPromise(Deferred.await(pending)) } },
+      }),
+    10,
+  );
+
+  cleanups.push(() => next.close());
+  await expect(Effect.runPromise(next.native(path, "work", "secret"))).rejects.toThrow(
+    "model discovery timed out",
+  );
+  Effect.runSync(Deferred.succeed(pending, updated));
+  next.close();
+  expect(await readdir(path)).toEqual([]);
 });

@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vite-plus/test";
 import { z } from "zod";
 import { createIsolatedBridge } from "../../src/server/isolated-bridge.js";
+import { readDiagnostics } from "../../src/server/diagnostics.js";
+import type { StartupPhase } from "../../src/shared/diagnostics.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 
@@ -22,7 +24,7 @@ const wireSchema = z.object({
 
 type Wire = z.infer<typeof wireSchema>;
 
-function fixture(stopTimeoutMs?: number) {
+function fixture(stopTimeoutMs?: number, startupTimeouts?: Partial<Record<StartupPhase, number>>) {
   const dir = mkdtempSync(join(tmpdir(), "cursor-isolation-"));
   const modulePath = join(dir, "fake-host.mjs");
   // Exercise actual Node child processes, IPC, inherited environment and
@@ -30,7 +32,7 @@ function fixture(stopTimeoutMs?: number) {
   writeFileSync(
     modulePath,
     `
-    export function createSdkBridge(_, write) {
+    export function createSdkBridge(deps, write) {
       let threadId;
       const send = message => write(JSON.stringify({ jsonrpc: "2.0", ...message }));
       return {
@@ -44,10 +46,20 @@ function fixture(stopTimeoutMs?: number) {
           if (m.method === "thread/start" || m.method === "thread/resume" || m.method === "thread/fork") {
             threadId = m.params.threadId;
             Object.assign(process.env, m.params.options.envVars);
+            if (process.env.BB_ISOLATION_TEST === "hang-catalog") {
+              deps.phase(threadId, { phase: "model-catalog", state: "started" });
+              send({ method: "test/ready", params: { pid: process.pid } });
+              return;
+            }
             send({ method: "thread/identity", params: { threadId, providerThreadId: m.params.providerThreadId ?? "agent-" + threadId } });
           }
           if (m.method === "turn/start") {
             if (!threadId) { send({ id: m.id, error: { message: "Session not restored" } }); return; }
+            if (process.env.BB_ISOLATION_TEST === "hang-run") {
+              deps.phase(threadId, { phase: "run-start", state: "started" });
+              send({ id: m.id, result: { accepted: true } });
+              return;
+            }
             send({ id: "tool-1", method: "item/tool/call", params: { threadId } });
           }
           if (m.method === "crash") process.exit(1);
@@ -72,6 +84,7 @@ function fixture(stopTimeoutMs?: number) {
     },
     undefined,
     stopTimeoutMs,
+    startupTimeouts,
   );
 
   bridge.start?.({ pluginId: "cursor-sdk", dataDir: dir, tempDir: dir });
@@ -111,12 +124,97 @@ function fixture(stopTimeoutMs?: number) {
     return waitFor((message) => message.id === requestId);
   };
 
-  return { request, send, waitFor, messages };
+  return { request, send, waitFor, messages, dir };
 }
 
 async function initialize(f: ReturnType<typeof fixture>) {
   await f.request("initialize", { protocolVersion: 2, client: { name: "test", version: "1" } });
 }
+
+test("a stalled startup reports its phase only after the child exits, then allows a new session", async () => {
+  const f = fixture(undefined, { "model-catalog": 20 });
+  await initialize(f);
+
+  const pending = f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "hang-catalog" } },
+  });
+
+  const ready = await f.waitFor((message) => message.method === "test/ready");
+  const pid = z.object({ pid: z.number() }).parse(ready.params).pid;
+  expect((await pending).error?.message).toContain("model-catalog timed out");
+  expect(() => process.kill(pid, 0)).toThrow();
+  expect(readDiagnostics(f.dir, "a")).toContainEqual(
+    expect.objectContaining({ phase: "model-catalog", state: "timed-out" }),
+  );
+  expect(f.messages.some((message) => message.method === "cursor/phase")).toBe(false);
+  expect(
+    (
+      await f.request("thread/start", {
+        threadId: "a",
+        options: { envVars: { BB_ISOLATION_TEST: "repaired" } },
+      })
+    ).error,
+  ).toBeUndefined();
+});
+
+test("a stalled run handle settles the accepted turn as failed without replaying it", async () => {
+  const f = fixture(undefined, { "run-start": 20 });
+  await initialize(f);
+  await f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "hang-run" } },
+  });
+  expect((await f.request("turn/start", { threadId: "a" })).error).toBeUndefined();
+  const boundary = await f.waitFor((message) => message.method === "thread/delta");
+  expect(boundary.params).toMatchObject({
+    deltas: [
+      {
+        kind: "turn.boundary",
+        status: "failed",
+        error: { message: expect.stringContaining("run-start timed out") },
+      },
+    ],
+  });
+  expect(readDiagnostics(f.dir, "a")).toContainEqual(
+    expect.objectContaining({ phase: "run-start", state: "timed-out" }),
+  );
+});
+
+test("a pending host tool can outlive run startup's deadline", async () => {
+  const f = fixture(undefined, { "run-start": 20, "model-catalog": 60 });
+  await initialize(f);
+  await f.request("thread/start", { threadId: "a", options: { envVars: {} } });
+  await f.request("turn/start", { threadId: "a" });
+  const callback = await f.waitFor((message) => message.method === "item/tool/call");
+
+  // Wait for another child's longer deadline, without relying on a sleep.
+  const blocked = await f.request("thread/start", {
+    threadId: "b",
+    options: { envVars: { BB_ISOLATION_TEST: "hang-catalog" } },
+  });
+
+  expect(blocked.error?.message).toContain("model-catalog timed out");
+  expect(readDiagnostics(f.dir, "a").some((event) => event.state === "timed-out")).toBe(false);
+  f.send({ id: callback.id, result: { accepted: true } });
+  expect(
+    (await f.waitFor((message) => message.method === "callback-result")).params?.threadId,
+  ).toBe("a");
+});
+
+test("stopping during construction settles the outstanding start request", async () => {
+  const f = fixture();
+  await initialize(f);
+
+  const pending = f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "hang-catalog" } },
+  });
+
+  await f.waitFor((message) => message.method === "test/ready");
+  expect((await f.request("thread/stop", { threadId: "a" })).error).toBeUndefined();
+  expect((await pending).error?.message).toContain("closed before this request finished");
+});
 
 test("concurrent sessions retain distinct environments through later turns and resume", async () => {
   const before = process.env.BB_ISOLATION_TEST;

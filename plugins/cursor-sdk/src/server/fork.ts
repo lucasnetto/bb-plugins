@@ -10,6 +10,7 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
   sourceId: string,
   cwd: string,
   resume: (agentId: string) => Promise<SDKAgent>,
+  target: LocalAgentStore = store,
 ) {
   const source = yield* foreign(() => store.agents.get({ agentId: sourceId }));
 
@@ -43,14 +44,14 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
           return yield* Effect.fail(
             new SdkError({ message: "The source checkpoint is incomplete. Cannot fork it." }),
           );
-        yield* foreign(() => store.checkpoints.create({ agentId, blobId, data }));
+        yield* foreign(() => target.checkpoints.create({ agentId, blobId, data }));
       }
 
       cursor = page.nextCursor;
     } while (cursor);
 
     const root = yield* foreign(() =>
-      store.checkpoints.get({ agentId, blobId: checkpoint.rootBlobId }),
+      target.checkpoints.get({ agentId, blobId: checkpoint.rootBlobId }),
     );
 
     if (!root)
@@ -74,7 +75,7 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
 
     const now = Date.now();
     yield* foreign(() =>
-      store.agents.create({
+      target.agents.create({
         agent: {
           ...source,
           agentId,
@@ -91,10 +92,10 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
   }).pipe(
     Effect.onError(() =>
       foreign(async () => {
-        await store.checkpoints.delete({ filter: { agentIds: [agentId] } });
+        await target.checkpoints.delete({ filter: { agentIds: [agentId] } });
 
-        if (await store.agents.get({ agentId }))
-          await store.agents.delete({ filter: { agentIds: [agentId] } });
+        if (await target.agents.get({ agentId }))
+          await target.agents.delete({ filter: { agentIds: [agentId] } });
       }).pipe(Effect.orDie),
     ),
   );

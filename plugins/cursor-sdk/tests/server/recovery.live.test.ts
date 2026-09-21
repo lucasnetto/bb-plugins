@@ -1,4 +1,15 @@
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { JSONL_LOCAL_AGENT_STORE_FILES } from "@cursor/sdk";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,7 +40,7 @@ const wireSchema = z.object({
 });
 
 test.skipIf(process.env.CURSOR_SDK_LIVE_RECOVERY !== "1")(
-  "a real SDK conversation survives child death and recalls its previous turn",
+  "a real conversation survives child death, legacy migration, and offline model discovery",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "cursor-recovery-live-"));
     const pluginRoot = resolve(import.meta.dirname, "../..");
@@ -44,7 +55,13 @@ test.skipIf(process.env.CURSOR_SDK_LIVE_RECOVERY !== "1")(
       wrapper,
       `
       import { createSdkBridge as create } from ${JSON.stringify(pathToFileURL(join(pluginRoot, "dist/host.js")).href)};
+      import { existsSync } from "node:fs";
+      import { Effect } from ${JSON.stringify(import.meta.resolve("effect"))};
+      import * as sdk from ${JSON.stringify(import.meta.resolve("@cursor/sdk"))};
       export function createSdkBridge(deps, write) {
+        if (existsSync(${JSON.stringify(join(directory, "offline-catalog"))})) {
+          deps.load = () => Effect.succeed({ ...sdk, Cursor: { ...sdk.Cursor, models: { list: async () => { throw new Error("Catalog intentionally offline"); } } } });
+        }
         const bridge = create(deps, write);
         return { ...bridge, handleLine(line) {
           if (JSON.parse(line).method === "test/crash") process.exit(1);
@@ -148,6 +165,37 @@ test.skipIf(process.env.CURSOR_SDK_LIVE_RECOVERY !== "1")(
         messages.flatMap((m) => m.params?.deltas ?? []).filter((d) => d.kind === "turn.boundary"),
       ).toEqual([expect.objectContaining({ status: "completed" })]);
       expect((await request("test/crash", { threadId: "live" }))?.error).toBeDefined();
+
+      // Recreate the old shared-store layout from this test's real checkpoint.
+      // Only temporary test data is changed; production conversations are untouched.
+      const profileRoot = join(directory, "conversations", "personal");
+
+      const locationFile = join(
+        profileRoot,
+        "locations",
+        (await readdir(join(profileRoot, "locations")))[0],
+      );
+
+      const location = z
+        .object({ directory: z.string().uuid() })
+        .parse(JSON.parse(await readFile(locationFile, "utf8")));
+
+      const savedFiles = new Set(await readdir(join(profileRoot, "sessions", location.directory)));
+
+      for (const name of Object.values(JSONL_LOCAL_AGENT_STORE_FILES))
+        if (savedFiles.has(name))
+          await copyFile(
+            join(profileRoot, "sessions", location.directory, name),
+            join(profileRoot, name),
+          );
+      await rm(locationFile);
+
+      const legacyAgents = await readFile(
+        join(profileRoot, JSONL_LOCAL_AGENT_STORE_FILES.agents),
+        "utf8",
+      );
+
+      await writeFile(join(directory, "offline-catalog"), "offline");
       messages.splice(0);
       expect(
         (
@@ -172,6 +220,10 @@ test.skipIf(process.env.CURSOR_SDK_LIVE_RECOVERY !== "1")(
           .flatMap((d) => (d.kind === "item.textDelta" ? [d.text] : []))
           .join(""),
       ).toContain("RECOVERY_CEDAR_7319");
+      expect(await readdir(join(profileRoot, "locations"))).toHaveLength(1);
+      expect(await readFile(join(profileRoot, JSONL_LOCAL_AGENT_STORE_FILES.agents), "utf8")).toBe(
+        legacyAgents,
+      );
     } finally {
       await bridge.onClose();
       await rm(directory, { recursive: true, force: true });

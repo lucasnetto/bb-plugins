@@ -33,7 +33,9 @@ import {
   type DynamicTool,
   type ProviderHealth,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { acquireLocalLease, coordinatedLocalStore } from "./local-state.js";
+import { acquireLocalLease } from "./local-state.js";
+import { conversationStores } from "./conversation-store.js";
+import type { PhaseEvent, StartupPhase } from "../shared/diagnostics.js";
 import { Cause, Deferred, Effect, Fiber, Stream } from "effect";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
@@ -143,6 +145,7 @@ export interface BridgeDependencies {
   key: (profile: Profile) => Effect.Effect<string, SdkError>;
   source: (cwd: string) => Effect.Effect<CloudSource, SdkError>;
   cleanupTimeoutMs: number;
+  phase: (threadId: string, event: PhaseEvent) => void;
 }
 
 export function createSdkBridge(
@@ -162,6 +165,33 @@ export function createSdkBridge(
   let initialized = false;
   let closing = false;
   const baseEnv = { ...process.env };
+
+  const phase = <A>(threadId: string, name: StartupPhase, effect: Effect.Effect<A, SdkError>) =>
+    Effect.gen(function* () {
+      const started = Date.now();
+      dependencies.phase?.(threadId, { phase: name, state: "started" });
+
+      return yield* effect.pipe(
+        Effect.tap(() =>
+          Effect.sync(() =>
+            dependencies.phase?.(threadId, {
+              phase: name,
+              state: "succeeded",
+              durationMs: Date.now() - started,
+            }),
+          ),
+        ),
+        Effect.onError(() =>
+          Effect.sync(() =>
+            dependencies.phase?.(threadId, {
+              phase: name,
+              state: "failed",
+              durationMs: Date.now() - started,
+            }),
+          ),
+        ),
+      );
+    });
 
   const emit = (threadId: string, deltas: ThreadDelta[]) => {
     if (!closing && deltas.length)
@@ -285,7 +315,10 @@ export function createSdkBridge(
 
   const closeSession = Effect.fn("CursorSdk.closeSession")(function* (session: Session) {
     if (!session.closing) {
-      const closing = Effect.runPromise(closeSessionOnce(session));
+      const closing = Effect.runPromise(
+        phase(session.threadId, "cleanup", closeSessionOnce(session)),
+      );
+
       session.closing = closing;
       void closing.catch(() => {
         if (session.closing === closing) session.closing = undefined;
@@ -374,6 +407,14 @@ export function createSdkBridge(
 
     constructing.add(params.threadId);
     let releaseLease: (() => void) | undefined;
+    let releaseSource: (() => void) | undefined;
+    let opening: Promise<SDKAgent> | undefined;
+
+    const nativeOpen = (operation: () => Promise<SDKAgent>) => {
+      opening = operation();
+
+      return opening;
+    };
 
     return yield* Effect.gen(function* () {
       const { profile, runtime } = optionsSchema.parse(params.options.providerOptions);
@@ -394,18 +435,37 @@ export function createSdkBridge(
               "Cursor Cloud cannot enforce tool denylists or replace its system prompt. Use the local Cursor SDK provider for this policy.",
           }),
         );
-      const sdk = yield* load(dataDir);
-      const apiKey = yield* key(profile);
-      const models = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
 
-      const model = params.options.model
-        ? resolveModel(
-            params.options.model,
-            models,
-            params.options.reasoningLevel,
-            params.options.serviceTier,
-          )
-        : undefined;
+      const step = <A>(name: StartupPhase, effect: Effect.Effect<A, SdkError>) =>
+        phase(params.threadId, name, effect);
+
+      const sdk = yield* step("sdk-load", load(dataDir));
+      const apiKey = yield* step("credentials", key(profile));
+      let models = yield* step("model-catalog", modelCache.native(dataDir, profile, apiKey));
+
+      const selectModel = () =>
+        params.options.model
+          ? resolveModel(
+              params.options.model,
+              models,
+              params.options.reasoningLevel,
+              params.options.serviceTier,
+            )
+          : undefined;
+
+      const model = yield* Effect.try({ try: selectModel, catch: sdkError }).pipe(
+        Effect.catch(() =>
+          Effect.gen(function* () {
+            // A cached catalog can predate a newly selected model/variant.
+            models = yield* step(
+              "model-catalog",
+              modelCache.native(dataDir, profile, apiKey, true),
+            );
+
+            return yield* Effect.try({ try: selectModel, catch: sdkError });
+          }),
+        ),
+      );
 
       if (!model)
         return yield* Effect.fail(
@@ -430,10 +490,19 @@ export function createSdkBridge(
       if (!isCloud) Object.assign(process.env, env);
       const storeDirectory = join(dataDir, "conversations", profile);
 
-      const store = coordinatedLocalStore(
-        new sdk.JsonlLocalAgentStore(storeDirectory),
+      const stores = conversationStores(
         storeDirectory,
+        (path) => new sdk.JsonlLocalAgentStore(path),
       );
+
+      if ("sourceProviderThreadId" in params)
+        releaseSource = acquireLocalLease(
+          storeDirectory,
+          `migration:${String(params.sourceProviderThreadId)}`,
+        );
+
+      const allocated = !isCloud && !("providerThreadId" in params) ? stores.allocate() : undefined;
+      let store = allocated?.store;
 
       const claim = (agentId: string) => {
         releaseLease = acquireLocalLease(storeDirectory, `agent:${agentId}`);
@@ -444,11 +513,16 @@ export function createSdkBridge(
       if (!isCloud && "providerThreadId" in params) {
         const agentId = String(params.providerThreadId);
         claim(agentId);
-        const saved = yield* foreign(() => store.agents.get({ agentId }));
+        store = yield* step(
+          "checkpoint-load",
+          foreign(() => stores.open(agentId)),
+        );
+        const localStore = store;
+        const saved = yield* foreign(() => localStore.agents.get({ agentId }));
 
         if (saved?.activeRunId) {
           const runId = saved.activeRunId;
-          const run = yield* foreign(() => store.runs.get({ agentId, runId }));
+          const run = yield* foreign(() => localStore.runs.get({ agentId, runId }));
           recoverLocalRun = run?.status === "running" || run?.status === "queued";
         }
       }
@@ -466,36 +540,56 @@ export function createSdkBridge(
         options.systemPrompt = params.options.instructions;
 
       const cloud = isCloud
-        ? yield* openCloudSession({
-            sdk,
-            dataDir,
-            profile,
-            threadId: params.threadId,
-            options: { apiKey, model, mode: options.mode },
-            source: () => (dependencies.source ?? readCloudSource)(params.cwd),
-            providerThreadId:
-              "providerThreadId" in params ? String(params.providerThreadId) : undefined,
-          })
+        ? yield* step(
+            "providerThreadId" in params ? "agent-resume" : "agent-create",
+            openCloudSession({
+              sdk,
+              dataDir,
+              profile,
+              threadId: params.threadId,
+              options: { apiKey, model, mode: options.mode },
+              source: () => (dependencies.source ?? readCloudSource)(params.cwd),
+              providerThreadId:
+                "providerThreadId" in params ? String(params.providerThreadId) : undefined,
+            }),
+          )
         : undefined;
 
       const agent = cloud
         ? cloud.agent
         : "sourceProviderThreadId" in params
-          ? yield* forkLocalAgent(
-              store,
-              String(params.sourceProviderThreadId),
-              params.cwd,
-              (id) => {
-                claim(id);
+          ? yield* step(
+              "agent-fork",
+              forkLocalAgent(
+                yield* step(
+                  "checkpoint-load",
+                  foreign(() => stores.open(String(params.sourceProviderThreadId), false)),
+                ),
+                String(params.sourceProviderThreadId),
+                params.cwd,
+                (id) => {
+                  claim(id);
 
-                return sdk.Agent.resume(id, options);
-              },
+                  return nativeOpen(() => sdk.Agent.resume(id, options));
+                },
+                store,
+              ),
             )
           : "providerThreadId" in params
-            ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
-            : yield* foreign(() => sdk.Agent.create(options));
+            ? yield* step(
+                "agent-resume",
+                foreign(() =>
+                  nativeOpen(() => sdk.Agent.resume(String(params.providerThreadId), options)),
+                ),
+              )
+            : yield* step(
+                "agent-create",
+                foreign(() => nativeOpen(() => sdk.Agent.create(options))),
+              );
 
       if (!isCloud && !releaseLease) claim(agent.agentId);
+
+      if (allocated) yield* foreign(() => allocated.publish(agent.agentId));
 
       const session: Session = {
         cloud,
@@ -522,8 +616,26 @@ export function createSdkBridge(
 
       return { providerThreadId: agent.agentId };
     }).pipe(
-      Effect.onError(() => Effect.sync(() => releaseLease?.())),
-      Effect.ensuring(Effect.sync(() => constructing.delete(params.threadId))),
+      Effect.onError(() =>
+        phase(
+          params.threadId,
+          "cleanup",
+          foreign(async () => {
+            // Interrupted SDK construction can finish late. Dispose it before giving
+            // up ownership; the parent kills this process if construction never settles.
+            const opened = await opening?.catch(() => undefined);
+
+            if (opened) await opened[Symbol.asyncDispose]();
+            releaseLease?.();
+          }),
+        ).pipe(Effect.orDie),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          constructing.delete(params.threadId);
+          releaseSource?.();
+        }),
+      ),
     );
   });
 
@@ -689,7 +801,13 @@ export function createSdkBridge(
     const creating = session.agent.send(input.message, sendOptions);
     session.recoverLocalRun = false;
     turn.pendingRun = creating;
-    const run = yield* foreign(() => creating);
+
+    const run = yield* phase(
+      session.threadId,
+      "run-start",
+      foreign(() => creating),
+    );
+
     turn.run = run;
 
     if (session.cloud) yield* session.cloud.markCreated();
@@ -835,7 +953,7 @@ export function createSdkBridge(
               yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
 
               if (turn.run)
-                yield* cancelRun(session, turn).pipe(
+                yield* phase(session.threadId, "cleanup", cancelRun(session, turn)).pipe(
                   Effect.timeout(cleanupTimeoutMs),
                   Effect.catch(() => Effect.void),
                 );

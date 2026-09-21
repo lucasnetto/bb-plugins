@@ -32,7 +32,9 @@
     },
     "server": "./src/server/server.ts",
     "host": "./src/server/host.ts",
-    "skills": [],
+    "skills": [
+      "skills"
+    ],
     "app": "./src/ui/app.tsx"
   }
 }

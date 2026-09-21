@@ -24,21 +24,26 @@ Relevant reference files:
 
 ## Other useful patterns and limits
 
-**Transcript reconstruction is the most valuable remaining recovery feature.**
+**Transcript reconstruction now has an explicit BB plugin workflow.**
 The reference can bootstrap a fresh native agent from Pi's complete current
 transcript when resume fails. BB's current provider-bridge construction schema
 supplies an identity, workspace, options, and tools, but no historical transcript.
-Silently creating a replacement would lose the conversation. This needs a
-supported transcript handoff or an explicit plugin recovery workflow. The fixes
-above preserve valid checkpoints; they cannot reconstruct missing or corrupt ones.
+The server-side plugin can read `threads.events.list` and use `threads.spawn`.
+`bb cursor-sdk recover` uses those public APIs to create a visible child in the
+same environment, seeded with bounded user/assistant history and attachment
+references. It requests a summary before further work, keeps the original intact,
+and records a receipt to avoid duplicate spawns. Native checkpoint/tool state and
+attachment contents cannot be reconstructed. `--preview` exposes the exact prompt;
+`--new` explicitly requests another recovery if necessary.
 See [`cursor-session-send-policy.ts`](https://github.com/fitchmultz/pi-cursor-sdk/blob/cac6254231733a317c94501d72a48d317cb873cc/src/cursor-session-send-policy.ts).
 
 **Per-session stores reduce contention and failure scope.** The reference uses a
-separate SQLite store for each Pi session. BB currently uses a shared profile JSONL
-store with cross-process coordination and per-agent ownership. Moving to isolated
-stores is worth a separate migration that preserves existing identities, legacy
-store lookup, and forks; changing the directory for new code alone would strand
-old threads. See [`cursor-session-store.ts`](https://github.com/fitchmultz/pi-cursor-sdk/blob/cac6254231733a317c94501d72a48d317cb873cc/src/cursor-session-store.ts).
+separate SQLite store for each Pi session. BB now uses a separate JSONL store and
+I/O lock per conversation, retaining profile-level agent ownership for compatibility.
+Legacy conversations migrate on resume by copying public store records, validating
+the checkpoint root, and atomically publishing their location. Legacy data stays
+untouched. Forks read the source store and copy into a new isolated store. Damaged
+location records never fall back to stale history. See [`cursor-session-store.ts`](https://github.com/fitchmultz/pi-cursor-sdk/blob/cac6254231733a317c94501d72a48d317cb873cc/src/cursor-session-store.ts).
 
 **SDK exceptions can escape the run promise.** The reference recognizes narrowly
 identified Cursor abort, closed-writable, and transport errors at process scope.
@@ -62,12 +67,21 @@ adopt without reproducing the exact startup failure. Local Stop is now bounded
 even when that initialization never returns. See
 [`cursor-mcp-timeout-override.ts`](https://github.com/fitchmultz/pi-cursor-sdk/blob/cac6254231733a317c94501d72a48d317cb873cc/src/cursor-mcp-timeout-override.ts).
 
-**Transport configuration and catalog caching are useful follow-ups.** The
+**Native catalog caching is implemented; transport configuration remains optional.** The
 reference offers HTTP/1.1 for local agents and uses a cached native model catalog
-at startup. BB caches the picker catalog but still fetches native models during
-session construction. Network failures there can prevent resume before any prompt
-is sent. These changes need focused transport evidence and cache validation rather
-than an unconditional protocol switch or model guess.
+at startup. BB now persists validated native model parameters/variants alongside
+the picker catalog, partitioned by profile, SDK version, and credential digest.
+Fresh-enough saved catalogs permit startup during discovery outages, with a
+bounded background refresh. Unknown selections force discovery. HTTP/1.1 remains
+a possible follow-up when transport evidence warrants it.
+
+**Startup deadlines are enforced outside the SDK process.** Phase notifications
+cover SDK loading, credentials, discovery, checkpoint loading, native construction,
+run-handle creation and cleanup. The parent records bounded, payload-free diagnostics
+and terminates a timed-out child before permitting replacement. Run-start waits
+pause for host tool callbacks; normal streaming has no silence deadline. Cloud
+termination never claims remote cancellation. `bb cursor-sdk diagnostics` resolves
+the owning host and bridge directory through public BB SDK APIs.
 
 ## Verification
 
@@ -83,3 +97,11 @@ completed marker turn, an abrupt child exit was followed by a new message that
 restored the identical agent ID and recalled the marker. The SDK emitted warnings
 about ancillary Cursor cache/transcript paths denied by the test sandbox; the
 plugin's temporary conversation store persisted and resumed successfully.
+
+The follow-up verification passed 153 offline tests (two opt-in live tests skipped),
+lint/type/format checks for every changed TypeScript file, and the plugin build.
+The extended live Personal/Composer 2.5 check also passed: after child death it
+recreated legacy storage from the test's real checkpoint and forced model discovery
+offline. Resume migrated the store, retained the native identity, recalled the marker,
+and left the legacy backup unchanged. Transcript-to-new-thread recovery and remote
+diagnostics routing are covered with BB's public SDK harnesses.

@@ -5,7 +5,7 @@ import type {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_formatCommand } from "@get-bb/plugin-sdk/provider-bridge";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Effect } from "effect";
 import { z } from "zod";
@@ -22,6 +22,17 @@ export type SdkModule = {
 const runtimeDir = (dataDir: string) => join(dataDir, `runtime-${SDK_VERSION}`);
 
 const packageDir = (dataDir: string) => join(runtimeDir(dataDir), "node_modules/@cursor/sdk");
+
+// Locate our own bridge directory through the public installation descriptor.
+// Host RPC dataDir and provider bridge dataDir are distinct BB-owned directories.
+export function bridgeDirectoryFromRuntime(runtimePackagePath: string) {
+  const root = dirname(dirname(dirname(dirname(resolve(runtimePackagePath)))));
+
+  if (packageDir(root) !== resolve(runtimePackagePath))
+    throw new Error("Cursor SDK installation path does not match this plugin's runtime layout.");
+
+  return root;
+}
 
 export function installCommand(dataDir: string): ProviderInstallationCommand {
   const args = [

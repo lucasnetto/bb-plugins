@@ -1,11 +1,12 @@
 import { reasoningLevelSchema } from "@get-bb/plugin-sdk/provider-bridge";
+import type { SDKModel } from "@cursor/sdk";
 import { Cache, Effect, Exit } from "effect";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { legacyModelCatalog, modelCatalog } from "./models.js";
-import { foreign, profileSchema, type Profile, type SdkError } from "./operations.js";
+import { foreign, profileSchema, SdkError, type Profile } from "./operations.js";
 import { SDK_VERSION, type SdkModule } from "./runtime.js";
 
 const modelSchema = z.object({
@@ -25,6 +26,41 @@ const catalogSchema = z.object({
   selectedOnlyModels: z.array(modelSchema),
 });
 
+const parameterValue = z.object({ id: z.string(), value: z.string() });
+
+const nativeModelSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string(),
+  description: z.string().optional(),
+  aliases: z.array(z.string()).optional(),
+  parameters: z
+    .array(
+      z.object({
+        id: z.string(),
+        displayName: z.string().optional(),
+        values: z.array(z.object({ value: z.string(), displayName: z.string().optional() })),
+      }),
+    )
+    .optional(),
+  variants: z
+    .array(
+      z.object({
+        params: z.array(parameterValue),
+        displayName: z.string(),
+        description: z.string().optional(),
+        isDefault: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+});
+
+const savedSchema = catalogSchema.extend({
+  savedAt: z.number().finite(),
+  nativeModels: z.array(nativeModelSchema).min(1),
+});
+
+const MAX_SAVED_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 const lookupSchema = z.object({ dataDir: z.string(), profile: profileSchema, apiKey: z.string() });
 
 // Cache keys contain credentials only in process memory. Disk paths contain a
@@ -33,6 +69,7 @@ export function createModelCache(
   load: (
     dataDir: string,
   ) => Effect.Effect<{ Cursor: Pick<SdkModule["Cursor"], "models"> }, SdkError>,
+  timeoutMs = 15_000,
 ) {
   const controllers = new Set<AbortController>();
   let closed = false;
@@ -41,17 +78,40 @@ export function createModelCache(
     join(
       dataDir,
       "model-catalogs",
-      `v1-${SDK_VERSION}-${profile}-${createHash("sha256").update(apiKey).digest("hex")}.json`,
+      `v2-${SDK_VERSION}-${profile}-${createHash("sha256").update(apiKey).digest("hex")}.json`,
     );
 
   const refresh = Effect.fn("CursorSdk.refreshModels")(function* (cacheKey: string) {
     const { dataDir, profile, apiKey } = lookupSchema.parse(JSON.parse(cacheKey));
     const sdk = yield* load(dataDir);
-    const sdkModels = yield* foreign(() => sdk.Cursor.models.list({ apiKey }));
+
+    const sdkModels = yield* foreign(async () =>
+      z
+        .array(nativeModelSchema)
+        .min(1)
+        .parse(await sdk.Cursor.models.list({ apiKey })),
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: timeoutMs,
+        orElse: () =>
+          Effect.fail(
+            new SdkError({
+              code: "model_catalog_timeout",
+              message: "Cursor model discovery timed out.",
+            }),
+          ),
+      }),
+    );
+
     const models = modelCatalog(sdkModels);
 
     const catalog = yield* foreign(async () =>
-      catalogSchema.parse({ models, selectedOnlyModels: legacyModelCatalog(sdkModels, models) }),
+      savedSchema.parse({
+        models,
+        selectedOnlyModels: legacyModelCatalog(sdkModels, models),
+        nativeModels: sdkModels,
+        savedAt: Date.now(),
+      }),
     );
 
     const file = fileFor(dataDir, profile, apiKey);
@@ -78,20 +138,28 @@ export function createModelCache(
     }),
   );
 
-  const get = Effect.fn("CursorSdk.cachedModels")(function* (
+  const lookup = Effect.fn("CursorSdk.cachedModels")(function* (
     dataDir: string,
     profile: Profile,
     apiKey: string,
+    force = false,
   ) {
     const cacheKey = JSON.stringify({ dataDir, profile, apiKey });
 
     const saved = yield* foreign(async () =>
-      catalogSchema.parse(JSON.parse(await readFile(fileFor(dataDir, profile, apiKey), "utf8"))),
+      savedSchema.parse(JSON.parse(await readFile(fileFor(dataDir, profile, apiKey), "utf8"))),
     ).pipe(Effect.catch(() => Effect.succeed(null)));
 
+    if (force) yield* Cache.invalidate(cache, cacheKey);
     const lookup = Cache.get(cache, cacheKey);
 
-    if (!saved) return yield* lookup;
+    if (
+      force ||
+      !saved ||
+      saved.savedAt > Date.now() ||
+      Date.now() - saved.savedAt > MAX_SAVED_AGE_MS
+    )
+      return yield* lookup;
 
     if (!closed) {
       const controller = new AbortController();
@@ -106,7 +174,17 @@ export function createModelCache(
   });
 
   return {
-    get,
+    get: (dataDir: string, profile: Profile, apiKey: string) =>
+      lookup(dataDir, profile, apiKey).pipe(
+        Effect.map(({ models, selectedOnlyModels }) => ({ models, selectedOnlyModels })),
+      ),
+    native: (
+      dataDir: string,
+      profile: Profile,
+      apiKey: string,
+      force = false,
+    ): Effect.Effect<SDKModel[], SdkError> =>
+      lookup(dataDir, profile, apiKey, force).pipe(Effect.map((catalog) => catalog.nativeModels)),
     close() {
       closed = true;
 
