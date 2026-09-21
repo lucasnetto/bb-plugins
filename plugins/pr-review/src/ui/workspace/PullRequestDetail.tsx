@@ -630,6 +630,7 @@ export function PullRequestDetail({
             >
               <GithubMarkdown
                 content={detail.body.trim() ? detail.body : "_No description provided._"}
+                bodyHTML={detail.bodyHTML}
               />
             </Section>
             <div ref={checks}>
@@ -822,7 +823,7 @@ function ActivityList({
                   <time dateTime={entry.createdAt}>{relativeTime(entry.createdAt)}</time>
                 )}
               </div>
-              {entry.body && <GithubMarkdown content={entry.body} />}
+              {entry.body && <GithubMarkdown content={entry.body} bodyHTML={entry.bodyHTML} />}
             </div>
           </li>
         ))}

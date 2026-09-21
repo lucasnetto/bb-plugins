@@ -107,6 +107,7 @@ const graphComment = Schema.Struct({
   createdAt: Schema.String,
   id: Schema.String,
   body: Schema.String,
+  bodyHTML: Schema.optionalKey(Schema.String),
   url: Schema.String,
   author: Schema.NullOr(user),
   pullRequestReview: Schema.NullOr(Schema.Struct({ databaseId: Schema.Number })),
@@ -131,7 +132,7 @@ const graphThread = Schema.Struct({
 });
 
 const commentFields =
-  "nodes { databaseId createdAt id body url author { login } pullRequestReview { databaseId } } pageInfo { hasNextPage endCursor }";
+  "nodes { databaseId createdAt id body bodyHTML url author { login } pullRequestReview { databaseId } } pageInfo { hasNextPage endCursor }";
 
 const threadQuery = `query($owner:String!,$name:String!,$number:Int!,$after:String) {
   repository(owner:$owner,name:$name) { pullRequest(number:$number) {
@@ -178,6 +179,7 @@ export const githubReview = Effect.fn("GithubReview.get")(function* (root: strin
             createdAt: c.createdAt,
             node_id: c.id,
             body: c.body,
+            bodyHTML: c.bodyHTML,
             path: thread.path,
             outdated: thread.isOutdated,
             threadId: thread.id,

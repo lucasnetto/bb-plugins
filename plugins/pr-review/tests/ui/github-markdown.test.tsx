@@ -133,3 +133,26 @@ it("removes active HTML, event handlers, styles and unsafe URLs", async () => {
     view.unmount();
   }
 });
+
+it("renders signed attachment URLs from GitHub HTML and still sanitizes it", async () => {
+  installTestPluginRuntime();
+  const { GithubMarkdown } = await import("../../src/ui/components/GithubMarkdown");
+  const signed = "https://private-user-images.githubusercontent.com/1/image.png?jwt=test";
+  const view = render(
+    <GithubMarkdown
+      content="![Before](https://github.com/user-attachments/assets/private)"
+      bodyHTML={`<table><tr><td><img src="${signed}" alt="Before" onerror="alert(1)"></td></tr></table><script>alert(1)</script>`}
+    />,
+  );
+  try {
+    expect(view.getByRole("img", { name: "Before" }).getAttribute("src")).toBe(signed);
+    expect(view.getByRole("table")).toBeTruthy();
+    expect(view.container.querySelector("script, [onerror]")).toBeNull();
+    view.rerender(<GithubMarkdown content="![Public](https://example.com/image.png)" />);
+    expect(view.getByRole("img", { name: "Public" }).getAttribute("src")).toBe(
+      "https://example.com/image.png",
+    );
+  } finally {
+    view.unmount();
+  }
+});

@@ -117,7 +117,7 @@ export function GithubReviewComment({
             </Button>
           </>
         ) : (
-          <ReviewCommentBody content={comment.body} />
+          <ReviewCommentBody content={comment.body} bodyHTML={comment.bodyHTML} />
         )}
         {deleting && (
           <div className="space-y-2" role="group" aria-label="Delete comment">

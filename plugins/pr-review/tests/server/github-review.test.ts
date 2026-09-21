@@ -65,6 +65,7 @@ function fixture(pending = true, published = false) {
                                 createdAt: "2026-09-15T18:00:00Z",
                                 id: comment.node_id,
                                 body: comment.body,
+                                bodyHTML: "<p>draft</p>",
                                 url,
                                 author: comment.user,
                                 pullRequestReview: { databaseId: review.id },
@@ -436,4 +437,23 @@ test("rejects stale, unrelated, blank and unauthorized comment actions before wr
     ).rejects.toThrow();
     expect(f.writes).toHaveLength(0);
   }
+});
+
+test("rendered image URL refreshes preserve the pending review fingerprint", async () => {
+  const { run } = fixture();
+  const state = await runHost(githubReview("/repo", url), undefined, run);
+  expect(state.comments[0]?.bodyHTML).toBe("<p>draft</p>");
+  const refreshed = {
+    ...state,
+    comments: state.comments.map((entry) => ({
+      ...entry,
+      bodyHTML: '<img src="https://example.com/refreshed.png">',
+    })),
+  };
+  expect(reviewFingerprint(refreshed)).toBe(reviewFingerprint(state));
+  const edited = {
+    ...state,
+    comments: state.comments.map((entry) => ({ ...entry, body: "edited" })),
+  };
+  expect(reviewFingerprint(edited)).not.toBe(reviewFingerprint(state));
 });

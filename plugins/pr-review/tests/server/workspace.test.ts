@@ -339,3 +339,31 @@ it("propagates GraphQL state mutation errors instead of reporting success", asyn
     ),
   ).rejects.toThrow("Permission revoked");
 });
+
+it("preserves editable Markdown alongside GitHub HTML with resolved images", async () => {
+  const body = "![Before](https://github.com/user-attachments/assets/private)";
+  const bodyHTML =
+    '<img src="https://private-user-images.githubusercontent.com/1/image.png?jwt=test" alt="Before">';
+  const result = await runHost(
+    prOverview("/repo", overview.url),
+    undefined,
+    async (_root, program, _args, _signal, input) => {
+      if (program === "git") return "https://github.com/other/repo.git";
+      expect(JSON.parse(input ?? "{}").query).toContain("bodyHTML");
+      return JSON.stringify(rawOverview({ body, bodyHTML }));
+    },
+  );
+  expect(result.body).toBe(body);
+  expect(result.bodyHTML).toBe(bodyHTML);
+
+  const timeline = await runHost(
+    prTimeline("/repo", overview.url),
+    undefined,
+    async (_root, _program, args) => {
+      expect(args).toContain("Accept: application/vnd.github.full+json");
+      return JSON.stringify([{ id: 1, event: "commented", body, body_html: bodyHTML }]);
+    },
+  );
+  expect(timeline.entries[0]?.body).toBe(body);
+  expect(timeline.entries[0]?.bodyHTML).toBe(bodyHTML);
+});

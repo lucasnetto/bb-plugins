@@ -10,6 +10,7 @@ export const githubCommentSchema = Schema.Struct({
   id,
   node_id: Schema.String,
   body,
+  bodyHTML: Schema.optionalKey(Schema.String),
   path: Schema.String,
   outdated: Schema.Boolean,
   threadId: Schema.String,
@@ -111,6 +112,8 @@ export function reviewFingerprint(state: GithubReviewState) {
   return JSON.stringify([
     state.head,
     state.pending,
-    state.comments.filter((c) => c.pull_request_review_id === state.pending?.id),
+    state.comments
+      .filter((c) => c.pull_request_review_id === state.pending?.id)
+      .map(({ bodyHTML: _bodyHTML, ...comment }) => comment),
   ]);
 }

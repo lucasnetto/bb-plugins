@@ -31,7 +31,13 @@ type WorkspaceApiBody =
   | { labels: string[] }
   | { reviewers: string[]; team_reviewers: string[] };
 
-export const api = (root: string, path: string, method = "GET", body?: WorkspaceApiBody) =>
+export const api = (
+  root: string,
+  path: string,
+  method = "GET",
+  body?: WorkspaceApiBody,
+  accept?: string,
+) =>
   command(
     root,
     "gh",
@@ -42,6 +48,7 @@ export const api = (root: string, path: string, method = "GET", body?: Workspace
       "--method",
       method,
       path,
+      ...(accept ? ["--header", `Accept: ${accept}`] : []),
       ...(body === undefined ? [] : ["--input", "-"]),
     ],
     body === undefined ? undefined : JSON.stringify(body),
@@ -119,7 +126,7 @@ export function checkState(value: string | null | undefined): Check["state"] {
 export const OVERVIEW_QUERY = `query($owner:String!,$name:String!,$number:Int!){
   viewer{login}
   repository(owner:$owner,name:$name){viewerPermission mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
-    pullRequest(number:$number){id url number title body state isDraft updatedAt createdAt mergedAt closedAt
+    pullRequest(number:$number){id url number title body bodyHTML state isDraft updatedAt createdAt mergedAt closedAt
       author{login avatarUrl} headRefName baseRefName headRefOid baseRefOid additions deletions changedFiles
       mergeable mergeStateStatus reviewDecision viewerCanUpdate viewerCanUpdateBranch autoMergeRequest{enabledAt}
       labels(first:100){nodes{name color}}
@@ -146,6 +153,7 @@ const overviewRaw = z.object({
       number: z.number(),
       title: z.string(),
       body: z.string(),
+      bodyHTML: z.string().optional(),
       state: z.enum(["OPEN", "CLOSED", "MERGED"]),
       mergedAt: z.string().nullable().optional(),
       closedAt: z.string().nullable().optional(),
@@ -438,6 +446,7 @@ const rawActivity = z.object({
     .nullable()
     .optional(),
   body: z.string().nullable().optional(),
+  body_html: z.string().nullable().optional(),
   state: z.string().nullish(),
   created_at: z.string().nullable().optional(),
   submitted_at: z.string().nullable().optional(),
@@ -460,6 +469,9 @@ export const prTimeline = Effect.fn("PrWorkspace.timeline")(function* (
   const raw = yield* api(
     root,
     `repos/${ref.repository}/issues/${ref.number}/timeline?per_page=100&page=${page}`,
+    "GET",
+    undefined,
+    "application/vnd.github.full+json",
   );
 
   const rows = yield* json(z.array(rawActivity), raw);
@@ -485,6 +497,7 @@ export const prTimeline = Effect.fn("PrWorkspace.timeline")(function* (
             }
           : null,
         body: entry.body ?? "",
+        bodyHTML: entry.body_html ?? undefined,
         createdAt: entry.created_at ?? entry.submitted_at ?? entry.author?.date ?? "",
         url:
           entry.html_url ??

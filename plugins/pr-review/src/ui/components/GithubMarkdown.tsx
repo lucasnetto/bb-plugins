@@ -19,9 +19,12 @@ const components: Components = {
 
 export const GithubMarkdown = memo(function GithubMarkdown({
   content,
+  bodyHTML,
   className,
 }: {
   content: string;
+  // GitHub resolves private attachment URLs in this authenticated rendering.
+  bodyHTML?: string;
   className?: string;
 }) {
   return (
@@ -31,7 +34,7 @@ export const GithubMarkdown = memo(function GithubMarkdown({
         rehypePlugins={rehypePlugins}
         components={components}
       >
-        {content}
+        {bodyHTML || content}
       </ReactMarkdown>
     </div>
   );
