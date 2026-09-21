@@ -115,6 +115,7 @@ type TurnState = {
   steers: Set<Deferred.Deferred<void>>;
   steerFibers: Set<Fiber.Fiber<void, never>>;
   events: RunEvents;
+  toolEpoch: object;
   interrupted: boolean;
   ended: boolean;
   fiber?: Fiber.Fiber<void, never>;
@@ -131,7 +132,7 @@ type Session = {
   agent: SDKAgent;
   instructions?: string;
   lastInstructions?: string;
-  customTools: Record<string, SDKCustomTool>;
+  toolDefinitions: DynamicTool[];
   env: Record<string, string>;
   turn?: TurnState;
   released: boolean;
@@ -141,6 +142,7 @@ export interface BridgeDependencies {
   load: (dataDir: string) => Effect.Effect<SdkModule, SdkError>;
   key: (profile: Profile) => Effect.Effect<string, SdkError>;
   source: (cwd: string) => Effect.Effect<CloudSource, SdkError>;
+  cleanupTimeoutMs: number;
 }
 
 export function createSdkBridge(
@@ -149,6 +151,7 @@ export function createSdkBridge(
 ) {
   const load = dependencies.load ?? loadSdk;
   const key = dependencies.key ?? readApiKey;
+  const cleanupTimeoutMs = dependencies.cleanupTimeoutMs ?? 5000;
   const modelCache = createModelCache(load);
   const io = createBridgeIo<unknown>({ write });
   const tools = createPendingToolCallTracker({ sendToolCall: io.send });
@@ -182,22 +185,37 @@ export function createSdkBridge(
   const customTools = (
     definitions: DynamicTool[],
     session: Session,
-  ): Record<string, SDKCustomTool> =>
-    Object.fromEntries(
+    turn: TurnState,
+  ): Record<string, SDKCustomTool> => {
+    const epoch = turn.toolEpoch;
+
+    return Object.fromEntries(
       definitions.map((definition) => [
         definition.name,
         {
           description: definition.description,
           inputSchema: z.record(z.string(), z.json()).parse(definition.inputSchema),
-          execute: (args) =>
-            Effect.runPromise(
+          execute: (args) => {
+            if (
+              session.released ||
+              session.turn !== turn ||
+              turn.toolEpoch !== epoch ||
+              turn.interrupted ||
+              turn.ended
+            )
+              return Promise.resolve({
+                content: [{ type: "text" as const, text: "The Cursor turn has ended." }],
+                isError: true,
+              });
+
+            return Effect.runPromise(
               foreign(() =>
                 tools.forwardToolCall({
                   arguments: args,
                   providerThreadId: session.agent.agentId,
                   threadId: session.threadId,
                   toolName: definition.name,
-                  scope: session,
+                  scope: turn,
                 }),
               ).pipe(
                 Effect.map((result) => ({
@@ -212,10 +230,12 @@ export function createSdkBridge(
                   isError: result.isError,
                 })),
               ),
-            ),
+            );
+          },
         } satisfies SDKCustomTool,
       ]),
     );
+  };
 
   const pendingRun = Effect.fn("CursorSdk.pendingRun")(function* (turn: TurnState) {
     const pending = turn.pendingRun;
@@ -279,6 +299,10 @@ export function createSdkBridge(
   const closeSessionOnce = Effect.fn("CursorSdk.closeSessionOnce")(function* (session: Session) {
     const turn = session.turn;
 
+    // Custom tools have no SDK abort signal. Unblock their host callbacks before
+    // waiting for cancellation, which can itself be waiting for tool completion.
+    if (turn) tools.resolvePendingToolCalls(turn, "The Cursor SDK session was released.");
+
     if (turn && !turn.ended) {
       turn.interrupted = true;
 
@@ -291,7 +315,6 @@ export function createSdkBridge(
     session.released = true;
 
     if (turn) yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
-    tools.resolvePendingToolCalls(session, "The Cursor SDK session was released.");
     yield* Effect.void.pipe(
       Effect.ensuring(
         foreign(() => session.agent[Symbol.asyncDispose]()).pipe(Effect.catch(() => Effect.void)),
@@ -484,12 +507,11 @@ export function createSdkBridge(
         agent,
         instructions:
           params.instructionMode === "replace" ? undefined : params.options.instructions,
-        customTools: {},
+        toolDefinitions: isCloud ? [] : (params.dynamicTools ?? []),
         env,
         released: false,
       };
 
-      if (!isCloud) session.customTools = customTools(params.dynamicTools ?? [], session);
       sessions.set(params.threadId, session);
       io.send({
         jsonrpc: "2.0",
@@ -629,6 +651,10 @@ export function createSdkBridge(
   ) {
     if (session.released || turn.interrupted) return;
     turn.options = params.options;
+    turn.toolEpoch = {};
+    turn.run = undefined;
+    turn.pendingRun = undefined;
+    turn.cancellation = undefined;
     turn.events.startRun();
     const input = yield* prompt(params, session);
 
@@ -646,10 +672,9 @@ export function createSdkBridge(
       );
 
     if (!session.cloud) {
-      sendOptions.local = { customTools: session.customTools };
+      sendOptions.local = { customTools: customTools(session.toolDefinitions, session, turn) };
 
       if (session.recoverLocalRun) sendOptions.local.force = true;
-      session.recoverLocalRun = false;
     }
 
     if (session.released || turn.interrupted) return;
@@ -662,6 +687,7 @@ export function createSdkBridge(
     }
 
     const creating = session.agent.send(input.message, sendOptions);
+    session.recoverLocalRun = false;
     turn.pendingRun = creating;
     const run = yield* foreign(() => creating);
     turn.run = run;
@@ -713,10 +739,42 @@ export function createSdkBridge(
         cloudNote(cloudRunSummary(session.agent.agentId, session.cloud.source, result));
     }
 
+    if (result.status !== "finished") {
+      turn.pending.length = 0;
+      yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
+      finish(
+        session,
+        turn,
+        runStatus(result.status),
+        result.error ? sdkError(result.error) : undefined,
+      );
+
+      return;
+    }
+
     // A run can finish before Cursor acknowledges an in-flight steer. Keep
     // its BB turn open until delivery ownership has been resolved.
-    while (turn.steers.size)
-      yield* Effect.forEach([...turn.steers], (pending) => Deferred.await(pending));
+    yield* Effect.gen(function* () {
+      while (turn.steers.size)
+        yield* Effect.forEach([...turn.steers], (pending) => Deferred.await(pending));
+    }).pipe(
+      Effect.timeout(cleanupTimeoutMs),
+      Effect.catch(() =>
+        Effect.gen(function* () {
+          yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
+          emit(session.threadId, [
+            {
+              kind: "provider.error",
+              settlesTurn: false,
+              willRetry: false,
+              providerTurnId: turn.providerTurnId,
+              message:
+                "Cursor finished without confirming steering delivery. The uncertain message was not resent.",
+            },
+          ]);
+        }),
+      ),
+    );
 
     const next = turn.pending.shift();
 
@@ -752,6 +810,7 @@ export function createSdkBridge(
         options: params.options,
         steers: new Set(),
         steerFibers: new Set(),
+        toolEpoch: {},
         events: new RunEvents((deltas) => {
           if (!session.released)
             emit(
@@ -772,7 +831,14 @@ export function createSdkBridge(
             Effect.gen(function* () {
               if (turn.interrupted || session.released) return;
 
-              if (turn.run) yield* cancelRun(session, turn).pipe(Effect.catch(() => Effect.void));
+              tools.resolvePendingToolCalls(turn, "The Cursor SDK turn failed.");
+              yield* Effect.forEach([...turn.steerFibers], Fiber.interrupt);
+
+              if (turn.run)
+                yield* cancelRun(session, turn).pipe(
+                  Effect.timeout(cleanupTimeoutMs),
+                  Effect.catch(() => Effect.void),
+                );
               finish(
                 session,
                 turn,
@@ -934,7 +1000,7 @@ export function createSdkBridge(
         else if (session.turn && !session.turn.ended) {
           const turn = session.turn;
           turn.interrupted = true;
-          tools.resolvePendingToolCalls(session, "The turn was interrupted.");
+          tools.resolvePendingToolCalls(turn, "The turn was interrupted.");
           yield* cancelRun(session, turn);
           finish(session, turn, "interrupted");
         }

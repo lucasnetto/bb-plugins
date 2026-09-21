@@ -56,7 +56,11 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }], cloud = false) {
+function fixture(
+  catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }],
+  cloud = false,
+  cleanupTimeoutMs = 5000,
+) {
   const dataDir = mkdtempSync(join(tmpdir(), "bb-cursor-sdk-unit-"));
   const providerThreadId = cloud ? "bc-1" : "agent-1";
 
@@ -120,6 +124,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
         const id = `run-${++sequence}`;
         let interrupted = false;
         let release: (() => void) | undefined;
+        let toolCompletion: Promise<unknown> | undefined;
 
         const block = new Promise<void>((resolve) => {
           release = resolve;
@@ -142,8 +147,12 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
 
             if (text.includes("hold")) await block;
 
-            if (text.includes("call-tool"))
-              await sendOptions?.local?.customTools?.testTool?.execute({ value: "hello" }, {});
+            if (text.includes("call-tool")) {
+              toolCompletion = Promise.resolve(
+                sendOptions?.local?.customTools?.testTool?.execute({ value: "hello" }, {}),
+              );
+              await toolCompletion;
+            }
 
             if (!interrupted && !text.includes("zero")) {
               yield {
@@ -175,6 +184,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
             cancelled++;
             release?.();
             await Effect.runPromise(Deferred.succeed(cancelStarted, undefined));
+
+            if (text.includes("cancel-await-tool")) await toolCompletion;
 
             if (cancelGate) await cancelGate;
 
@@ -294,6 +305,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     {
       load: () => Effect.succeed(sdk),
       key: () => Effect.succeed("test-key"),
+      cleanupTimeoutMs,
       source: () => {
         sourceCalls++;
 
@@ -1614,6 +1626,108 @@ test("failed cancellation keeps the session available for another stop", async (
   delete f.failures.cancel;
   expect((await f.request("thread/stop", params)).error).toBeUndefined();
   expect(f.disposed()).toBe(1);
+});
+
+test("release resolves pending host tools before waiting for SDK cancellation", async () => {
+  const f = fixture();
+  await f.init();
+  await f.start({
+    dynamicTools: [{ name: "testTool", description: "Test", inputSchema: { type: "object" } }],
+  });
+  await f.turn("call-tool cancel-await-tool");
+  const call = await f.waitFor((message) => message.method === "item/tool/call");
+
+  try {
+    expect(
+      (
+        await f.request("thread/stop", {
+          threadId: "thread",
+          providerThreadId: "agent-1",
+          activeTurnId: null,
+          intent: "release",
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(f.cancelled()).toBe(1);
+    expect(f.disposed()).toBe(1);
+  } finally {
+    f.bridge.handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: call.id,
+        result: { content: [{ type: "text", text: "late result" }] },
+      }),
+    );
+  }
+
+  const late = await f.sent[0].options?.local?.customTools?.testTool?.execute({}, {});
+  expect(late).toMatchObject({ isError: true });
+  expect(
+    f.messages.filter(
+      (m) => z.object({ method: z.string().optional() }).parse(m).method === "item/tool/call",
+    ),
+  ).toHaveLength(1);
+});
+
+test("a stream failure settles even when SDK cancellation never returns", async () => {
+  const f = fixture(undefined, false, 20);
+  await f.init();
+  await f.start();
+  f.deferCancellation();
+
+  try {
+    await f.turn("stream-failure");
+    await f.waitForCancelStarted();
+    await f.settled();
+    expect(f.deltas().filter((d) => d.kind === "turn.boundary")).toEqual([
+      expect.objectContaining({ status: "failed", error: { message: "Connection dropped" } }),
+    ]);
+  } finally {
+    f.completeCancel();
+  }
+});
+
+test("a completed run does not wait forever for an uncertain steering acknowledgement", async () => {
+  const f = fixture(undefined, false, 20);
+  await f.init();
+  await f.start();
+  f.steerBehavior("complete_delivered", true, true);
+  await f.turn("hold");
+  await f.running();
+  await f.steer();
+  f.releaseRun();
+  await f.settled();
+  expect(f.deltas()).toContainEqual(
+    expect.objectContaining({
+      kind: "provider.error",
+      message: expect.stringContaining("without confirming steering"),
+    }),
+  );
+  expect(f.sent).toHaveLength(1);
+  f.acknowledgeSteer();
+  await f.init();
+  expect(
+    f
+      .deltas()
+      .filter((d) => d.kind === "input.accepted" && d.clientRequestId === "creq_steering23"),
+  ).toHaveLength(0);
+});
+
+test("an SDK terminal error is not hidden by starting a queued follow-up", async () => {
+  const f = fixture();
+  await f.init();
+  await f.start();
+  f.steerBehavior("revert_to_followup", false);
+  f.failures.result = new SdkError({ message: "Broken runtime" });
+  await f.turn("hold");
+  await f.running();
+  await f.steer();
+  f.releaseRun();
+  await f.settled();
+  expect(f.sent).toHaveLength(1);
+  expect(f.deltas()).toContainEqual(
+    expect.objectContaining({ kind: "turn.boundary", status: "failed" }),
+  );
 });
 
 test.each([false, true])(

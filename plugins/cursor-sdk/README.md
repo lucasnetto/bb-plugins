@@ -113,6 +113,22 @@ share pending cancellation, verify its persisted state, and finish disposal
 before acknowledging success. Graceful process shutdown waits for cleanup;
 forced termination leaves ownership records for the next resume to reclaim.
 
+The parent process retains the session's resume parameters. After a child crash,
+the next user message first restores the same agent, workspace, and tools. Failed
+local turns retire their SDK process so later messages do not reuse a broken
+runtime. Replacement waits for the old process to exit; the failed prompt is
+never automatically replayed. This in-memory recovery record lasts for the
+parent's lifetime; after a full bridge restart, BB supplies its persisted identity
+through the normal resume request.
+
+Local Stop allows ten seconds for graceful cancellation, then terminates the
+session process with a further five-second shutdown limit. A forced Stop is
+acknowledged only after process exit. Its persisted run may still need expiry on
+the next resume. Cloud cancellation never uses this local termination shortcut.
+Pending host tool calls are resolved before SDK cancellation, and late tool calls
+from ended runs are rejected. Once a run finishes, steering acknowledgement gets
+five seconds to settle; uncertain delivery is reported without resending it.
+
 BB opens the turn before waiting for the SDK's run handle, so slow model startup
 is shown as an active turn rather than an accepted-but-not-started timeout. This
 does not speed up Cursor or retry a stalled network request. Errors include their
@@ -187,6 +203,8 @@ Design reference: [wyrd-company/ahp-cursor-sdk](https://github.com/wyrd-company/
 This implements BB's native bridge directly, without an AHP dependency or copied
 adapter source.
 
+Reliability comparison: [pi-cursor-sdk findings and remaining limits](docs/reliability-review.md).
+
 A live local fork check using Composer 2.5 confirmed that an independent child
 recalls the source conversation. Run it explicitly with the Work profile key:
 
@@ -195,3 +213,12 @@ CURSOR_SDK_LIVE_FORK=1 vp test plugins/cursor-sdk/tests/server/fork.live.test.ts
 ```
 
 This opt-in check sends two model requests and removes its temporary local store.
+
+The crash/recovery check uses the Personal profile key, two Composer 2.5 requests,
+and a temporary store. It kills only its own test child and checks that the next
+message restores the same agent and recalls the preceding conversation:
+
+```sh
+bb plugin build plugins/cursor-sdk
+CURSOR_SDK_LIVE_RECOVERY=1 vp test plugins/cursor-sdk/tests/server/recovery.live.test.ts
+```

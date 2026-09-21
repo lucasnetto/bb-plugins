@@ -6,10 +6,10 @@ import { afterEach, expect, test } from "vite-plus/test";
 import { z } from "zod";
 import { createIsolatedBridge } from "../../src/server/isolated-bridge.js";
 
-const cleanups: Array<() => void> = [];
+const cleanups: Array<() => void | Promise<void>> = [];
 
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
 const wireSchema = z.object({
@@ -22,7 +22,7 @@ const wireSchema = z.object({
 
 type Wire = z.infer<typeof wireSchema>;
 
-function fixture() {
+function fixture(stopTimeoutMs?: number) {
   const dir = mkdtempSync(join(tmpdir(), "cursor-isolation-"));
   const modulePath = join(dir, "fake-host.mjs");
   // Exercise actual Node child processes, IPC, inherited environment and
@@ -38,16 +38,22 @@ function fixture() {
         handleLine(line) {
           const m = JSON.parse(line);
           if (!m.method) { send({ method: "callback-result", params: { threadId, value: m.result } }); return; }
+          if (m.method === "thread/resume" && m.params.options?.envVars?.BB_ISOLATION_TEST === "resume-fails") {
+            send({ id: m.id, error: { message: "Saved checkpoint is unavailable" } }); return;
+          }
           if (m.method === "thread/start" || m.method === "thread/resume" || m.method === "thread/fork") {
             threadId = m.params.threadId;
             Object.assign(process.env, m.params.options.envVars);
-            send({ method: "thread/identity", params: { threadId, providerThreadId: "agent-" + threadId } });
+            send({ method: "thread/identity", params: { threadId, providerThreadId: m.params.providerThreadId ?? "agent-" + threadId } });
           }
           if (m.method === "turn/start") {
+            if (!threadId) { send({ id: m.id, error: { message: "Session not restored" } }); return; }
             send({ id: "tool-1", method: "item/tool/call", params: { threadId } });
           }
           if (m.method === "crash") process.exit(1);
+          if (m.method === "thread/stop" && process.env.BB_ISOLATION_TEST === "hang-stop") return;
           send({ id: m.id, result: { pid: process.pid, value: process.env.BB_ISOLATION_TEST } });
+          if (m.params?.fail) send({ method: "thread/delta", params: { threadId, deltas: [{ kind: "turn.boundary", status: "failed" }] } });
         },
         onClose() {},
       };
@@ -57,15 +63,20 @@ function fixture() {
   const messages: Wire[] = [];
   const waiters = new Set<() => void>();
 
-  const bridge = createIsolatedBridge(pathToFileURL(modulePath).href, (line) => {
-    messages.push(wireSchema.parse(JSON.parse(line)));
+  const bridge = createIsolatedBridge(
+    pathToFileURL(modulePath).href,
+    (line) => {
+      messages.push(wireSchema.parse(JSON.parse(line)));
 
-    for (const wake of waiters) wake();
-  });
+      for (const wake of waiters) wake();
+    },
+    undefined,
+    stopTimeoutMs,
+  );
 
   bridge.start?.({ pluginId: "cursor-sdk", dataDir: dir, tempDir: dir });
-  cleanups.push(() => {
-    bridge.onClose?.();
+  cleanups.push(async () => {
+    await bridge.onClose?.();
     rmSync(dir, { recursive: true, force: true });
   });
   let id = 0;
@@ -100,7 +111,7 @@ function fixture() {
     return waitFor((message) => message.id === requestId);
   };
 
-  return { request, send, waitFor };
+  return { request, send, waitFor, messages };
 }
 
 async function initialize(f: ReturnType<typeof fixture>) {
@@ -172,4 +183,143 @@ test("a crashed child fails pending requests without stopping other sessions", a
     "exited unexpectedly",
   );
   expect((await f.request("inspect", { threadId: "b" })).error).toBeUndefined();
+});
+
+test("the next user message restores a crashed child's saved identity and environment", async () => {
+  const f = fixture();
+  await initialize(f);
+
+  const original = await f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "original" } },
+  });
+
+  await f.request("turn/start", { threadId: "a" });
+  await f.request("crash", { threadId: "a" });
+  const recovered = await f.request("turn/start", { threadId: "a", providerThreadId: "agent-a" });
+  expect(recovered.error).toBeUndefined();
+  expect(recovered.result).toMatchObject({ value: "original" });
+  expect(recovered.result).not.toEqual(original.result);
+  expect(f.messages.filter((m) => m.method === "item/tool/call")).toHaveLength(2);
+  expect(
+    f.messages.filter((m) => m.method === "thread/identity").map((m) => m.params?.providerThreadId),
+  ).toEqual(["agent-a", "agent-a"]);
+});
+
+test("failed local turns retire their child before restoring the next message", async () => {
+  const f = fixture();
+  await initialize(f);
+  const original = await f.request("thread/start", { threadId: "a", options: { envVars: {} } });
+  await f.request("turn/start", { threadId: "a", fail: true });
+  await f.waitFor((m) => m.method === "thread/delta");
+  const recovered = await f.request("turn/start", { threadId: "a", providerThreadId: "agent-a" });
+  expect(recovered.error).toBeUndefined();
+  expect(recovered.result).not.toEqual(original.result);
+  const pid = z.object({ pid: z.number() }).parse(original.result).pid;
+  expect(() => process.kill(pid, 0)).toThrow();
+});
+
+test("Stop retires a hung local child and allows the saved conversation to resume", async () => {
+  const f = fixture(20);
+  await initialize(f);
+
+  const original = await f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "hang-stop" } },
+  });
+
+  await f.request("turn/start", { threadId: "a" });
+
+  const stopped = await f.request("thread/stop", {
+    threadId: "a",
+    providerThreadId: "agent-a",
+    intent: "interrupt",
+  });
+
+  expect(stopped.error).toBeUndefined();
+  const pid = z.object({ pid: z.number() }).parse(original.result).pid;
+  expect(() => process.kill(pid, 0)).toThrow();
+  expect(f.messages.filter((m) => m.method === "thread/delta")).toEqual([
+    expect.objectContaining({
+      params: expect.objectContaining({
+        deltas: [expect.objectContaining({ status: "interrupted" })],
+      }),
+    }),
+  ]);
+  const recovered = await f.request("turn/start", { threadId: "a", providerThreadId: "agent-a" });
+  expect(recovered.error).toBeUndefined();
+});
+
+test("cloud failures keep their runtime attached rather than applying local recovery", async () => {
+  const f = fixture();
+  await initialize(f);
+
+  const original = await f.request("thread/resume", {
+    threadId: "a",
+    providerThreadId: "bc-a",
+    options: { envVars: {} },
+  });
+
+  await f.request("turn/start", { threadId: "a", fail: true });
+  await f.waitFor((m) => m.method === "thread/delta");
+  expect((await f.request("inspect", { threadId: "a" })).result).toEqual(original.result);
+});
+
+test("failed automatic resume reports its cause without submitting the new prompt", async () => {
+  const f = fixture();
+  await initialize(f);
+  await f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "resume-fails" } },
+  });
+  await f.request("crash", { threadId: "a" });
+  const reply = await f.request("turn/start", { threadId: "a", providerThreadId: "agent-a" });
+  expect(reply.error?.message).toBe("Saved checkpoint is unavailable");
+  expect(f.messages.filter((m) => m.method === "item/tool/call")).toHaveLength(0);
+  expect(
+    (
+      await f.request("thread/resume", {
+        threadId: "a",
+        providerThreadId: "agent-a",
+        options: { envVars: {} },
+      })
+    ).error,
+  ).toBeUndefined();
+});
+
+test("a lost cloud child cannot report successful remote cancellation", async () => {
+  const f = fixture(20);
+  await initialize(f);
+  await f.request("thread/resume", {
+    threadId: "a",
+    providerThreadId: "bc-a",
+    options: { envVars: {} },
+  });
+  await f.request("crash", { threadId: "a" });
+
+  const stopped = await f.request("thread/stop", {
+    threadId: "a",
+    providerThreadId: "bc-a",
+    intent: "interrupt",
+  });
+
+  expect(stopped.error?.message).toContain("cancellation cannot be confirmed");
+  expect(
+    (await f.request("thread/stop", { threadId: "a", providerThreadId: "bc-a", intent: "release" }))
+      .error,
+  ).toBeUndefined();
+});
+
+test("a turn submitted immediately before a fork already counts as active", async () => {
+  const f = fixture();
+  await initialize(f);
+  await f.request("thread/start", { threadId: "a", options: { envVars: {} } });
+  f.send({ id: 500, method: "turn/start", params: { threadId: "a" } });
+
+  const fork = await f.request("thread/fork", {
+    threadId: "child",
+    sourceProviderThreadId: "agent-a",
+  });
+
+  expect(fork.error?.message).toContain("finish before forking");
 });
