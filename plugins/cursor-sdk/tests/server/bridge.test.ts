@@ -50,10 +50,10 @@ const options = {
   providerOptions: { profile: "personal" },
 } satisfies StartInput["options"];
 
-const cleanups: Array<() => void> = [];
+const cleanups: Array<() => void | Promise<void>> = [];
 
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
 function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" }], cloud = false) {
@@ -85,6 +85,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   const steered: string[] = [];
   let cancelled = 0;
   let cancelGate: Promise<void> | undefined;
+  let earlyCancellationStatus = false;
   let completeCancel: (() => void) | undefined;
   let disposed = 0;
   const disposal = Deferred.makeUnsafe<void>();
@@ -168,7 +169,11 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
             };
           },
           async cancel() {
+            if (earlyCancellationStatus && interrupted) return;
+
+            if (earlyCancellationStatus) interrupted = true;
             cancelled++;
+            release?.();
             await Effect.runPromise(Deferred.succeed(cancelStarted, undefined));
 
             if (cancelGate) await cancelGate;
@@ -308,8 +313,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
   );
 
   bridge.start?.({ pluginId: "cursor-sdk", dataDir, tempDir: "/tmp" });
-  cleanups.push(() => {
-    bridge.onClose?.();
+  cleanups.push(async () => {
+    await bridge.onClose?.();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -398,7 +403,8 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     executionOptions,
     sourceCalls: () => sourceCalls,
     completeSend: () => completeSend?.(),
-    deferCancellation: () => {
+    deferCancellation: (statusBeforePersistence = false) => {
+      earlyCancellationStatus = statusBeforePersistence;
       cancelGate = new Promise<void>((resolve) => {
         completeCancel = resolve;
       });
@@ -439,7 +445,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
     },
     steer: (
       input: TurnInput["input"] = [{ type: "text", text: "Skip admin", mentions: [] }],
-      expectedTurnId = "run-1",
+      expectedTurnId = "creq_abcdefghij",
     ) =>
       request("turn/steer", {
         threadId: "thread",
@@ -449,7 +455,7 @@ function fixture(catalog: SDKModel[] = [{ id: "test-model", displayName: "Test" 
         input,
         options: executionOptions,
       }),
-    running: () => waitFor(() => deltas().some((d) => d.kind === "turn.open")),
+    running: () => waitFor(() => deltas().some((d) => d.kind === "input.accepted")),
     cancelled: () => cancelled,
     disposed: () => disposed,
     waitForDisposal: () => Effect.runPromise(Deferred.await(disposal)),
@@ -530,7 +536,7 @@ describe("provider bridge", () => {
           errorInfo: { category: "rate-limit", httpStatusCode: 429, providerCode: "quota" },
           willRetry: false,
           settlesTurn: false,
-          detail: JSON.stringify({ isRetryable: true, requestId: "req-42" }),
+          detail: "Limited [redacted] (request req-42)",
         }),
       ]);
       expect(f.messages).toContainEqual({
@@ -594,8 +600,16 @@ describe("provider bridge", () => {
     expect(f.sent).toHaveLength(1);
     expect(f.cancelled()).toBe(0);
     expect(f.deltas().filter((d) => d.kind === "input.accepted")).toEqual([
-      { kind: "input.accepted", clientRequestId: "creq_abcdefghij", providerTurnId: "run-1" },
-      { kind: "input.accepted", clientRequestId: "creq_steering23", providerTurnId: "run-1" },
+      {
+        kind: "input.accepted",
+        clientRequestId: "creq_abcdefghij",
+        providerTurnId: "creq_abcdefghij",
+      },
+      {
+        kind: "input.accepted",
+        clientRequestId: "creq_steering23",
+        providerTurnId: "creq_abcdefghij",
+      },
     ]);
     f.releaseRun();
     await f.settled();
@@ -682,7 +696,7 @@ describe("provider bridge", () => {
       threadId: "thread",
       providerThreadId: "agent-1",
       intent: "interrupt",
-      activeTurnId: "run-1",
+      activeTurnId: "creq_abcdefghij",
     });
     await f.settled();
     expect(f.sent).toHaveLength(1);
@@ -747,7 +761,7 @@ describe("provider bridge", () => {
         threadId: "thread",
         providerThreadId: "agent-1",
         intent: "interrupt",
-        activeTurnId: "run-1",
+        activeTurnId: "creq_abcdefghij",
       });
       await f.settled();
       f.acknowledgeSteer();
@@ -1274,7 +1288,7 @@ describe("cloud bridge", () => {
     expect(f.deltas()).toContainEqual(
       expect.objectContaining({
         kind: "item.textDelta",
-        providerTurnId: "run-1",
+        providerTurnId: "creq_abcdefghij",
         text: expect.stringContaining("https://cursor.com/agents/bc-1"),
       }),
     );
@@ -1303,7 +1317,7 @@ describe("cloud bridge", () => {
     await f.waitFor(() => f.deltas().some((d) => d.kind === "turn.open"));
 
     if (operation === "release") await f.request("thread/stop", stop);
-    else f.bridge.onClose?.();
+    else await f.bridge.onClose?.();
     await f.waitForDisposal();
     expect(f.cancelled()).toBe(0);
     expect(f.disposed()).toBe(1);
@@ -1395,6 +1409,119 @@ describe("cloud bridge", () => {
       expect(f.created).toHaveLength(0);
     },
   );
+});
+
+test("announces a turn while SDK send is pending without accepting its input early", async () => {
+  const f = fixture();
+  await f.init();
+  await f.start();
+  await f.turn("slow-send");
+  expect(f.deltas()).toContainEqual({ kind: "turn.open", providerTurnId: "creq_abcdefghij" });
+  expect(f.deltas().some((d) => d.kind === "input.accepted")).toBe(false);
+  f.completeSend();
+  await f.settled();
+});
+
+test.each([false, true])("release waits for active cancellation (cloud=%s)", async (cloud) => {
+  const f = fixture(undefined, cloud);
+  await f.init();
+  await f.start();
+  await f.turn("hold");
+  await f.running();
+  f.deferCancellation(true);
+
+  const params = {
+    threadId: "thread",
+    providerThreadId: cloud ? "bc-1" : "agent-1",
+    activeTurnId: null,
+  };
+
+  const stop = f.request("thread/stop", { ...params, intent: "interrupt" });
+  await f.waitForCancelStarted();
+  let released = false;
+
+  const release = f.request("thread/stop", { ...params, intent: "release" }).then((reply) => {
+    released = true;
+
+    return reply;
+  });
+
+  await f.init();
+
+  try {
+    expect(released).toBe(false);
+    expect(f.disposed()).toBe(0);
+    expect(f.cancelled()).toBe(1);
+    expect(f.deltas().some((d) => d.kind === "turn.boundary")).toBe(false);
+  } finally {
+    f.completeCancel();
+  }
+
+  expect((await stop).error).toBeUndefined();
+  expect((await release).error).toBeUndefined();
+  expect(f.disposed()).toBe(1);
+});
+
+test("refuses to resume a native agent owned by another live session", async () => {
+  const f = fixture();
+  await f.init();
+  await f.start();
+
+  const reply = await f.request("thread/resume", {
+    threadId: "other-thread",
+    providerThreadId: "agent-1",
+    cwd: "/tmp",
+    instructionMode: "append",
+    options: f.executionOptions,
+  });
+
+  expect(reply.error?.message).toContain("live process");
+  expect(f.resumed).toEqual([]);
+  expect(f.disposed()).toBe(0);
+});
+
+test("recovers a persisted abandoned local run only on the first resumed send", async () => {
+  const f = fixture();
+  const store = new JsonlLocalAgentStore(join(f.dataDir, "conversations", "personal"));
+  await store.agents.create({
+    agent: {
+      agentId: "agent-1",
+      cwd: "/tmp",
+      status: "running",
+      activeRunId: "abandoned",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  });
+  await store.runs.create({
+    run: {
+      agentId: "agent-1",
+      runId: "abandoned",
+      turnNumber: 1,
+      status: "running",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  });
+  await f.init();
+  expect(
+    (
+      await f.request("thread/resume", {
+        threadId: "thread",
+        providerThreadId: "agent-1",
+        cwd: "/tmp",
+        instructionMode: "append",
+        options: f.executionOptions,
+      })
+    ).error,
+  ).toBeUndefined();
+  await f.turn("hello");
+  await f.settled();
+  expect(f.sent[0].options?.local?.force).toBe(true);
+  f.messages.splice(0);
+  await f.turn("hello again");
+  await f.settled();
+  expect(f.sent[1].options?.local?.force).toBeUndefined();
 });
 
 test.each([false, true])(

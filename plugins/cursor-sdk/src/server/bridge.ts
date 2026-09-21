@@ -6,6 +6,7 @@ import type {
   SDKImage,
   SDKModel,
   Run,
+  LocalAgentStore,
 } from "@cursor/sdk";
 import {
   experimental_defineProviderBridge,
@@ -32,6 +33,7 @@ import {
   type DynamicTool,
   type ProviderHealth,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { acquireLocalLease, coordinatedLocalStore } from "./local-state.js";
 import { Cause, Deferred, Effect, Fiber, Stream } from "effect";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
@@ -106,6 +108,7 @@ type TurnState = {
   accepted: boolean;
   run?: Run;
   pendingRun?: Promise<Run>;
+  cancellation?: Promise<void>;
   providerTurnId?: string;
   pending: TurnParams[];
   options: TurnParams["options"];
@@ -119,6 +122,10 @@ type TurnState = {
 
 type Session = {
   cloud?: CloudSession;
+  localStore?: LocalAgentStore;
+  releaseLease?: () => void;
+  recoverLocalRun?: boolean;
+  closing?: Promise<void>;
   models: SDKModel[];
   threadId: string;
   agent: SDKAgent;
@@ -219,16 +226,66 @@ export function createSdkBridge(
     return yield* foreign(() => pending).pipe(Effect.catch(() => Effect.succeed(undefined)));
   });
 
+  const cancelRun = Effect.fn("CursorSdk.cancelRun")(function* (session: Session, turn: TurnState) {
+    if (!turn.cancellation) {
+      const cancellation = Effect.runPromise(
+        Effect.gen(function* () {
+          const run = yield* pendingRun(turn);
+
+          if (!run) return;
+          yield* foreign(() => run.cancel());
+
+          const store = session.localStore;
+
+          if (store) {
+            const saved = yield* foreign(() =>
+              store.runs.get({ agentId: session.agent.agentId, runId: run.id }),
+            );
+
+            if (saved?.status === "running" || saved?.status === "queued")
+              return yield* Effect.fail(
+                new SdkError({
+                  message:
+                    "Cursor cancellation has not been saved. The session remains open; retry Stop.",
+                }),
+              );
+          }
+        }),
+      );
+
+      turn.cancellation = cancellation;
+      void cancellation.catch(() => {
+        if (turn.cancellation === cancellation) turn.cancellation = undefined;
+      });
+    }
+
+    const cancellation = turn.cancellation;
+    yield* foreign(() => cancellation);
+  });
+
   const closeSession = Effect.fn("CursorSdk.closeSession")(function* (session: Session) {
+    if (!session.closing) {
+      const closing = Effect.runPromise(closeSessionOnce(session));
+      session.closing = closing;
+      void closing.catch(() => {
+        if (session.closing === closing) session.closing = undefined;
+      });
+    }
+
+    const closing = session.closing;
+    yield* foreign(() => closing);
+  });
+
+  const closeSessionOnce = Effect.fn("CursorSdk.closeSessionOnce")(function* (session: Session) {
     const turn = session.turn;
 
     if (turn && !turn.ended) {
       turn.interrupted = true;
+
       // A successful stop reply lets the isolated bridge kill this process.
       // Resolve run creation and cancellation before allowing that reply.
-      const run = yield* pendingRun(turn);
-
-      if (run && !session.cloud) yield* foreign(() => run.cancel());
+      if (session.cloud && !turn.cancellation) yield* pendingRun(turn);
+      else yield* cancelRun(session, turn);
     }
 
     session.released = true;
@@ -242,6 +299,7 @@ export function createSdkBridge(
       Effect.ensuring(
         Effect.gen(function* () {
           if (session.turn?.fiber) yield* Fiber.interrupt(session.turn.fiber);
+          session.releaseLease?.();
           sessions.delete(session.threadId);
 
           if (sessions.size === 0) {
@@ -292,6 +350,7 @@ export function createSdkBridge(
     }
 
     constructing.add(params.threadId);
+    let releaseLease: (() => void) | undefined;
 
     return yield* Effect.gen(function* () {
       const { profile, runtime } = optionsSchema.parse(params.options.providerOptions);
@@ -346,7 +405,30 @@ export function createSdkBridge(
       }
 
       if (!isCloud) Object.assign(process.env, env);
-      const store = new sdk.JsonlLocalAgentStore(join(dataDir, "conversations", profile));
+      const storeDirectory = join(dataDir, "conversations", profile);
+
+      const store = coordinatedLocalStore(
+        new sdk.JsonlLocalAgentStore(storeDirectory),
+        storeDirectory,
+      );
+
+      const claim = (agentId: string) => {
+        releaseLease = acquireLocalLease(storeDirectory, `agent:${agentId}`);
+      };
+
+      let recoverLocalRun = false;
+
+      if (!isCloud && "providerThreadId" in params) {
+        const agentId = String(params.providerThreadId);
+        claim(agentId);
+        const saved = yield* foreign(() => store.agents.get({ agentId }));
+
+        if (saved?.activeRunId) {
+          const runId = saved.activeRunId;
+          const run = yield* foreign(() => store.runs.get({ agentId, runId }));
+          recoverLocalRun = run?.status === "running" || run?.status === "queued";
+        }
+      }
 
       const options: AgentOptions = {
         apiKey,
@@ -376,15 +458,27 @@ export function createSdkBridge(
       const agent = cloud
         ? cloud.agent
         : "sourceProviderThreadId" in params
-          ? yield* forkLocalAgent(store, String(params.sourceProviderThreadId), params.cwd, (id) =>
-              sdk.Agent.resume(id, options),
+          ? yield* forkLocalAgent(
+              store,
+              String(params.sourceProviderThreadId),
+              params.cwd,
+              (id) => {
+                claim(id);
+
+                return sdk.Agent.resume(id, options);
+              },
             )
           : "providerThreadId" in params
             ? yield* foreign(() => sdk.Agent.resume(String(params.providerThreadId), options))
             : yield* foreign(() => sdk.Agent.create(options));
 
+      if (!isCloud && !releaseLease) claim(agent.agentId);
+
       const session: Session = {
         cloud,
+        localStore: isCloud ? undefined : store,
+        releaseLease,
+        recoverLocalRun,
         models,
         threadId: params.threadId,
         agent,
@@ -405,7 +499,10 @@ export function createSdkBridge(
       emit(params.threadId, [{ kind: "session.reset" }]);
 
       return { providerThreadId: agent.agentId };
-    }).pipe(Effect.ensuring(Effect.sync(() => constructing.delete(params.threadId))));
+    }).pipe(
+      Effect.onError(() => Effect.sync(() => releaseLease?.())),
+      Effect.ensuring(Effect.sync(() => constructing.delete(params.threadId))),
+    );
   });
 
   const prompt = Effect.fn("CursorSdk.prompt")(function* (params: TurnParams, session: Session) {
@@ -502,7 +599,9 @@ export function createSdkBridge(
             providerTurnId: turn.providerTurnId,
             settlesTurn: false,
             willRetry: false,
-            detail: JSON.stringify({ isRetryable: error.isRetryable, requestId: error.requestId }),
+            detail: error.requestId
+              ? `${error.message} (request ${error.requestId})`
+              : error.message,
           },
         ]);
         const recovery = sdkRecovery(error);
@@ -546,9 +645,22 @@ export function createSdkBridge(
         params.options.serviceTier,
       );
 
-    if (!session.cloud) sendOptions.local = { customTools: session.customTools };
+    if (!session.cloud) {
+      sendOptions.local = { customTools: session.customTools };
+
+      if (session.recoverLocalRun) sendOptions.local.force = true;
+      session.recoverLocalRun = false;
+    }
 
     if (session.released || turn.interrupted) return;
+
+    if (!turn.providerTurnId) {
+      // A BB turn begins when we start the SDK request, not when the first
+      // model response arrives. Cursor may take minutes to return its handle.
+      turn.providerTurnId = turn.clientRequestId;
+      emit(session.threadId, [{ kind: "turn.open", providerTurnId: turn.providerTurnId }]);
+    }
+
     const creating = session.agent.send(input.message, sendOptions);
     turn.pendingRun = creating;
     const run = yield* foreign(() => creating);
@@ -559,11 +671,6 @@ export function createSdkBridge(
     // Stop owns cancellation and the terminal boundary once interruption begins.
     if (turn.interrupted || session.released) return;
 
-    const firstRun = turn.providerTurnId === undefined;
-    turn.providerTurnId ??= run.id;
-
-    if (firstRun)
-      emit(session.threadId, [{ kind: "turn.open", providerTurnId: turn.providerTurnId }]);
     acceptInput(session, turn);
     session.lastInstructions = input.instructions;
 
@@ -663,10 +770,9 @@ export function createSdkBridge(
           Effect.andThen(executeTurn(params, session, turn)),
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
-              const run = turn.run;
+              if (turn.interrupted || session.released) return;
 
-              if (run && !turn.interrupted && !session.released)
-                yield* foreign(() => run.cancel()).pipe(Effect.catch(() => Effect.void));
+              if (turn.run) yield* cancelRun(session, turn).pipe(Effect.catch(() => Effect.void));
               finish(
                 session,
                 turn,
@@ -829,9 +935,7 @@ export function createSdkBridge(
           const turn = session.turn;
           turn.interrupted = true;
           tools.resolvePendingToolCalls(session, "The turn was interrupted.");
-          const run = yield* pendingRun(turn);
-
-          if (run) yield* foreign(() => run.cancel());
+          yield* cancelRun(session, turn);
           finish(session, turn, "interrupted");
         }
 
@@ -913,7 +1017,8 @@ export function createSdkBridge(
     modelCache.close();
 
     for (const controller of requests) controller.abort();
-    void Effect.runPromise(
+
+    return Effect.runPromise(
       Effect.forEach([...sessions.values()], closeSession, { concurrency: "unbounded" }).pipe(
         Effect.catchCause(() => Effect.void),
       ),
@@ -936,7 +1041,7 @@ export function createSdkBridge(
     "provider/installation/run",
   ]);
 
-  return experimental_defineProviderBridge({
+  const bridge = experimental_defineProviderBridge({
     start(context) {
       dataDir = context.dataDir;
     },
@@ -1018,4 +1123,6 @@ export function createSdkBridge(
     onSigterm: shutdown,
     onSigint: shutdown,
   });
+
+  return { ...bridge, onClose: shutdown };
 }

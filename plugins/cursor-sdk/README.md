@@ -98,6 +98,26 @@ SDK JSONL stores live under `conversations/<profile>` in plugin bridge storage.
 BB persists the Cursor agent ID and resumes it after releasing or restarting
 a session. Keep that store on the same host to retain its checkpoints.
 
+## Session recovery
+
+Local sessions claim exclusive ownership of their Cursor agent. If the owning
+process dies, the next resume can reclaim it and use the SDK's `local.force`
+option on its first send to expire the abandoned run while retaining the saved
+conversation. A live owner blocks recovery; elapsed time alone never makes a
+run eligible. Cloud runs do not use this recovery path.
+
+The profile's JSONL files are coordinated across session processes through
+`coordination.sqlite` beside the store. Keep the store on local disk. Terminal
+run states cannot be overwritten by stale checkpoint writes. Stop and release
+share pending cancellation, verify its persisted state, and finish disposal
+before acknowledging success. Graceful process shutdown waits for cleanup;
+forced termination leaves ownership records for the next resume to reclaim.
+
+BB opens the turn before waiting for the SDK's run handle, so slow model startup
+is shown as an active turn rather than an accepted-but-not-started timeout. This
+does not speed up Cursor or retry a stalled network request. Errors include their
+actual message and request ID when available.
+
 ## Behavior and limits
 
 - Streams assistant text, thinking, tools, task milestones, and reported usage into BB's timeline.
@@ -116,7 +136,7 @@ a session. Keep that store on the same host to retain its checkpoints.
 - Task events appear as bounded progress messages. Consecutive duplicates are
   suppressed, and task-only runs still display their final answer. Task events
   do not supply stable IDs, so they are not shown as separate background agents.
-- SDK failures retain their error code, HTTP status, retryability, and request ID
+- SDK failures retain their error code, HTTP status, and request ID
   where provided. Authentication and rate-limit failures emit BB recovery hints;
   other failures retain their diagnostic category. The bridge does not replay a
   failed turn or retry an uncertain steer. SDK-native transport retries remain

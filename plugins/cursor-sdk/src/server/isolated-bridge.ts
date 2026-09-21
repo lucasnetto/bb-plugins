@@ -39,11 +39,19 @@ function launcher(moduleUrl: string): LaunchSession {
       const bridge = createSdkBridge({}, line => process.send?.(line));
       bridge.start(${JSON.stringify(context)});
       process.on("message", line => bridge.handleLine(line));
+      let closing = false;
       const close = () => {
-        bridge.onClose?.();
-        setTimeout(() => process.exit(0), 1000).unref();
+        if (closing) return;
+        closing = true;
+        // Finish SDK cancellation/persistence before a graceful exit. If it
+        // hangs, the next session can recover under its exclusive local lease.
+        const deadline = setTimeout(() => process.exit(1), 5000);
+        Promise.resolve(bridge.onClose?.()).then(
+          () => { clearTimeout(deadline); process.exit(0); },
+          () => { clearTimeout(deadline); process.exit(1); },
+        );
       };
-      process.once("disconnect", () => { bridge.onClose?.(); process.exit(0); });
+      process.once("disconnect", close);
       process.once("SIGTERM", close);
     `;
 
@@ -214,7 +222,7 @@ export function createIsolatedBridge(
 
   const shutdown = () => {
     closing = true;
-    maintenance.onClose?.();
+    void maintenance.onClose?.();
 
     for (const [threadId, session] of sessions) release(threadId, session);
   };
