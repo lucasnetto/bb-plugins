@@ -180,22 +180,23 @@ export function CardThreadLayout({
       ) : null}
       {/* Environment and PRs share a line without squeezing the environment. */}
       <div className="mt-0.5 flex min-h-4 min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-        {branch ? (
-          <div className="mr-auto flex min-w-0 max-w-full shrink-0 items-start gap-1.5">
-            <Icon
-              name={
-                thread.environment?.workspaceDisplayKind === "other" ? "GitBranch" : "FolderGit"
-              }
-              className="mt-0.5 size-3 shrink-0 text-muted-foreground/50"
-            />
-            <span className="min-w-0 flex-1 whitespace-normal break-all text-muted-foreground/50">
-              {branch}
-            </span>
+        {machine || branch ? (
+          <div className="mr-auto flex min-w-0 max-w-full shrink-0 flex-wrap items-start gap-x-1.5 gap-y-1 text-muted-foreground/50">
+            {machine ? (
+              <span className="min-w-0 max-w-full whitespace-normal break-all">{machine}</span>
+            ) : null}
+            {branch ? (
+              <span className="flex min-w-0 max-w-full items-start gap-1.5">
+                <Icon
+                  name={
+                    thread.environment?.workspaceDisplayKind === "other" ? "GitBranch" : "FolderGit"
+                  }
+                  className="mt-0.5 size-3 shrink-0"
+                />
+                <span className="min-w-0 flex-1 whitespace-normal break-all">{branch}</span>
+              </span>
+            ) : null}
           </div>
-        ) : machine ? (
-          <span className="mr-auto min-w-0 max-w-full shrink-0 whitespace-normal break-all text-muted-foreground/50">
-            {machine}
-          </span>
         ) : (
           <span className="flex-1" />
         )}
