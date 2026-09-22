@@ -520,6 +520,15 @@ export function createSdkBridge(
         const localStore = store;
         const saved = yield* foreign(() => localStore.agents.get({ agentId }));
 
+        // Cursor scopes even explicit stores by cwd. Follow BB's current workspace
+        // under the agent lease, keeping the identity, checkpoint and run history.
+        if (saved && saved.cwd !== params.cwd)
+          yield* foreign(() =>
+            localStore.agents.update({
+              agent: { ...saved, cwd: params.cwd, updatedAt: Date.now() },
+            }),
+          );
+
         if (saved?.activeRunId) {
           const runId = saved.activeRunId;
           const run = yield* foreign(() => localStore.runs.get({ agentId, runId }));

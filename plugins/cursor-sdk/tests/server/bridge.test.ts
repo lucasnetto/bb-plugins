@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
+  Agent,
   JsonlLocalAgentStore,
   type SDKAgent,
   type Run,
@@ -280,6 +281,8 @@ function fixture(
         return makeAgent(agentId);
       },
       async resume(id, value) {
+        // Exercise the real SDK's workspace-scoped lookup without sending a model request.
+        if (value?.local) await Agent.get(id, { cwd: value.local.cwd, store: value.local.store });
         resumed.push(id);
 
         if (value) resumedOptions.push(value);
@@ -1474,7 +1477,70 @@ test.each([false, true])("release waits for active cancellation (cloud=%s)", asy
   expect(f.disposed()).toBe(1);
 });
 
-test("refuses to resume a native agent owned by another live session", async () => {
+test.each(["/tmp", "/changed-checkout"])(
+  "resumes local history in %s without replacing its identity or checkpoint",
+  async (cwd) => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    const store = f.created[0].local?.store;
+
+    if (!store) throw new Error("Expected a local store");
+    const original = await store.agents.get({ agentId: "agent-1" });
+    const checkpoint = await store.checkpoints.get({ agentId: "agent-1", blobId: "root" });
+
+    const run = {
+      agentId: "agent-1",
+      runId: "finished-run",
+      turnNumber: 1,
+      status: "finished" as const,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+
+    await store.runs.create({ run });
+    await store.runEvents.append({ runId: run.runId, eventType: "message", payload: "history" });
+    const events = await store.runEvents.list({ runId: run.runId });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await f.request("thread/stop", {
+        threadId: "thread",
+        providerThreadId: "agent-1",
+        activeTurnId: null,
+        intent: "release",
+      });
+
+      const reply = await f.request("thread/resume", {
+        threadId: "thread",
+        providerThreadId: "agent-1",
+        cwd,
+        instructionMode: "append",
+        options: f.executionOptions,
+      });
+
+      expect(reply.error).toBeUndefined();
+      expect(reply.result).toEqual({ providerThreadId: "agent-1" });
+      const reopened = f.resumedOptions[attempt].local?.store;
+
+      if (!reopened) throw new Error("Expected a resumed local store");
+      expect(await reopened.agents.get({ agentId: "agent-1" })).toEqual({
+        ...original,
+        cwd,
+        updatedAt: cwd === "/tmp" ? original?.updatedAt : expect.any(Number),
+      });
+      expect(await reopened.checkpoints.get({ agentId: "agent-1", blobId: "root" })).toEqual(
+        checkpoint,
+      );
+      expect(await reopened.runs.get({ agentId: "agent-1", runId: run.runId })).toEqual(run);
+      expect(await reopened.runEvents.list({ runId: run.runId })).toEqual(events);
+    }
+
+    expect(f.created).toHaveLength(1);
+    expect(f.resumed).toEqual(["agent-1", "agent-1"]);
+  },
+);
+
+test("refuses to move or resume a native agent owned by another live session", async () => {
   const f = fixture();
   await f.init();
   await f.start();
@@ -1482,7 +1548,7 @@ test("refuses to resume a native agent owned by another live session", async () 
   const reply = await f.request("thread/resume", {
     threadId: "other-thread",
     providerThreadId: "agent-1",
-    cwd: "/tmp",
+    cwd: "/changed-checkout",
     instructionMode: "append",
     options: f.executionOptions,
   });
@@ -1490,6 +1556,9 @@ test("refuses to resume a native agent owned by another live session", async () 
   expect(reply.error?.message).toContain("live process");
   expect(f.resumed).toEqual([]);
   expect(f.disposed()).toBe(0);
+  expect(await f.created[0].local?.store?.agents.get({ agentId: "agent-1" })).toMatchObject({
+    cwd: "/tmp",
+  });
 });
 
 test("recovers a persisted abandoned local run only on the first resumed send", async () => {
