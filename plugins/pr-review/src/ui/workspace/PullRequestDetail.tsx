@@ -73,8 +73,35 @@ export function PullRequestDetail({
   const rpc = useRpc<typeof workspaceRpcContract>();
   const data = useWorkspaceData(threadId, url, active);
   const { detail, stack } = data;
+  const [openingCursor, setOpeningCursor] = useState(false);
   const [tab, setTab] = useState("code");
   const [refreshRevision, setRefreshRevision] = useState(0);
+
+  const openCursor = async () => {
+    if (!detail || openingCursor) return;
+    setOpeningCursor(true);
+    try {
+      const target = await rpc.call("prEditorTarget", {
+        threadId,
+        url,
+        branch: detail.headRefName,
+      });
+      const response = await fetch("/api/v1/plugins/workspace-opener/http/open-cursor", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(target),
+      });
+      if (!response.ok)
+        throw new Error(
+          "Could not open Cursor. Check that Workspace Opener is enabled and Cursor is installed on the repository’s machine.",
+        );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpeningCursor(false);
+    }
+  };
 
   const refresh = () => {
     void data.refresh();
@@ -303,6 +330,16 @@ export function PullRequestDetail({
                 Match.when("reopen", () => "Reopen"),
                 Match.exhaustive,
               )}
+            </button>
+            <button
+              type="button"
+              className="pr-control"
+              disabled={!detail || openingCursor}
+              onClick={() => void openCursor()}
+              title="Open the PR branch’s worktree, or the main checkout, in Cursor"
+            >
+              <Icon name="ExternalLink" className="size-3.5" />
+              {openingCursor ? "Opening…" : "Open in Cursor"}
             </button>
             <PrMenu label="Pull request actions" icon="MoreHorizontal" compact disabled={!detail}>
               <PrMenuItem icon="ExternalLink" onSelect={() => navigate.openUrl(url)}>

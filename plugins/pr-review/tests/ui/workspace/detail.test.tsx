@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, expect, it } from "vite-plus/test";
+import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { overview, stack } from "../../workspace-fixture";
@@ -202,5 +202,57 @@ it("renders HTML and Markdown in the conversation, timeline, description and com
     expect(timeline.getByText("comment", { selector: "strong" }).closest("sup")).toBeTruthy();
   } finally {
     slot.lifecycle.unmount();
+  }
+});
+
+it("opens the resolved worktree in Cursor and prevents duplicate clicks", async () => {
+  installTestPluginRuntime();
+  const { PullRequestDetail } = await import("../../../src/ui/workspace/PullRequestDetail");
+  let complete!: (response: Response) => void;
+  const fetch = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const slot = renderSlot(
+    { component: PullRequestDetail },
+    { threadId: "editor-thread", url: overview.url, code: null },
+    {
+      rpc: {
+        prOverview: () => overview,
+        prStack: () => null,
+        prTimeline: () => ({ entries: [], nextPage: null, truncated: false }),
+        prEditorTarget: () => ({ hostId: "machine", path: "/worktrees/feature" }),
+      },
+    },
+  );
+  try {
+    await slot.findByRole("heading", { name: "Fix API" });
+    fireEvent.click(slot.getByRole("button", { name: "Open in Cursor" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(slot.getByRole("button", { name: "Opening…" }).hasAttribute("disabled")).toBe(true);
+    expect(fetch.mock.calls[0]).toEqual([
+      "/api/v1/plugins/workspace-opener/http/open-cursor",
+      expect.objectContaining({
+        body: JSON.stringify({ hostId: "machine", path: "/worktrees/feature" }),
+      }),
+    ]);
+    expect(slot.inspection.rpcCalls).toContainEqual(
+      expect.objectContaining({
+        method: "prEditorTarget",
+        input: { threadId: "editor-thread", url: overview.url, branch: overview.headRefName },
+      }),
+    );
+    complete(new Response("{}", { status: 200 }));
+    await waitFor(() =>
+      expect(slot.getByRole("button", { name: "Open in Cursor" }).hasAttribute("disabled")).toBe(
+        false,
+      ),
+    );
+  } finally {
+    slot.lifecycle.unmount();
+    vi.unstubAllGlobals();
   }
 });

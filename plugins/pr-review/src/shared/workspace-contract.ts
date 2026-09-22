@@ -158,6 +158,10 @@ const candidates = z.object({
 });
 
 export const workspaceRpcContract = defineRpcContract({
+  prEditorTarget: {
+    input: target.extend({ branch: z.string().min(1) }),
+    output: z.object({ hostId: z.string(), path: z.string() }),
+  },
   prPrepare: {
     input: target.extend({ wake: z.boolean() }),
     output: z.object({ status: z.enum(["ready", "waking"]) }),
@@ -174,6 +178,14 @@ export const workspaceRpcContract = defineRpcContract({
 });
 
 export const workspaceHostContract = defineRpcContract({
+  prEditorTarget: {
+    input: z.object({
+      roots: z.array(z.string()),
+      repository: z.string(),
+      branch: z.string().min(1),
+    }),
+    output: z.string(),
+  },
   prOverview: { input: hostTarget, output: overviewSchema },
   prTimeline: { input: hostTarget.extend({ page: number.default(1) }), output: timelineSchema },
   prStack: { input: hostTarget, output: stackSchema.nullable() },

@@ -136,3 +136,11 @@ client are checked before writing. A failed write is never retried automatically
 
 The plugin uses the thread's host and its existing GitHub CLI authentication;
 standalone reviews use the primary host. It adds no draft database or credentials.
+
+The PR detail header’s **Open in Cursor** button uses the Workspace Opener plugin
+(which must be enabled) to launch Cursor on the repository’s machine. It searches
+the thread’s environment and registered project sources on that machine, including
+direct child repositories in grouping folders such as `180seg`. It opens an existing
+worktree with the PR’s exact branch name, falling back to the repository’s main
+checkout. It does not create worktrees or switch branches. Missing local repositories
+and launch failures are shown as errors.

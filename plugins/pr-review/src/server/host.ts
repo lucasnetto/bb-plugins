@@ -1,3 +1,4 @@
+import { editorTarget } from "./editor-target";
 import { githubReview, githubReviewMutate } from "./github-review-host";
 import { homedir } from "node:os";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk";
@@ -11,6 +12,8 @@ import { prAction, prMergeStatus } from "./workspace-actions";
 export default experimental_defineHostEntry({
   contract: { ...hostContract, ...workspaceHostContract },
   handlers: {
+    prEditorTarget: ({ roots, repository, branch }, ctx) =>
+      runHost(editorTarget(roots, repository, branch), ctx.signal),
     prOverview: ({ root, url }, ctx) => runHost(prOverview(root ?? homedir(), url), ctx.signal),
     prTimeline: ({ root, url, page }, ctx) =>
       runHost(prTimeline(root ?? homedir(), url, page), ctx.signal),

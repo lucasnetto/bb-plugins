@@ -46,6 +46,25 @@ export function registerWorkspace(
   });
 
   bb.rpc.register(workspaceRpcContract, {
+    prEditorTarget: handler(runtime, (input) =>
+      Effect.gen(function* () {
+        const { hostId, root } = yield* target(input);
+        const projects = yield* call("projects.list", () => bb.sdk.projects.list());
+        const sources = projects
+          .flatMap((project) => project.sources)
+          .filter((source) => source.hostId === hostId);
+        const roots = [...(root ? [root] : []), ...sources.map((source) => source.path)];
+        const { repository } = parsePrUrl(input.url);
+        const path = yield* call("host.prEditorTarget", (signal) =>
+          host.call(
+            "prEditorTarget",
+            { roots, repository, branch: input.branch },
+            { hostId, signal },
+          ),
+        );
+        return { hostId, path };
+      }),
+    ),
     prPrepare: handler(runtime, (input) =>
       Effect.gen(function* () {
         const { hostId } = yield* target(input);
