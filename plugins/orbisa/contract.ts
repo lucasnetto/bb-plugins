@@ -1,7 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const incusRequest = z
+export const orbisaRequest = z
   .object({
     action: z.enum(["version", "create", "inspect", "start", "stop", "remove", "exec"]),
     owner: z.string().min(1).max(1024),
@@ -10,6 +10,7 @@ export const incusRequest = z
       .string()
       .regex(/^[a-f0-9]{32}$/)
       .optional(),
+    backend: z.enum(["incus", "orbstack"]),
     image: z
       .string()
       .regex(/^[a-z0-9][a-z0-9._-]*$/)
@@ -22,9 +23,9 @@ export const incusRequest = z
     timeoutMs: z.number().int().min(100).max(1_700_000).default(600_000),
   })
   .strict();
-export const incusHostContract = defineRpcContract({
+export const orbisaHostContract = defineRpcContract({
   run: {
-    input: incusRequest,
+    input: orbisaRequest,
     output: z.object({ exitCode: z.number().int(), stdout: z.string(), stderr: z.string() }),
   },
 });

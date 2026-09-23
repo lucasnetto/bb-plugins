@@ -1,16 +1,25 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk";
 import { spawn } from "node:child_process";
-import { incusHostContract } from "./incus-contract.ts";
+import { orbisaHostContract } from "./contract.ts";
 
 export default experimental_defineHostEntry({
-  contract: incusHostContract,
+  contract: orbisaHostContract,
   handlers: {
     run: async (input, context) => {
-      if (process.platform !== "linux")
-        throw new Error("Orbisa Incus requires a Linux runtime host.");
+      if (process.platform !== (input.backend === "incus" ? "linux" : "darwin"))
+        throw new Error("Orbisa backend does not match the runtime host platform.");
       const args: string[] = [input.action];
       if (input.action !== "version") {
-        args.push("--owner", input.owner, "--key", input.key, "--timeout", `${input.timeoutMs}ms`);
+        args.push(
+          "--backend",
+          input.backend,
+          "--owner",
+          input.owner,
+          "--key",
+          input.key,
+          "--timeout",
+          `${input.timeoutMs}ms`,
+        );
         if (input.id) args.push("--id", input.id);
         if (input.action === "create") args.push("--image", input.image);
         if (input.action === "exec") args.push("--raw", "--", ...input.command);

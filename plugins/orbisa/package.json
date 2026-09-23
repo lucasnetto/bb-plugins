@@ -1,13 +1,12 @@
 {
   "name": "bb-plugin-orbisa",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "build": "bb plugin build",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
-    "effect": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -20,11 +19,11 @@
   },
   "bb": {
     "name": "Orbisa",
-    "description": "Run tasks in isolated Orbisa VMs, suspend them when idle, and delete them 10 minutes after settling.",
+    "description": "Private environments through the standalone Orbisa CLI on Linux and macOS. Archive to stop; files are deleted ten minutes later.",
     "branding": {
       "icon": "Zap"
     },
     "server": "./server.ts",
-    "host": "./incus-host.ts"
+    "host": "./host.ts"
   }
 }

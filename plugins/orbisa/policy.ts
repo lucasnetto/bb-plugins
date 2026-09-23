@@ -1,12 +1,12 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const INCUS_DELETE_GRACE_MS = 10 * 60_000;
+export const ORBISA_DELETE_GRACE_MS = 10 * 60_000;
 const stateSchema = z.object({ settledAt: z.number().finite(), deleteAt: z.number().finite() });
-const stateKey = (hostId: string) => `incus-retirement/${hostId}`;
+const stateKey = (hostId: string) => `orbisa-retirement/${hostId}`;
 
 // Settled is BB's archived state, not an agent becoming idle after a turn.
-export function createIncusPolicy(
+export function createOrbisaPolicy(
   bb: BbPluginApi,
   owned: (resource: unknown) => { key: string },
   now = Date.now,
@@ -33,7 +33,7 @@ export function createIncusPolicy(
   async function sweep() {
     const hosts = (await bb.sdk.hosts.list({ includeCreating: true })).filter(
       (host) =>
-        host.machineProviderId === "orbisa-incus" &&
+        host.machineProviderId === "orbisa-machine" &&
         ["active", "suspended"].includes(host.lifecycle.phase),
     );
     if (!hosts.length || disposed) return;
@@ -67,7 +67,7 @@ export function createIncusPolicy(
         if (retired.length) {
           const settledAt = Math.max(...retired.map((t) => t.archivedAt!));
           if (!state || settledAt > state.settledAt) {
-            state = { settledAt, deleteAt: settledAt + INCUS_DELETE_GRACE_MS };
+            state = { settledAt, deleteAt: settledAt + ORBISA_DELETE_GRACE_MS };
             await bb.storage.kv.set(stateKey(host.id), state);
           }
         }
@@ -90,7 +90,7 @@ export function createIncusPolicy(
         if (latestArchived.length) {
           const settledAt = Math.max(...latestArchived.map((t) => t.archivedAt!));
           if (settledAt > state.settledAt) {
-            state = { settledAt, deleteAt: settledAt + INCUS_DELETE_GRACE_MS };
+            state = { settledAt, deleteAt: settledAt + ORBISA_DELETE_GRACE_MS };
             await bb.storage.kv.set(stateKey(host.id), state);
           }
         }
@@ -124,8 +124,8 @@ export function createIncusPolicy(
   bb.events.on("thread.archived", reconcile);
   bb.events.on("thread.unarchived", reconcile);
   bb.events.on("thread.deleted", reconcile);
-  bb.background.schedule("incus-archive-cleanup", "* * * * *", reconcile);
-  bb.background.service("incus-archive-recovery", { start: reconcile });
+  bb.background.schedule("orbisa-archive-cleanup", "* * * * *", reconcile);
+  bb.background.service("orbisa-archive-recovery", { start: reconcile });
   bb.onDispose(async () => {
     disposed = true;
     await pending;

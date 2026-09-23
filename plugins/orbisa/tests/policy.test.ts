@@ -6,11 +6,11 @@ import {
   makeMessageDispatchHookContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { createIncusPolicy, INCUS_DELETE_GRACE_MS } from "../incus-policy.ts";
+import { createOrbisaPolicy, ORBISA_DELETE_GRACE_MS } from "../policy.ts";
 
 function fixture() {
   let clock = 1_000_000;
-  let host = makeHostResponse({ id: "host_guest", machineProviderId: "orbisa-incus" });
+  let host = makeHostResponse({ id: "host_guest", machineProviderId: "orbisa-machine" });
   let root = makeThreadResponse({ id: "thr_owner", environmentId: "env_guest", status: "idle" });
   let extra: (typeof root)[] = [];
   let includeRoot = true;
@@ -52,7 +52,7 @@ function fixture() {
     assert.equal(r.owner, "ours");
     return r;
   };
-  const policy = createIncusPolicy(bb, owned, () => clock);
+  const policy = createOrbisaPolicy(bb, owned, () => clock);
   return {
     bb,
     harness,
@@ -101,10 +101,10 @@ void test("archive stops compute and deletes all files only after ten minutes", 
     assert.equal(f.suspensions(), 1);
     assert.deepEqual(await f.policy.read("host_guest"), {
       settledAt: f.now(),
-      deleteAt: f.now() + INCUS_DELETE_GRACE_MS,
+      deleteAt: f.now() + ORBISA_DELETE_GRACE_MS,
     });
-    f.advance(INCUS_DELETE_GRACE_MS - 1);
-    await f.harness.behavior.runSchedule("incus-archive-cleanup");
+    f.advance(ORBISA_DELETE_GRACE_MS - 1);
+    await f.harness.behavior.runSchedule("orbisa-archive-cleanup");
     assert.equal(f.removals(), 0);
     f.advance(1);
     await f.policy.reconcile();
@@ -122,11 +122,11 @@ void test("unarchive cancels retirement; rapid resettlement gets a full new grac
   try {
     f.settle();
     await f.policy.reconcile();
-    f.advance(INCUS_DELETE_GRACE_MS - 1);
+    f.advance(ORBISA_DELETE_GRACE_MS - 1);
     f.unsettle();
     await f.harness.behavior.emitThreadEvent("thread.unarchived", { thread: f.root() });
     assert.equal(await f.policy.read("host_guest"), null);
-    f.advance(INCUS_DELETE_GRACE_MS);
+    f.advance(ORBISA_DELETE_GRACE_MS);
     await f.policy.reconcile();
     assert.equal(f.removals(), 0);
     f.settle();
@@ -137,7 +137,7 @@ void test("unarchive cancels retirement; rapid resettlement gets a full new grac
     f.settle(); // Both notifications can arrive after the final DB state.
     await f.policy.reconcile();
     assert.equal((await f.policy.read("host_guest"))!.deleteAt, first + 1000);
-    f.advance(INCUS_DELETE_GRACE_MS);
+    f.advance(ORBISA_DELETE_GRACE_MS);
     await f.policy.reconcile();
     assert.equal(f.removals(), 1);
   } finally {
@@ -189,12 +189,12 @@ void test("saved deadlines survive reload, deleted archive rows, and startup rec
     f.settle();
     await f.policy.reconcile();
     f.forgetRoot();
-    f.advance(INCUS_DELETE_GRACE_MS);
+    f.advance(ORBISA_DELETE_GRACE_MS);
     const replacement = await harness.lifecycle.reload((bb) => {
-      createIncusPolicy(bb, f.owned, f.now);
+      createOrbisaPolicy(bb, f.owned, f.now);
     });
     harness = replacement.harness;
-    await harness.behavior.runService("incus-archive-recovery").done;
+    await harness.behavior.runService("orbisa-archive-recovery").done;
     assert.equal(harness.inspection.sdk.callsTo("hosts.delete").length, 1);
   } finally {
     await harness.lifecycle.dispose();
@@ -205,8 +205,8 @@ void test("startup recovers a missed archive notification from its original time
   const f = fixture();
   try {
     f.settle();
-    f.advance(INCUS_DELETE_GRACE_MS);
-    await f.harness.behavior.runService("incus-archive-recovery").done;
+    f.advance(ORBISA_DELETE_GRACE_MS);
+    await f.harness.behavior.runService("orbisa-archive-recovery").done;
     assert.equal(f.removals(), 1);
   } finally {
     await f.harness.lifecycle.dispose();
@@ -218,7 +218,7 @@ void test("fresh live ownership on a newly attached environment cancels deletion
   try {
     f.settle();
     await f.policy.reconcile();
-    f.advance(INCUS_DELETE_GRACE_MS);
+    f.advance(ORBISA_DELETE_GRACE_MS);
     let reads = 0;
     f.harness.inspection.sdk.stub("threads.list", async (args?: { archived?: boolean }) => {
       if (args?.archived) return [f.root()];
@@ -258,7 +258,7 @@ void test("observation failures and a busy coordinator defer work without losing
     await f.policy.reconcile();
     assert.equal(f.suspensions(), 2);
     assert.deepEqual(await f.policy.read("host_guest"), state);
-    f.advance(INCUS_DELETE_GRACE_MS);
+    f.advance(ORBISA_DELETE_GRACE_MS);
     f.harness.inspection.sdk.stub("threads.list", async () => {
       throw new Error("offline");
     });

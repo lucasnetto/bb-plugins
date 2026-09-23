@@ -1,18 +1,20 @@
 import type { BbPluginApi, MachineExecutor } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
-import { incusHostContract, incusRequest } from "./incus-contract.ts";
-import { createIncusPolicy } from "./incus-policy.ts";
-import { checked } from "./task-process.ts";
+import { orbisaHostContract, orbisaRequest } from "./contract.ts";
+import { createOrbisaPolicy } from "./policy.ts";
+import { prepareProfile } from "./profile.ts";
 
 const inputsSchema = z.object({
   runtimeHostId: z.string().min(1),
-  image: z.string().default("orbisa-tooling-v2"),
+  backend: z.enum(["incus", "orbstack"]),
+  image: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9._-]*$/)
+    .optional(),
 });
 const resourceSchema = inputsSchema.extend({
+  image: z.string(),
   owner: z.string(),
   key: z.string(),
   id: z
@@ -28,7 +30,7 @@ const responseSchema = z.object({
   error: z.object({ code: z.string(), message: z.string() }).optional(),
 });
 
-export function registerIncusProvider(
+export function registerOrbisaProvider(
   bb: BbPluginApi,
   options: {
     prepareCredentials?: (executor: MachineExecutor, signal: AbortSignal) => Promise<void>;
@@ -36,7 +38,7 @@ export function registerIncusProvider(
 ) {
   const owner =
     "bb-" + createHash("sha256").update(bb.server.experimental_dataDir).digest("hex").slice(0, 20);
-  const client = bb.hosts.experimental_client({ contract: incusHostContract });
+  const client = bb.hosts.experimental_client({ contract: orbisaHostContract });
   const owned = (value: unknown) => {
     const r = resourceSchema.parse(value);
     if (r.owner !== owner) throw new Error("Foreign Orbisa owner.");
@@ -44,17 +46,18 @@ export function registerIncusProvider(
   };
   const call = async (
     r: Resource,
-    action: z.infer<typeof incusRequest>["action"],
+    action: z.infer<typeof orbisaRequest>["action"],
     signal: AbortSignal,
-    extra: Partial<z.infer<typeof incusRequest>> = {},
+    extra: Partial<z.infer<typeof orbisaRequest>> = {},
   ) => {
-    const request = incusRequest.parse({
+    const request = orbisaRequest.parse({
       ...extra,
       action,
       owner: r.owner,
       key: r.key,
       ...(r.id ? { id: r.id } : {}),
       image: r.image,
+      backend: r.backend,
     });
     const reply = await client.call("run", request, {
       hostId: r.runtimeHostId,
@@ -98,60 +101,55 @@ export function registerIncusProvider(
       await options.prepareCredentials(executor(r), signal);
       return;
     }
-    const profile = basename(bb.server.experimental_dataDir) === ".bb-work" ? "work" : "personal";
-    const authPath = join(homedir(), profile === "work" ? ".codex_work" : ".codex", "auth.json");
-    const [auth, versionText, github] = await Promise.all([
-      readFile(authPath, "utf8"),
-      checked(["codex", "--version"], { signal }),
-      checked(["gh", "auth", "token"], { signal }),
-    ]);
-    const version = versionText.match(/^codex-cli (\d+\.\d+\.\d+)/)?.[1];
-    if (!version) throw new Error("Cannot determine the server's Codex version.");
-    JSON.parse(auth);
-    report.step(`Preparing Codex ${version} and profile credentials`);
-    const install = await call(r, "exec", signal, {
-      command: [
-        "sh",
-        "-ec",
-        `test "$(codex --version 2>/dev/null)" = "codex-cli ${version}" || npm install -g @openai/codex@${version}`,
-      ],
-    });
-    if (install.exitCode !== 0)
-      throw new Error("Failed installing the Codex runtime in the container.");
-    const credentials = await call(r, "exec", signal, {
-      command: ["python3", "-c", INSTALL_AUTH],
-      stdin: JSON.stringify({ auth, github: github.trim() }),
-    });
-    if (credentials.exitCode !== 0)
-      throw new Error("Failed preparing profile credentials in the container.");
+    await prepareProfile(
+      bb.server.experimental_dataDir,
+      async (command, stdin = "") => {
+        const result = await call(r, "exec", signal, { command, stdin });
+        if (result.exitCode !== 0) throw new Error("Orbisa guest preparation failed.");
+        return result.stdout;
+      },
+      signal,
+      report.step,
+    );
   };
   bb.experimental_machines.register({
-    id: "orbisa-incus",
-    displayName: "Orbisa Linux container",
+    id: "orbisa-machine",
+    displayName: "Orbisa environment",
     icon: "Server",
     description:
-      "Dedicated Linux container. Settling stops it and deletes its files after 10 minutes.",
+      "Dedicated environment on Linux or macOS. Settling stops it and deletes its files after 10 minutes.",
     ephemeral: false,
     inputs: inputsSchema,
     async create(context) {
-      let r: Resource = { ...inputsSchema.parse(context.inputs), owner, key: context.key };
+      const inputs = inputsSchema.parse(context.inputs);
+      let r: Resource = {
+        ...inputs,
+        image:
+          inputs.image ?? (inputs.backend === "incus" ? "orbisa-tooling-v2" : "orbisa-tooling-v1"),
+        owner,
+        key: context.key,
+      };
       // Save the transport destination before any remote allocation so cleanup
       // by key works even when the first checkpoint response is interrupted.
-      const prior = await bb.storage.kv.get(`incus-intent/${context.key}`);
+      const prior = await bb.storage.kv.get(`orbisa-intent/${context.key}`);
       if (prior) {
         const saved = owned(prior);
-        if (saved.runtimeHostId !== r.runtimeHostId || saved.image !== r.image)
+        if (
+          saved.runtimeHostId !== r.runtimeHostId ||
+          saved.image !== r.image ||
+          saved.backend !== r.backend
+        )
           throw new Error("Allocation inputs changed.");
         r = saved;
       }
-      await bb.storage.kv.set(`incus-intent/${context.key}`, r);
+      await bb.storage.kv.set(`orbisa-intent/${context.key}`, r);
       await context.checkpoint(r);
-      context.report.step("Allocating Orbisa container on the Linux host");
+      context.report.step("Allocating an Orbisa environment on the runtime host");
       const allocation = z
         .object({ id: z.string(), name: z.string() })
         .parse(await lifecycle(r, "create", context.signal));
       r = { ...r, id: allocation.id };
-      await bb.storage.kv.set(`incus-intent/${context.key}`, r);
+      await bb.storage.kv.set(`orbisa-intent/${context.key}`, r);
       await context.checkpoint(r);
       await prepare(r, context.signal, context.report);
       await bb.experimental_machines.bootstrap({
@@ -163,7 +161,7 @@ export function registerIncusProvider(
       return { status: "created", name: allocation.name, resource: r };
     },
     async reconcileCleanup(context) {
-      const value = await bb.storage.kv.get(`incus-intent/${context.key}`);
+      const value = await bb.storage.kv.get(`orbisa-intent/${context.key}`);
       if (value) await lifecycle(owned(value), "remove", context.signal);
       return { status: "removed" };
     },
@@ -191,37 +189,12 @@ export function registerIncusProvider(
     },
   });
   bb.experimental_environments.register({
-    id: "orbisa-incus",
-    displayName: "Orbisa Linux container",
+    id: "orbisa-machine",
+    displayName: "Orbisa environment",
     icon: "Server",
-    description: "A private Linux container and project checkout.",
-    machineProviderId: "orbisa-incus",
+    description: "A private filesystem, processes, network and project checkout.",
+    machineProviderId: "orbisa-machine",
     environmentProviderId: "project-checkout",
   });
-  return createIncusPolicy(bb, owned);
+  return createOrbisaPolicy(bb, owned);
 }
-
-const INSTALL_AUTH = String.raw`
-import json, os, pathlib, subprocess, sys
-p=json.load(sys.stdin)
-os.umask(0o077)
-secrets=pathlib.Path('/dev/shm/orbisa'); secrets.mkdir(exist_ok=True)
-(secrets/'codex-auth.json').write_text(p['auth'])
-(secrets/'github-token').write_text(p['github'])
-for name in ('.codex', '.codex_work'):
- d=pathlib.Path('/root')/name; d.mkdir(exist_ok=True)
- target=d/'auth.json'
- if target.is_symlink() or target.exists(): target.unlink()
- target.symlink_to(secrets/'codex-auth.json')
-helper=pathlib.Path('/usr/local/bin/orbisa-git-credential')
-helper.write_text('''#!/usr/bin/python3
-import pathlib,sys
-if len(sys.argv)>1 and sys.argv[1]=="get":
- fields=dict(line.rstrip("\\n").split("=",1) for line in sys.stdin if "=" in line)
- if fields.get("host")=="github.com" and fields.get("protocol")=="https":
-  print("username=x-access-token\\npassword="+pathlib.Path("/dev/shm/orbisa/github-token").read_text()+"\\n")
-''')
-helper.chmod(0o700)
-subprocess.run(['git','config','--global','credential.helper',str(helper)],check=True)
-subprocess.run(['git','config','--global','url.https://github.com/.insteadOf','git@github.com:'],check=True)
-`;

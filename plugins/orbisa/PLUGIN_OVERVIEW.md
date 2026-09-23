@@ -1,23 +1,13 @@
-## Dedicated task machines
+# Orbisa architecture
 
-Choose **Orbisa task VM** when starting a BB task. Each task gets an isolated
-clone of a prepared base with BB, Codex and skills preinstalled and an independent checkout from a cached Git bundle. The Work 180seg catalog
-recreates its repository folders from committed local branches and preserves
-the parent workspace instructions. Related
-threads can share the same machine by reusing its environment.
+`server.ts` registers a single machine/environment provider and the bounded
+`bb orbisa machines` command. `provider.ts` journals allocation intent, delegates
+to host RPC, prepares the profile and calls the public SDK bootstrap helper.
+`contract.ts` validates transport inputs; `host.ts` validates the host platform
+and executes the installed Orbisa CLI with bounded output and private stdin.
+`profile.ts` installs the matching agent runtime and temporary credentials.
+`policy.ts` stops archived machines and deletes them after ten minutes, with
+restart recovery, ownership rechecks and cancellation on unarchive.
 
-Task machines stop after 15 idle minutes by default and resume before queued
-work runs. Settling the last thread starts a ten-minute deletion countdown.
-Un-settle during that window to keep the disk. Once deleted, all remaining
-files are discarded and the conversation stays available as history.
-
-## Requirements and controls
-
-Requires BB 0.43.0, a macOS server with OrbStack, an isolated clean Orbisa
-template, and reachable BB machine enrollment through BB Connect. GitHub and
-agent credentials come from the active profile's existing local setup.
-VMs consume local disk and compute; this does not provision cloud resources.
-
-Use `bb orbisa tasks` for lifecycle and deletion deadlines. The **Task VM
-template** and **Suspend task VMs after idle** settings control provisioning
-and idle behavior.
+All Incus and OrbStack lifecycle operations live in the independent Orbisa CLI.
+No BB core imports or internal enrollment implementations are used.
