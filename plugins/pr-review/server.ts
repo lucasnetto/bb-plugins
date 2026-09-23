@@ -1,3 +1,4 @@
+import { registerLocalChanges } from "./src/local-changes/server";
 import registerReview from "./src/server/server";
 import { migrateLegacyReview } from "./src/server/legacy-migration";
 import { primaryHostId } from "./listing-host";
@@ -8,6 +9,7 @@ import { hostContract, rpcContract } from "./contract";
 export default async function plugin(bb: BbPluginApi) {
   await migrateLegacyReview(bb);
   registerReview(bb);
+  registerLocalChanges(bb);
   const host = bb.hosts.experimental_client({ contract: hostContract });
   bb.rpc.register(rpcContract, {
     ...createListCache(bb),

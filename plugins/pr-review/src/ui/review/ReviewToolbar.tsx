@@ -17,7 +17,16 @@ export function ReviewToolbar({
   treeOpen: boolean;
   onToggleTree: () => void;
   loading: boolean;
-  display: ReturnType<typeof useReviewDiff>["display"];
+  display: Pick<
+    ReturnType<typeof useReviewDiff>["display"],
+    "style" | "setStyle" | "wrap" | "setWrap"
+  > &
+    Partial<
+      Pick<
+        ReturnType<typeof useReviewDiff>["display"],
+        "expandContext" | "collapseContext" | "toggleAllFiles" | "allFilesCollapsed"
+      >
+    >;
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1">
@@ -78,15 +87,21 @@ export function ReviewToolbar({
       >
         Files
       </Button>
-      <Button size="sm" variant="ghost" disabled={loading} onClick={display.expandContext}>
-        Expand context
-      </Button>
-      <Button size="sm" variant="ghost" onClick={display.collapseContext}>
-        Collapse context
-      </Button>
-      <Button size="sm" variant="ghost" onClick={display.toggleAllFiles}>
-        {display.allFilesCollapsed ? "Expand all" : "Collapse all"}
-      </Button>
+      {display.expandContext ? (
+        <Button size="sm" variant="ghost" disabled={loading} onClick={display.expandContext}>
+          Expand context
+        </Button>
+      ) : null}
+      {display.collapseContext ? (
+        <Button size="sm" variant="ghost" onClick={display.collapseContext}>
+          Collapse context
+        </Button>
+      ) : null}
+      {display.toggleAllFiles ? (
+        <Button size="sm" variant="ghost" onClick={display.toggleAllFiles}>
+          {display.allFilesCollapsed ? "Expand all" : "Collapse all"}
+        </Button>
+      ) : null}
     </div>
   );
 }

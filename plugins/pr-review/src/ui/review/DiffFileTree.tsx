@@ -113,6 +113,13 @@ export function DiffFileTree({
   useEffect(() => {
     if (selectedPath === null) {
       handledRevealRef.current = null;
+      syncingSelectionRef.current = true;
+
+      for (const path of model.getSelectedPaths()) model.getItem(path)?.deselect();
+
+      queueMicrotask(() => {
+        syncingSelectionRef.current = false;
+      });
 
       return;
     }
