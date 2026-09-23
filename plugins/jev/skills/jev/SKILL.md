@@ -24,4 +24,4 @@ Live evaluation uses Vercel AI Gateway `typesafe-ai/jev` with configurable ZDR (
 - `liveEnabled` separately permits external processing; `automaticChecks` also requires capture. Default daily limit is 20 attempts, including retries. All feature switches default off.
 - Probability thresholds are provisional. Do not claim calibrated accuracy, task success, or user acceptance. Unknown usage remains unknown.
 
-Obtain project approval before processing its content externally. No automatic actions are supported. Inspect the README/verification record for live smoke blockers before starting a real-evidence pilot.
+Obtain project approval before processing its content externally. No automatic actions are supported. Inspect the README for live smoke blockers before starting a real-evidence pilot.

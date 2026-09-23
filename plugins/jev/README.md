@@ -137,6 +137,3 @@ Sources checked September 17, 2026:
 
 Held-out accuracy measurements, lint, trace analysis, retrieval, automatic
 feedback, full agent trials, and email remain later work.
-
-See [capability audit](../../docs/plans/jev/capabilities.md) and
-[verification record](../../docs/plans/jev/verification.md).
