@@ -262,6 +262,8 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
           <a
             key={pr.url}
             href={pr.url}
+            // Bypass PR Review's document capture handler so we can select this thread first.
+            data-pr-browser=""
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -288,10 +290,17 @@ function PullRequestBadge({ threadId }: { threadId: string }) {
   return (
     <a
       href={pullRequest.url}
+      data-pr-browser=""
       target="_blank"
       rel="noopener noreferrer"
       onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        requestLinkedReview(threadId, pullRequest.url, (id) => actions.open(id));
+      }}
       className={cn(
         "shrink-0 text-xs tabular-nums hover:underline",
         pullRequestBadgeClass(pullRequest),
