@@ -14,6 +14,13 @@ import "./languages";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "./theme";
 
 const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
+/* Touch uses tap selection; swipes must reach the native scroll containers. */
+@media (pointer: coarse) {
+  [data-interactive-line-numbers] [data-column-number] {
+    touch-action: auto;
+  }
+}
+
 :is(
   [data-line],
   [data-line-annotation],

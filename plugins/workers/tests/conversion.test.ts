@@ -14,7 +14,7 @@ async function setup() {
 
   const { bb, harness } = createFakePluginHost({
     pluginId: "workers",
-    agentSkillIds: ["bb-workers"],
+    agentSkillIds: ["bb-workers", "fusion"],
     sdk: {
       threads: {
         get: async () => target,

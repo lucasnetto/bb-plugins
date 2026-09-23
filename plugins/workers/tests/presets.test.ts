@@ -63,7 +63,7 @@ afterEach(async () => {
 async function setup() {
   const host = createFakePluginHost({
     pluginId: "workers",
-    agentSkillIds: ["bb-workers"],
+    agentSkillIds: ["bb-workers", "fusion"],
     sdk: {
       providers: { list: async () => [provider], models: async () => catalog },
       threads: {

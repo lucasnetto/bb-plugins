@@ -80,9 +80,18 @@ on the model restores BB's remembered execution choice; **Default** workspace us
 the native composer's preference.
 
 Automatic pull runs every five minutes on connected machines while this plugin is
-enabled. It only fast-forwards a clean checkout of the remote's default branch,
-skipping local commits, untracked changes, other branches, and non-Git folders.
-It never switches branches or resets the checkout.
+enabled. For a folder containing multiple repositories, such as `180seg`, it
+discovers checkouts recursively through grouping folders and checks each one
+independently. Discovery stops at each checkout (including `.git` files used by
+worktrees), so submodules are not pulled separately. It skips directory symlinks,
+hidden folders such as `.worktrees`, bare repositories, and `node_modules`,
+`vendor`, `target`, `dist`, and `build` folders. A project pointing directly at a
+checkout continues to update that checkout.
+
+It only fast-forwards a clean checkout of the remote's default branch, skipping
+local commits, untracked changes, and other branches. It never switches branches
+or resets the checkout. Discovery and pull failures are logged with their paths;
+other repositories continue to be checked.
 
 ## Layout
 

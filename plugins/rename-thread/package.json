@@ -13,13 +13,17 @@
     "@get-bb/plugin-sdk": "catalog:",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "better-sqlite3": "catalog:",
     "cron-parser": "catalog:",
-    "hono": "catalog:"
+    "hono": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "engines": {
-    "bb": ">=0.41",
-    "bbPluginSdk": ">=0.4.47"
+    "bb": ">=0.42",
+    "bbPluginSdk": ">=0.4.87"
   },
   "bb": {
     "name": "Rename Thread",
@@ -28,6 +32,7 @@
       "icon": "RefreshCw"
     },
     "server": "./src/server/server.ts",
+    "app": "./src/ui/app.tsx",
     "skills": [
       "skills"
     ]

@@ -14,7 +14,7 @@ export default async function plugin(bb: BbPluginApi) {
       { name: "bb_worker_thread", parameters: advertisedParameters(configuration.presets) },
       "bb_convert_to_worker",
     ],
-    skills: ["bb-workers"],
+    skills: ["bb-workers", "fusion"],
   }));
   bb.agents.registerTool({
     name: "bb_worker_thread",

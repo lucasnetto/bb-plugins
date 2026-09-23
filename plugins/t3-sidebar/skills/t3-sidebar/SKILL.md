@@ -23,3 +23,13 @@ separately for active and pinned, and survives project scope changes. New
 threads appear first. Snoozed and Settled keep their time-based sorting.
 Dragging out of the list continues to use BB's drag-to-split behavior. Touch
 keeps scrolling rather than starting a reorder.
+
+Project settings → **Automatically pull** checks connected project sources every
+five minutes. Container folders such as `180seg` are searched recursively for
+repositories; each clean default-branch checkout without local commits is
+fast-forwarded independently. Discovery stops at checkout boundaries, recognizes
+`.git` directories and files, and skips symlinked directories, hidden folders
+(including `.worktrees`), bare repositories, `node_modules`, `vendor`, `target`,
+`dist`, and `build`. Submodules are not pulled separately. A failure is logged
+with its path and does not block sibling repositories. Branches are never switched
+and local changes are never reset.

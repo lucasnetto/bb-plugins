@@ -15,7 +15,10 @@ The helper runs on the BB server machine, in a temporary directory, with
 reasoning and a 60-second timeout. Codex must be on the server's PATH. Personal
 uses `~/.codex`; Work uses `~/.codex_work`. Other server profiles must explicitly
 set `CODEX_HOME`. Authentication is handled by Codex; this plugin never reads
-credential files. The configurable `model` defaults to `gpt-5.6-luna`.
+credential files. The model picker in the plugin settings uses BB's live Codex
+catalog and defaults to `gpt-5.6-luna` with low reasoning. The selection is
+stored in this BB profile. The provider is fixed to Codex; model, reasoning,
+and service tier choices are passed to the isolated call.
 
 The plugin rechecks the current title immediately before updating it and drops
 results if a manual rename occurred during generation. The SDK does not offer
@@ -31,7 +34,7 @@ CLI equivalents:
 ```sh
 bb rename-thread start <thread-id>
 bb rename-thread status <thread-id>
-bb plugin config rename-thread set model gpt-5.6-luna
+bb rename-thread model [model-id]
 ```
 
 Status is transient and bounded; after server reload it returns to `idle`.

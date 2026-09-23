@@ -1,0 +1,43 @@
+{
+  "name": "bb-plugin-jev",
+  "version": "0.2.1",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vp test",
+    "typecheck": "vp -C ../.. check --no-fmt --no-lint plugins/jev"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "catalog:jev",
+    "ai": "catalog:jev",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "catalog:jev",
+    "@testing-library/react": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.43",
+    "bbPluginSdk": ">=0.4.87"
+  },
+  "bb": {
+    "name": "Jev",
+    "description": "Read-only attention with explicit offline fixtures and revision-linked evidence.",
+    "branding": {
+      "icon": "Eye"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  }
+}

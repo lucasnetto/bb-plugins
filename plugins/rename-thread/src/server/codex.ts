@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join, normalize } from "node:path";
 import { Effect } from "effect";
 import { z } from "zod";
+import type { ModelSelection } from "../shared/contract";
 import { call, sync } from "./effects";
 
 const resultSchema = z.object({ title: z.string().min(1).max(500) }).strict();
@@ -40,7 +41,7 @@ export function profileCodexHome(dataDir: string, inherited: string | undefined)
 
 export const generateTitle = Effect.fn("Rename.generateTitle")(function* (
   prompt: string,
-  model: string,
+  selection: ModelSelection,
   codexHome: string,
 ) {
   return yield* Effect.acquireUseRelease(
@@ -74,9 +75,10 @@ export const generateTitle = Effect.fn("Rename.generateTitle")(function* (
                   "--sandbox",
                   "read-only",
                   "--model",
-                  model,
+                  selection.model,
                   "-c",
-                  'model_reasoning_effort="low"',
+                  `model_reasoning_effort="${selection.reasoningLevel}"`,
+                  ...(selection.serviceTier === "fast" ? ["-c", 'service_tier="fast"'] : []),
                   "--output-schema",
                   schemaPath,
                   "--output-last-message",

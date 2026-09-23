@@ -9,9 +9,28 @@ export const statusSchema = z.object({
 
 export type RenameStatus = z.infer<typeof statusSchema>;
 
+export const modelSelectionSchema = z
+  .object({
+    providerId: z.literal("codex"),
+    model: z.string().trim().min(1).max(200),
+    reasoningLevel: z.enum(["none", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"]),
+    serviceTier: z.enum(["default", "fast"]).optional(),
+  })
+  .strict();
+
+export type ModelSelection = z.infer<typeof modelSelectionSchema>;
+
+export const defaultModelSelection: ModelSelection = {
+  providerId: "codex",
+  model: "gpt-5.6-luna",
+  reasoningLevel: "low",
+};
+
 const input = z.object({ threadId: z.string().min(1).max(200) });
 
 export const rpcContract = defineRpcContract({
   start: { input, output: statusSchema },
   status: { input, output: statusSchema },
+  getModelSelection: { input: z.object({}), output: modelSelectionSchema },
+  setModelSelection: { input: modelSelectionSchema, output: modelSelectionSchema },
 });

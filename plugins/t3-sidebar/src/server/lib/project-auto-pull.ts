@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { Context, Effect, Layer, Schema } from "effect";
 
@@ -10,6 +12,59 @@ export class PullError extends Schema.TaggedError<PullError>()("PullError", {
   message: Schema.String,
   cause: Schema.Unknown,
 }) {}
+
+const skippedDirectories = new Set(["node_modules", "vendor", "target", "dist", "build"]);
+
+export const discoverProjectRepositories = Effect.fn("ProjectAutoPull.discover")((root: string) =>
+  Effect.tryPromise({
+    try: async (signal) => {
+      const paths: string[] = [];
+      const errors: { path: string; message: string }[] = [];
+
+      async function walk(path: string) {
+        signal.throwIfAborted();
+
+        const entries = await readdir(path, { withFileTypes: true }).catch((error) => {
+          errors.push({ path, message: String(error) });
+
+          return [];
+        });
+
+        signal.throwIfAborted();
+        const marker = entries.find((entry) => entry.name === ".git");
+
+        if (marker) {
+          if (marker.isDirectory() || marker.isFile()) paths.push(path);
+
+          // A checkout is a boundary: never update its submodules independently.
+          return;
+        }
+
+        // Bare repositories have no checkout to update or directories to discover.
+        if (
+          entries.some((entry) => entry.name === "HEAD" && entry.isFile()) &&
+          entries.some((entry) => entry.name === "objects" && entry.isDirectory()) &&
+          entries.some((entry) => entry.name === "refs" && entry.isDirectory())
+        )
+          return;
+
+        for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            !skippedDirectories.has(entry.name)
+          )
+            await walk(join(path, entry.name));
+        }
+      }
+
+      await walk(root);
+
+      return { paths, errors };
+    },
+    catch: (cause) => new PullError({ message: String(cause), cause }),
+  }),
+);
 
 export class PullGit extends Context.Service<
   PullGit,

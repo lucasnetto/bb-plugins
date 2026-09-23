@@ -1,25 +1,37 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { Effect } from "effect";
-import { rpcContract, type RenameStatus } from "../shared/contract";
+import {
+  defaultModelSelection,
+  modelSelectionSchema,
+  rpcContract,
+  type ModelSelection,
+  type RenameStatus,
+} from "../shared/contract";
 import { generateTitle, profileCodexHome } from "./codex";
 import { readContext, titlePrompt } from "./context";
 import { call, sync, createRuntime } from "./effects";
 
 const idle: RenameStatus = { status: "idle", title: null, message: null };
 
+const modelKey = "model-selection";
+
 export function makePlugin(generate: typeof generateTitle) {
   return function plugin(bb: BbPluginApi) {
     const runtime = createRuntime(bb);
     const jobs = new Map<string, RenameStatus>();
 
-    const settings = bb.settings.define({
-      model: {
-        type: "string",
-        label: "Title model",
-        description: "Codex model used for isolated title generation.",
-        default: "gpt-5.6-luna",
-      },
-    });
+    const getModelSelection = async (): Promise<ModelSelection> => {
+      const stored = await bb.storage.kv.get(modelKey);
+
+      return modelSelectionSchema.safeParse(stored).data ?? defaultModelSelection;
+    };
+
+    const setModelSelection = async (selection: ModelSelection): Promise<ModelSelection> => {
+      const parsed = modelSelectionSchema.parse(selection);
+      await bb.storage.kv.set(modelKey, parsed);
+
+      return parsed;
+    };
 
     const regenerate = Effect.fn("Rename.regenerate")(function* (threadId: string) {
       const before = yield* call("get thread", (signal) =>
@@ -43,8 +55,8 @@ export function makePlugin(generate: typeof generateTitle) {
         profileCodexHome(bb.server.experimental_dataDir, process.env.CODEX_HOME),
       );
 
-      const config = yield* call("read settings", () => settings.get());
-      const title = yield* generate(titlePrompt(before.title, context), config.model, codexHome);
+      const selection = yield* call("read model selection", getModelSelection);
+      const title = yield* generate(titlePrompt(before.title, context), selection, codexHome);
 
       const latest = yield* call("recheck thread title", (signal) =>
         bb.sdk.threads.get({ threadId, signal }),
@@ -118,6 +130,8 @@ export function makePlugin(generate: typeof generateTitle) {
     bb.rpc.register(rpcContract, {
       start: ({ threadId }) => start(threadId),
       status: ({ threadId }) => jobs.get(threadId) ?? idle,
+      getModelSelection: getModelSelection,
+      setModelSelection,
     });
     bb.events.on("thread.deleted", ({ thread }) => {
       jobs.delete(thread.id);
@@ -136,12 +150,30 @@ export function makePlugin(generate: typeof generateTitle) {
           summary: "Read generation status",
           usage: "bb rename-thread status <thread-id>",
         },
+        {
+          name: "model",
+          summary: "Show or set the Codex title model",
+          usage: "bb rename-thread model [model-id]",
+        },
       ],
-      run(argv) {
+      async run(argv) {
         const [command, threadId] = argv;
 
+        if (command === "model" && argv.length <= 2) {
+          const current = await getModelSelection();
+
+          const selection = threadId
+            ? await setModelSelection({ ...current, model: threadId })
+            : current;
+
+          return { exitCode: 0, stdout: selection.model };
+        }
+
         if (!threadId || argv.length !== 2 || (command !== "start" && command !== "status"))
-          return { exitCode: 1, stderr: "Usage: bb rename-thread <start|status> <thread-id>" };
+          return {
+            exitCode: 1,
+            stderr: "Usage: bb rename-thread <start|status> <thread-id> | model [model-id]",
+          };
 
         return {
           exitCode: 0,

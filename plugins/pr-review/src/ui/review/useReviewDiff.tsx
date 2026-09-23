@@ -18,6 +18,7 @@ import type { StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
 import { useReviewContents } from "./useReviewContents";
 import { parseReviewFile, ContextHeader, diffRecordVersion } from "./diff-adapter";
 import { selectedFileEnd } from "./expandedSelection";
+import { useMediaQuery } from "../components/ui/hooks/use-media-query";
 import { GithubReviewThread, groupReviewComments } from "./GithubReviewThread";
 import type { GithubReview } from "./GithubReviewPanel";
 
@@ -50,6 +51,7 @@ export function useReviewDiff({
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const { mode } = experimental_useCodeTheme();
+  const touchSelection = useMediaQuery("(pointer: coarse)");
   const [style, setStyle] = useState<"split" | "unified">("unified");
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [contextRevision, setContextRevision] = useState(0);
@@ -185,14 +187,33 @@ export function useReviewDiff({
       diffStyle: style,
       overflow: wrap ? "wrap" : "scroll",
       diffIndicators: "classic",
-      enableLineSelection: true,
+      enableLineSelection: !touchSelection,
+      onLineNumberClick: touchSelection
+        ? (line, item) => {
+            setSelectedLines({
+              revision,
+              lines: {
+                id: item.item.id,
+                range: {
+                  start: line.lineNumber,
+                  end: line.lineNumber,
+                  side: line.type === "diff-line" ? line.annotationSide : undefined,
+                },
+              },
+            });
+            setSelectingRevision(null);
+
+            if (item.type === "diff") setSelectedPath(item.item.fileDiff.name);
+            setNotice("");
+          }
+        : undefined,
       onLineSelectionStart: () => setSelectingRevision(revision),
       onLineSelectionEnd: () => setSelectingRevision(null),
       lineHoverHighlight: "both",
       hunkSeparators: "line-info",
       expandUnchanged,
     }),
-    [mode, style, wrap, expandUnchanged, revision],
+    [mode, style, wrap, expandUnchanged, revision, touchSelection, setSelectedPath, setNotice],
   );
 
   const toggle = useCallback(

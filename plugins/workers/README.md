@@ -83,3 +83,26 @@ spawning and communication without prescribing how agents divide or manage work.
 Agents decide when delegation is useful. Model choices are limited to
 inheritance and the worker presets configured in this BB profile.
 New agent sessions discover the skill after the plugin is refreshed.
+
+## Fusion mode
+
+Invoke `$fusion <task>` or explicitly ask for Fusion mode to use the bundled
+[Fusion skill](skills/fusion/SKILL.md). The current thread stays the lead for
+planning, ambiguous decisions, review, and user communication. One persistent
+sidekick implements and tests bounded assignments, receives corrections in the
+same conversation, and hands difficult decisions back to the lead.
+The lead invokes `bb_worker_thread` itself with an explicit preset and reuses
+the returned thread for follow-ups; the user does not need to launch a worker
+or include a preset name when a suitable configured preset is available.
+
+Configure an implementation preset in **Settings → Workers → Worker presets**
+first, then start or resume the agent session so its tool sees that preset.
+For example, name a preset `fusion-worker`, describe it as “Fusion sidekick for
+bounded implementation and tests,” and choose your preferred provider, model,
+and thinking level. The name is only an example; Fusion honors explicit preset
+choices and otherwise uses the advertised descriptions. It does not create
+presets or silently inherit the lead's model when configuration is missing.
+
+Fusion coordinates edits in the shared checkout and stops the sidekick after
+completion while retaining its history. It adds no automatic routing, cache
+keepalives, or claimed cost savings. Ordinary worker delegation stays unchanged.

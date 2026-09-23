@@ -3,6 +3,7 @@ import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/tes
 import { Deferred, Effect } from "effect";
 import { makePlugin } from "../../src/server/server";
 import { statusSchema } from "../../src/shared/contract";
+import { defaultModelSelection } from "../../src/shared/contract";
 
 const disposers: Array<() => Promise<void>> = [];
 
@@ -13,6 +14,7 @@ afterEach(async () => {
 async function setup() {
   let title = "Original title";
   let generationCount = 0;
+  let usedModel: string | null = null;
   const entered = Deferred.makeUnsafe<void>();
   const result = Deferred.makeUnsafe<string>();
 
@@ -48,9 +50,10 @@ async function setup() {
   });
 
   disposers.push(() => harness.lifecycle.dispose());
-  makePlugin(() =>
+  makePlugin((_prompt, selection) =>
     Effect.gen(function* () {
       generationCount++;
+      usedModel = selection.model;
       yield* Deferred.succeed(entered, undefined);
 
       return yield* Deferred.await(result);
@@ -66,6 +69,7 @@ async function setup() {
     },
     getTitle: () => title,
     count: () => generationCount,
+    usedModel: () => usedModel,
   };
 }
 
@@ -81,6 +85,27 @@ async function finished(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
 }
 
 describe("regeneration", () => {
+  it("persists the selected model and uses it for generation", async () => {
+    const test = await setup();
+    expect(await test.harness.behavior.callRpc("getModelSelection", {})).toEqual(
+      defaultModelSelection,
+    );
+
+    const selected = {
+      ...defaultModelSelection,
+      model: "gpt-6-luna",
+      reasoningLevel: "medium" as const,
+    };
+
+    expect(await test.harness.behavior.callRpc("setModelSelection", selected)).toEqual(selected);
+    expect(await test.harness.behavior.callRpc("getModelSelection", {})).toEqual(selected);
+    expect((await test.harness.behavior.runCli(["model"])).stdout).toBe("gpt-6-luna");
+    await test.harness.behavior.callRpc("start", { threadId: "t1" });
+    await Effect.runPromise(Deferred.await(test.entered));
+    expect(test.usedModel()).toBe("gpt-6-luna");
+    await Effect.runPromise(Deferred.succeed(test.result, "Renamed thread"));
+    await finished(test.harness);
+  });
   it("deduplicates an in-flight request and applies the result", async () => {
     const test = await setup();
     await test.harness.behavior.callRpc("start", { threadId: "t1" });

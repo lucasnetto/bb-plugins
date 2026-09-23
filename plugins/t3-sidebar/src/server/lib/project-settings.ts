@@ -128,11 +128,32 @@ export function registerProjectAutoPull(bb: BbPluginApi) {
 
       for (const source of project.sources) {
         if (!connected.has(source.hostId)) continue;
-        yield* call("host.pull", (signal) =>
-          host.call("pull", { path: source.path }, { hostId: source.hostId, signal }),
-        ).pipe(
+        yield* Effect.gen(function* () {
+          const discovery = yield* call("host.discover", (signal) =>
+            host.call("discover", { path: source.path }, { hostId: source.hostId, signal }),
+          );
+
+          for (const error of discovery.errors)
+            yield* sync("auto-pull.warn", () =>
+              bb.log.warn(`Auto-pull ${project.name} (${error.path}): ${error.message}`),
+            );
+
+          for (const path of discovery.paths) {
+            yield* call("host.pull", (signal) =>
+              host.call("pull", { path }, { hostId: source.hostId, signal }),
+            ).pipe(
+              Effect.catchTag("BackendError", (error) =>
+                Effect.sync(() =>
+                  bb.log.warn(`Auto-pull ${project.name} (${path}): ${error.message}`),
+                ),
+              ),
+            );
+          }
+        }).pipe(
           Effect.catchTag("BackendError", (error) =>
-            Effect.sync(() => bb.log.warn(`Auto-pull ${project.name}: ${error.message}`)),
+            Effect.sync(() =>
+              bb.log.warn(`Auto-pull ${project.name} (${source.path}): ${error.message}`),
+            ),
           ),
         );
       }

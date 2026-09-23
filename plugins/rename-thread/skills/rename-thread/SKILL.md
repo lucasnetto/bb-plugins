@@ -10,5 +10,6 @@ explains why the current title was kept; `failed` includes a retry instruction.
 
 Generation runs separately through Codex on the BB server machine. It does not
 send a message to the target thread. Personal and Work use their own Codex homes.
-The model setting is `bb plugin config rename-thread set model <model>`.
+Choose the model in the Rename Thread plugin settings, or use
+`bb rename-thread model <model-id>` to set one from the CLI.
 Do not inspect or copy authentication files to resolve a generation failure.

@@ -54,6 +54,7 @@ export default defineConfig({
   fmt: { ignorePatterns: ["**/dist/**", "pnpm-lock.yaml", ...toolingIgnorePatterns] },
   test: {
     projects: [
+      "plugins/jev",
       "plugins/t3-sidebar",
       "plugins/rename-thread",
       "plugins/hide-models",

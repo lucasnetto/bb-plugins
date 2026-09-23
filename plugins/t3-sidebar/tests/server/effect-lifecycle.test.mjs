@@ -24,18 +24,32 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
             name: "Enabled",
             sources: [
               { hostId: "offline", path: "/offline" },
-              { hostId: "online", path: "/failure" },
-              { hostId: "online", path: "/waiting" },
+              { hostId: "online", path: "/discovery-failure" },
+              { hostId: "online", path: "/empty" },
+              { hostId: "online", path: "/group" },
             ],
           },
         ],
       },
     },
-    experimental_callHostRpc: async ({ input, signal }) => {
+    experimental_callHostRpc: async ({ method, input, signal }) => {
+      if (method === "discover") {
+        if (input.path === "/discovery-failure") throw new Error("discovery failed");
+
+        if (input.path === "/empty") return { paths: [], errors: [] };
+        assert.equal(input.path, "/group");
+
+        return {
+          paths: ["/group/failure", "/group/waiting", "/group/never"],
+          errors: [{ path: "/group/unreadable", message: "permission denied" }],
+        };
+      }
+
+      assert.equal(method, "pull");
       calls++;
 
-      if (input.path === "/failure") throw new Error("fetch failed");
-      assert.equal(input.path, "/waiting");
+      if (input.path === "/group/failure") throw new Error("fetch failed");
+      assert.equal(input.path, "/group/waiting");
 
       return new Promise((_resolve, reject) => {
         signal.addEventListener(
@@ -61,7 +75,7 @@ test("auto-pull skips disabled/offline sources, isolates failures, and cancels o
     await harness.lifecycle.dispose();
     await rejected;
     assert.equal(aborted, true);
-    assert.equal(harness.logEntries.filter((entry) => entry.level === "warn").length, 1);
+    assert.equal(harness.logEntries.filter((entry) => entry.level === "warn").length, 3);
   } finally {
     await harness.lifecycle.dispose();
   }
@@ -71,6 +85,9 @@ test("auto-pull propagates interruption and execution failures without fetching"
   const host = experimental_createHostEntryHarness(hostEntry);
 
   try {
+    await assert.rejects(
+      host.experimental_call("discover", { path: "/unused" }, { signal: AbortSignal.abort() }),
+    );
     await assert.rejects(
       host.experimental_call("pull", { path: "/unused" }, { signal: AbortSignal.abort() }),
     );
