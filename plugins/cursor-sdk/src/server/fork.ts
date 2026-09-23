@@ -11,6 +11,7 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
   cwd: string,
   resume: (agentId: string) => Promise<SDKAgent>,
   target: LocalAgentStore = store,
+  checkpointId?: string,
 ) {
   const source = yield* foreign(() => store.agents.get({ agentId: sourceId }));
 
@@ -26,7 +27,13 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
       new SdkError({ message: "Wait for the source thread to finish before forking." }),
     );
 
-  const checkpoint = source.latestCheckpoint;
+  const latestCheckpoint = source.latestCheckpoint;
+
+  const checkpoint =
+    checkpointId === undefined
+      ? latestCheckpoint
+      : { schemaVersion: 1 as const, rootBlobId: checkpointId };
+
   const agentId = `agent-${randomUUID()}`;
 
   return yield* Effect.gen(function* () {
@@ -65,7 +72,7 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
       current.status === "running" ||
       current.activeRunId ||
       current.updatedAt !== source.updatedAt ||
-      current.latestCheckpoint?.rootBlobId !== checkpoint.rootBlobId
+      current.latestCheckpoint?.rootBlobId !== latestCheckpoint.rootBlobId
     )
       return yield* Effect.fail(
         new SdkError({
@@ -78,6 +85,7 @@ export const forkLocalAgent = Effect.fn("CursorSdk.forkLocalAgent")(function* (
       target.agents.create({
         agent: {
           ...source,
+          latestCheckpoint: checkpoint,
           agentId,
           cwd,
           status: "idle",

@@ -112,6 +112,7 @@ type TurnState = {
   pendingRun?: Promise<Run>;
   cancellation?: Promise<void>;
   providerTurnId?: string;
+  providerCheckpointId?: string;
   pending: TurnParams[];
   options: TurnParams["options"];
   steers: Set<Deferred.Deferred<void>>;
@@ -380,13 +381,6 @@ export function createSdkBridge(
     }
 
     if ("sourceProviderThreadId" in params) {
-      if (params.sourceProviderCheckpointId !== undefined)
-        return yield* Effect.fail(
-          new SdkError({
-            message: "Cursor SDK supports forking only from the latest saved state.",
-          }),
-        );
-
       if (String(params.sourceProviderThreadId).startsWith("bc-"))
         return yield* Effect.fail(
           new SdkError({
@@ -582,6 +576,9 @@ export function createSdkBridge(
                   return nativeOpen(() => sdk.Agent.resume(id, options));
                 },
                 store,
+                "sourceProviderCheckpointId" in params
+                  ? z.string().optional().parse(params.sourceProviderCheckpointId)
+                  : undefined,
               ),
             )
           : "providerThreadId" in params
@@ -726,6 +723,7 @@ export function createSdkBridge(
       status,
       providerTurnId: turn.providerTurnId,
       claimIfIdle: true,
+      providerCheckpointId: turn.providerCheckpointId,
     };
 
     if (error) {
@@ -772,6 +770,7 @@ export function createSdkBridge(
   ) {
     if (session.released || turn.interrupted) return;
     turn.options = params.options;
+    turn.providerCheckpointId = undefined;
     turn.toolEpoch = {};
     turn.run = undefined;
     turn.pendingRun = undefined;
@@ -910,6 +909,23 @@ export function createSdkBridge(
       turn.accepted = false;
 
       return yield* executeTurn(next, session, turn);
+    }
+
+    if (
+      session.localStore &&
+      result.status === "finished" &&
+      !turn.interrupted &&
+      !session.released
+    ) {
+      const savedRun = yield* foreign(() =>
+        session.localStore!.runs.get({
+          agentId: session.agent.agentId,
+          runId: run.id,
+        }),
+      );
+
+      if (savedRun?.status === "finished" && savedRun.latestCheckpointRef)
+        turn.providerCheckpointId = savedRun.latestCheckpointRef.rootBlobId;
     }
 
     finish(
@@ -1093,7 +1109,7 @@ export function createSdkBridge(
         capabilities: {
           grammarVersions: [3, 3],
           sessionRestore: true,
-          fork: "tip",
+          fork: "checkpoint",
           steerMode: "inject",
           approvalEnforcedBy: "provider",
           skills: { configure: false },

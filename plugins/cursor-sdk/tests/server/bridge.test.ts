@@ -172,6 +172,25 @@ function fixture(
                 error: { message: failures.result.message, code: failures.result.code },
               };
 
+            for (const value of [...created, ...resumedOptions]) {
+              const store = value.local?.store;
+              const agent = await store?.agents.get({ agentId });
+
+              if (!store || !agent) continue;
+              await store.runs.create({
+                run: {
+                  runId: id,
+                  agentId,
+                  turnNumber: sequence,
+                  status: interrupted ? "cancelled" : "finished",
+                  createdAt: 1,
+                  updatedAt: 1,
+                  latestCheckpointRef: agent.latestCheckpoint,
+                },
+              });
+              break;
+            }
+
             return {
               id,
               status: interrupted ? "cancelled" : "finished",
@@ -872,7 +891,46 @@ describe("provider bridge", () => {
     expect(f.resumed).toEqual([id, id]);
   });
 
-  test("rejects cloud and historical forks without creating a conversation", async () => {
+  test("publishes a completed local checkpoint that can be used for message editing", async () => {
+    const f = fixture();
+    await f.init();
+    await f.start();
+    await f.turn("hello");
+    await f.settled();
+    const boundary = f.deltas().find((delta) => delta.kind === "turn.boundary");
+    expect(boundary).toMatchObject({ providerCheckpointId: "root" });
+    const store = f.created[0].local?.store;
+
+    if (!store) throw new Error("missing local store");
+    const source = await store.agents.get({ agentId: "agent-1" });
+
+    if (!source) throw new Error("missing fixture agent");
+
+    await store.checkpoints.create({ agentId: "agent-1", blobId: "newer", data: Buffer.from([2]) });
+    await store.agents.update({
+      agent: { ...source, latestCheckpoint: { schemaVersion: 1, rootBlobId: "newer" } },
+    });
+
+    const response = await f.request("thread/fork", {
+      threadId: "edited",
+      sourceProviderThreadId: "agent-1",
+      sourceProviderCheckpointId: "root",
+      cwd: "/tmp",
+      instructionMode: "append",
+      options,
+    });
+
+    expect(response.error).toBeUndefined();
+    const id = z.object({ providerThreadId: z.string() }).parse(response.result).providerThreadId;
+    expect(await f.resumedOptions.at(-1)?.local?.store?.agents.get({ agentId: id })).toMatchObject({
+      latestCheckpoint: { rootBlobId: "root" },
+    });
+    expect(await store.agents.get({ agentId: "agent-1" })).toMatchObject({
+      latestCheckpoint: { rootBlobId: "newer" },
+    });
+  });
+
+  test("rejects cloud and unavailable historical forks without creating a conversation", async () => {
     const f = fixture();
     await f.init();
 
@@ -888,7 +946,7 @@ describe("provider bridge", () => {
         options,
       });
 
-      expect(response.error?.message).toMatch(/Cloud|latest saved state/);
+      expect(response.error?.message).toMatch(/Cloud|not found|no saved checkpoint/);
     }
 
     expect(f.created).toHaveLength(0);

@@ -9,6 +9,7 @@ test("one provider derives its runtime from the Cloud agents toggle", async () =
     plugin(bb);
     const providers = harness.inspection.registrations.providerRegistrations;
     expect(providers.map((provider) => provider.id)).toEqual(["cursor-sdk"]);
+    expect(providers[0].capabilities.fork).toBe("checkpoint");
     const derive = providers[0].deriveProviderOptions;
     expect(derive).toBeTypeOf("function");
 

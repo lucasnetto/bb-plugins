@@ -119,3 +119,65 @@ test("rolls back a copy when the source changes during checkpoint reads", async 
   expect((await store.agents.list()).items).toHaveLength(1);
   expect((await store.checkpoints.list()).items).toEqual(["root"]);
 });
+
+test("historical forks select the saved run checkpoint and leave the latest source intact", async () => {
+  const { dir, store, source } = await fixture();
+  await store.checkpoints.create({ agentId: "source", blobId: "earlier", data: Buffer.from([7]) });
+  await store.runs.create({
+    run: {
+      agentId: "source",
+      runId: "earlier-run",
+      turnNumber: 1,
+      status: "finished",
+      createdAt: 1,
+      updatedAt: 1,
+      latestCheckpointRef: { schemaVersion: 1, rootBlobId: "earlier" },
+    },
+  });
+  // Reopen the store to verify checkpoint selection survives bridge restarts.
+  await expect(
+    Effect.runPromise(
+      forkLocalAgent(
+        new JsonlLocalAgentStore(dir),
+        "source",
+        "/child",
+        async (id) => {
+          expect(await store.agents.get({ agentId: id })).toMatchObject({
+            latestCheckpoint: { rootBlobId: "earlier" },
+          });
+          expect(await store.agents.get({ agentId: "source" })).toEqual(source);
+          await expect(
+            Effect.runPromise(
+              forkLocalAgent(
+                store,
+                id,
+                "/grandchild",
+                async (grandchild) => {
+                  expect(await store.agents.get({ agentId: grandchild })).toMatchObject({
+                    latestCheckpoint: { rootBlobId: "earlier" },
+                  });
+                  throw new Error("inspected repeated edit");
+                },
+                undefined,
+                "earlier",
+              ),
+            ),
+          ).rejects.toThrow("inspected repeated edit");
+          throw new Error("inspected historical clone");
+        },
+        undefined,
+        "earlier",
+      ),
+    ),
+  ).rejects.toThrow("inspected historical clone");
+});
+
+test("unavailable historical checkpoints never fall back to the latest state", async () => {
+  const { store } = await fixture();
+  await expect(
+    Effect.runPromise(
+      forkLocalAgent(store, "source", "/child", unusedResume, undefined, "missing"),
+    ),
+  ).rejects.toThrow("checkpoint is missing");
+  expect((await store.agents.list()).items).toHaveLength(1);
+});

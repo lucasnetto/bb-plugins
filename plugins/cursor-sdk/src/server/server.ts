@@ -52,7 +52,7 @@ export default function plugin(bb: BbPluginApi) {
       supportsManualCompaction: false,
       supportsThreadArchive: false,
       supportsThreadRename: false,
-      fork: "tip",
+      fork: "checkpoint",
       permissionModes: ["full"],
       reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     },

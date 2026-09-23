@@ -222,8 +222,11 @@ forces discovery, and older/corrupt caches require a successful refresh.
   instructions, and tools. The source must be idle and have a saved checkpoint
   on the same host/profile. Forks stay local even when Cloud agents is enabled.
   Workspace files are managed by the selected BB environment, not copied by the
-  conversation fork. Cloud forks and forks from earlier messages are unsupported.
-  Rewind, manual compaction, and native archive/rename sync are not advertised.
+  conversation fork. Completed local turns now publish durable checkpoints, enabling
+  BB message editing and forks from earlier messages. Editing resumes an independent
+  conversation at the preceding checkpoint; it does not undo workspace file changes.
+  Turns recorded before this support was installed have no BB checkpoint markers.
+  Cloud forks/editing, manual compaction, and native archive/rename sync remain unsupported.
 - Full access is the supported execution policy. SDK approvals are not equivalent
   to BB Accept edits or automatic approval policies, so those modes are not offered.
   Plan mode uses Cursor's native plan mode.
@@ -278,4 +281,10 @@ conversation, and leave the legacy backup intact:
 ```sh
 bb plugin build plugins/cursor-sdk
 CURSOR_SDK_LIVE_RECOVERY=1 vp test plugins/cursor-sdk/tests/server/recovery.live.test.ts
+```
+
+Verify that editing excludes later conversation state with the Personal Cursor API key:
+
+```sh
+CURSOR_SDK_LIVE_REWIND=1 vp test plugins/cursor-sdk/tests/server/rewind.live.test.ts
 ```
