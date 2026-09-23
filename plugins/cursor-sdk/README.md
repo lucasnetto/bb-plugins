@@ -29,6 +29,12 @@ SDK run ends, retaining the same BB turn. Cloud runs, attachments, and changed
 execution settings use this follow-up path. Stopping the turn discards follow-ups
 that the SDK has not yet accepted.
 
+BB's slash-command picker discovers skills in `.cursor/skills`, `.agents/skills`,
+`.claude/skills`, and `.codex/skills` under the workspace host's home directory
+and the project (including ancestor directories). Nested skill folders are
+included, matching the ACP Cursor provider. Discovery does not upload local
+skill files to Cursor Cloud.
+
 The runtime can also be installed through Settings → Providers. Each host needs
 Node.js 22.13+ and npm. Exactly `@cursor/sdk@1.0.31` is installed in the plugin's
 provider bridge data directory, including the platform package. The published SDK loads

@@ -11,6 +11,7 @@ export default function plugin(bb: BbPluginApi) {
   if (directory !== ".bb" && directory !== ".bb-work")
     throw new Error("Cursor SDK requires a configured Personal or Work profile.");
   const profile = directory === ".bb-work" ? "work" : "personal";
+  const skillRoots = [".cursor/skills", ".agents/skills", ".claude/skills", ".codex/skills"];
   registerReliabilityCommands(bb);
 
   const settings = bb.settings.define({
@@ -38,6 +39,10 @@ export default function plugin(bb: BbPluginApi) {
       installUrl: "https://cursor.com/docs/sdk/typescript",
     },
     experimental_bridgeOptions: { profile },
+    experimental_nativeSkillRoots: {
+      user: skillRoots.map((path) => ({ path, recursive: true })),
+      project: skillRoots.map((path) => ({ path, recursive: true, ancestors: true })),
+    },
     deriveProviderOptions: ({ settings }) => ({
       runtime: settings.cloudAgents === true ? "cloud" : "local",
     }),
