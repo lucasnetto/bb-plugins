@@ -39,22 +39,28 @@ export default function plugin(bb: BbPluginApi) {
 
   const taskPolicy = registerTaskProvider(bb, () => settings.get());
   registerPersistentProvider(bb, () => settings.get());
-  registerIncusProvider(bb);
+  const incusPolicy = registerIncusProvider(bb);
   bb.cli.register({
     name: "orbisa",
-    summary: "Inspect Orbisa task machine lifecycle",
+    summary: "Inspect Orbisa machine lifecycle and cleanup deadlines",
     commands: [
       {
         name: "tasks",
         summary: "Show task VM lifecycle and deletion deadlines",
         usage: "bb orbisa tasks",
       },
+      {
+        name: "containers",
+        summary: "Show Linux container lifecycle and deletion deadlines",
+        usage: "bb orbisa containers",
+      },
     ],
     async run(argv) {
       try {
-        if (argv[0] === "tasks" && argv.length === 1) {
+        if ((argv[0] === "tasks" || argv[0] === "containers") && argv.length === 1) {
+          const linux = argv[0] === "containers";
           const hosts = (await bb.sdk.hosts.list({ includeCreating: true })).filter(
-            (host) => host.machineProviderId === "orbisa-task",
+            (host) => host.machineProviderId === (linux ? "orbisa-incus" : "orbisa-task"),
           );
 
           return {
@@ -68,7 +74,7 @@ export default function plugin(bb: BbPluginApi) {
                     name: host.name,
                     phase: host.lifecycle.phase,
                     status: host.status,
-                    ...(await taskPolicy.read(host.id)),
+                    ...(await (linux ? incusPolicy : taskPolicy).read(host.id)),
                   })),
                 ),
               },
@@ -78,7 +84,7 @@ export default function plugin(bb: BbPluginApi) {
           };
         }
 
-        throw new Error("Usage: bb orbisa tasks");
+        throw new Error("Usage: bb orbisa tasks|containers");
       } catch (error) {
         return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
       }

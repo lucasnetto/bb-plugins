@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { incusHostContract, incusRequest } from "./incus-contract.ts";
+import { createIncusPolicy } from "./incus-policy.ts";
 import { checked } from "./task-process.ts";
 
 const inputsSchema = z.object({
@@ -129,7 +130,7 @@ export function registerIncusProvider(
     displayName: "Orbisa Linux container",
     icon: "Server",
     description:
-      "Dedicated Linux environment on an Incus host. Files remain until explicit removal.",
+      "Dedicated Linux container. Settling stops it and deletes its files after 10 minutes.",
     ephemeral: false,
     inputs: inputsSchema,
     async create(context) {
@@ -197,6 +198,7 @@ export function registerIncusProvider(
     machineProviderId: "orbisa-incus",
     environmentProviderId: "project-checkout",
   });
+  return createIncusPolicy(bb, owned);
 }
 
 const INSTALL_AUTH = String.raw`

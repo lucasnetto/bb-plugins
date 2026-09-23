@@ -292,8 +292,32 @@ and GitHub credentials through private stdin into guest `/dev/shm`; tokens are
 not baked into the image or persisted in provider resources. The server needs
 its profile's `auth.json`, a working `codex --version`, and `gh auth token`.
 Suspend stops the container; resume refreshes credentials and bootstraps the
-retained identity. Files remain until explicit machine removal. This provider
-has no idle/archive deletion scheduler yet and does not use the Mac task policy.
+retained identity.
+
+### Settlement and cleanup
+
+Settling in the sidebar uses BB's archive action. When the last unarchived thread
+using a Linux container is settled, Orbisa stops the container immediately and
+deletes it **10 minutes after settlement**. A completed agent turn alone does not
+start cleanup. Other unarchived threads, including hidden workers, keep it alive.
+Standalone containers with no archived thread ownership are left alone.
+
+Un-settle before the deadline to cancel deletion. The next thread run wakes the
+retained container through BB; settling again starts a fresh ten-minute window. Deadlines
+survive plugin/server restarts. Cleanup runs on archive/unarchive/delete events,
+at plugin startup and every minute, so deletion may occur about a minute late.
+Busy launches and failed observations defer cleanup until a later retry.
+
+Settling authorizes discarding **every container file**, including uncommitted
+changes, unpushed commits, ignored files and stashes. There are no Git checks,
+automatic commits, pushes or snapshots. Publish the branch before settling.
+After deletion, the conversation remains; recovery requires a new environment
+checked out from the published branch. Unarchiving does not recreate a deleted
+container.
+
+`bb orbisa containers` shows Linux machine status and persisted settlement and
+deletion timestamps. This policy lives entirely in the BB adapter; the standalone
+Orbisa CLI continues to retain files until explicitly told to remove an environment.
 
 The CLI's cancellation contract applies: stopping a wait does not roll back a
 container or guarantee termination of a guest command. Cleanup retries use the
