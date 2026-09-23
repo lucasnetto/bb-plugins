@@ -8,8 +8,9 @@ import {
   type RenameStatus,
 } from "../shared/contract";
 import { generateTitle, profileCodexHome } from "./codex";
+import { generateProviderTitle } from "./provider";
 import { readContext, titlePrompt } from "./context";
-import { call, sync, createRuntime } from "./effects";
+import { BackendError, call, sync, createRuntime } from "./effects";
 
 const idle: RenameStatus = { status: "idle", title: null, message: null };
 
@@ -51,12 +52,19 @@ export function makePlugin(generate: typeof generateTitle) {
         return;
       }
 
-      const codexHome = yield* sync("resolve Codex profile", () =>
-        profileCodexHome(bb.server.experimental_dataDir, process.env.CODEX_HOME),
-      );
-
       const selection = yield* call("read model selection", getModelSelection);
-      const title = yield* generate(titlePrompt(before.title, context), selection, codexHome);
+      const prompt = titlePrompt(before.title, context);
+
+      const title =
+        selection.providerId === "codex"
+          ? yield* generate(
+              prompt,
+              selection,
+              yield* sync("resolve Codex profile", () =>
+                profileCodexHome(bb.server.experimental_dataDir, process.env.CODEX_HOME),
+              ),
+            )
+          : yield* generateProviderTitle(bb, prompt, selection);
 
       const latest = yield* call("recheck thread title", (signal) =>
         bb.sdk.threads.get({ threadId, signal }),
@@ -101,15 +109,24 @@ export function makePlugin(generate: typeof generateTitle) {
       jobs.set(threadId, running);
       runtime.runFork(
         regenerate(threadId).pipe(
-          Effect.catch(() =>
-            Effect.sync(() =>
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              const operation =
+                error instanceof BackendError ? error.operation : "generation timeout";
+
+              const detail =
+                error instanceof BackendError && operation === "start title helper"
+                  ? `: ${error.message.slice(0, 500)}`
+                  : "";
+
+              bb.log.warn(`Title generation failed during ${operation}${detail}`);
               jobs.set(threadId, {
                 status: "failed",
                 title: null,
                 message:
-                  "Could not generate a title. Check this profile's Codex login and model, then retry.",
-              }),
-            ),
+                  "Could not generate a title. Check the selected provider's login and model on the primary machine, then retry.",
+              });
+            }),
           ),
           Effect.ensuring(
             Effect.sync(() => {
@@ -138,7 +155,7 @@ export function makePlugin(generate: typeof generateTitle) {
     });
     bb.cli.register({
       name: "rename-thread",
-      summary: "Regenerate a thread title with Codex",
+      summary: "Regenerate a thread title with the selected provider",
       commands: [
         {
           name: "start",
@@ -152,7 +169,7 @@ export function makePlugin(generate: typeof generateTitle) {
         },
         {
           name: "model",
-          summary: "Show or set the Codex title model",
+          summary: "Show or set the title model for the selected provider",
           usage: "bb rename-thread model [model-id]",
         },
       ],

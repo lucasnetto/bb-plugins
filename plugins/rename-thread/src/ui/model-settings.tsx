@@ -45,21 +45,20 @@ export function ModelSettings() {
       <div className="mb-3 sm:mb-0">
         <p className="text-sm font-medium text-foreground">Title model</p>
         <p className="text-xs text-muted-foreground">
-          Codex model used for isolated title generation.
+          Provider and model used to generate thread titles.
         </p>
       </div>
       <div className="space-y-2 sm:text-right">
         {selection ? (
           <ProviderModelPicker
             value={selection}
-            allowProviderChange={false}
             align="end"
             disabled={saving}
             onChange={(value) => {
               const parsed = modelSelectionSchema.safeParse(value);
 
               if (parsed.success) void save(parsed.data);
-              else setError("That Codex model selection is unavailable.");
+              else setError("That model selection is unavailable.");
             }}
           />
         ) : (

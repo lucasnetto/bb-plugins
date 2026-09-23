@@ -11,7 +11,7 @@ export type RenameStatus = z.infer<typeof statusSchema>;
 
 export const modelSelectionSchema = z
   .object({
-    providerId: z.literal("codex"),
+    providerId: z.string().trim().min(1).max(200),
     model: z.string().trim().min(1).max(200),
     reasoningLevel: z.enum(["none", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"]),
     serviceTier: z.enum(["default", "fast"]).optional(),
