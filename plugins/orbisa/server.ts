@@ -1,3 +1,4 @@
+import { registerIncusProvider } from "./incus-provider.ts";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerPersistentProvider } from "./persistent-provider.ts";
@@ -38,6 +39,7 @@ export default function plugin(bb: BbPluginApi) {
 
   const taskPolicy = registerTaskProvider(bb, () => settings.get());
   registerPersistentProvider(bb, () => settings.get());
+  registerIncusProvider(bb);
   bb.cli.register({
     name: "orbisa",
     summary: "Inspect Orbisa task machine lifecycle",

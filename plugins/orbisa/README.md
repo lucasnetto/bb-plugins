@@ -268,3 +268,35 @@ Babashka interpreter so BB's launcher cannot capture their `bb` shebang.
 Recipe 3 invalidates bases created before the templates switched to GitHub’s
 official APT repository for the GitHub CLI.
 Keep `BASE_RECIPE` current when base installation steps change.
+
+## Linux Incus provider
+
+`orbisa-incus` is a separate, persistent machine/environment provider. Install
+and configure the standalone Go `orbisa` CLI and `orbisa-tooling-v2` image on an
+enrolled Linux host first. Its BB daemon account needs Incus administrator access.
+The server-side plugin routes CLI calls through its public SDK host entry, so the
+BB server can remain on the Mac. It never runs Incus commands on the Mac.
+
+Machine inputs are `{ "runtimeHostId": "host_...", "image": "orbisa-tooling-v2" }`.
+Choose the `orbisa-incus` environment provider to compose a container with the
+standard project checkout. CLI example:
+
+```sh
+bb machine create --provider orbisa-incus --inputs '{"runtimeHostId":"host_..."}'
+```
+
+The adapter checkpoints before allocation, forwards the CLI's resource ID on
+subsequent operations, and uses `experimental_machines.bootstrap` for enrollment.
+It installs the server's Codex version and supplies the current profile's Codex
+and GitHub credentials through private stdin into guest `/dev/shm`; tokens are
+not baked into the image or persisted in provider resources. The server needs
+its profile's `auth.json`, a working `codex --version`, and `gh auth token`.
+Suspend stops the container; resume refreshes credentials and bootstraps the
+retained identity. Files remain until explicit machine removal. This provider
+has no idle/archive deletion scheduler yet and does not use the Mac task policy.
+
+The CLI's cancellation contract applies: stopping a wait does not roll back a
+container or guarantee termination of a guest command. Cleanup retries use the
+same owner/key and runtime host. Host RPC output is bounded to 4 MiB per command;
+bootstrap output is forwarded after each command completes. UI and browser
+changes are not part of this provider.

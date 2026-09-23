@@ -24,6 +24,7 @@
     "branding": {
       "icon": "Zap"
     },
-    "server": "./server.ts"
+    "server": "./server.ts",
+    "host": "./incus-host.ts"
   }
 }
