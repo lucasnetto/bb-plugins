@@ -62,6 +62,7 @@ export default defineConfig({
       "plugins/workers",
       "plugins/fonts",
       "plugins/cursor-sdk",
+      "plugins/environment-recovery",
     ],
   },
 });

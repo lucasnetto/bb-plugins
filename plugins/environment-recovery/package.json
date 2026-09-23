@@ -1,0 +1,44 @@
+{
+  "name": "bb-plugin-environment-recovery",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bb plugin build",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.5.9",
+    "@testing-library/react": "catalog:",
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "better-sqlite3": "catalog:",
+    "cron-parser": "catalog:",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "bb": ">=0.43",
+    "bbPluginSdk": ">=0.5.9"
+  },
+  "bb": {
+    "name": "Environment Recovery",
+    "description": "Create a fresh workspace from a surviving branch and continue an archived conversation.",
+    "branding": {
+      "icon": "FolderGit"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  }
+}

@@ -38,6 +38,10 @@
     {
       "name": "rename-thread",
       "source": "./plugins/rename-thread"
+    },
+    {
+      "name": "environment-recovery",
+      "source": "./plugins/environment-recovery"
     }
   ]
 }
