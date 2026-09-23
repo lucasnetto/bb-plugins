@@ -4,7 +4,7 @@ import type { Profile } from "./contract.ts";
 export function cursorProvider(
   profile: Profile,
   id: string,
-  personalCommand: string,
+  command: string,
 ): PluginProviderDeclaration {
   const personal = profile === "personal";
   const roots = [".cursor/skills", ".agents/skills", ".claude/skills", ".codex/skills"];
@@ -50,7 +50,7 @@ export function cursorProvider(
       excludedCursorModelIds: personal ? [] : ["auto", "default"],
       acpLaunchSpec: {
         displayName: "Cursor",
-        command: personal ? personalCommand : "bb-cursor-work-acp",
+        command,
         args: [],
         env: {},
         modelCli: { listArgs: ["--list-models"], primaryModels: [] },

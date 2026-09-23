@@ -50,3 +50,12 @@ lifecycle; this plugin owns BB enrollment, profile preparation and archive polic
 Run the package's tests, TypeScript checks, and `bb plugin build` before release.
 From the permanent bb-plugins checkout, finish local installation with
 `bb profiles refresh orbisa` and `bb profiles refresh orbisa --check`.
+
+## Settings
+
+**AWS region** is the only deployment preference on the Orbisa plugin page.
+The profile bootstrap determines credential locations: Personal uses `~/.codex`,
+Work uses `~/.codex_work`, and optional signing uses `~/.config/orbisa/signing_key`.
+The BB data directory selects the profile; unknown profiles fail before reading
+credentials. An absent signing key leaves Git signing off. These implementation
+paths are conventions, not editable settings. Credentials stay in private files.

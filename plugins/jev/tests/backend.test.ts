@@ -111,7 +111,7 @@ describe("durable store", () => {
     expect(store.list()).toEqual([]);
   });
   it("annotations apply to an evaluated revision and survive reload", async () => {
-    const h = host({ attentionEnabled: true, fixtureMode: true });
+    const h = host({ attentionEnabled: true });
     await plugin(h.bb);
     await h.harness.behavior.callRpc("replay", { fixture: "credentials" });
     const service = h.harness.behavior.runService("attention");
@@ -169,7 +169,7 @@ describe("backend registration and lifecycle", () => {
     await expect(plugin(h.bb)).rejects.toThrow();
   });
   it("runs without credentials, clears on settings changes, excludes secrets and has no mutation calls", async () => {
-    const h = host({ attentionEnabled: true, fixtureMode: true, gatewayApiKey: "CANARY_SECRET" });
+    const h = host({ attentionEnabled: true, gatewayApiKey: "CANARY_SECRET" });
     await plugin(h.bb);
     await h.harness.behavior.callRpc("replay", { fixture: "decision" });
     h.harness.behavior.runService("attention");
@@ -181,7 +181,7 @@ describe("backend registration and lifecycle", () => {
     expect((await read(h)).results).toEqual([]);
   });
   it("restarts queued work and cleans services on unload", async () => {
-    const h = host({ attentionEnabled: true, fixtureMode: true });
+    const h = host({ attentionEnabled: true });
     await plugin(h.bb);
     await h.harness.behavior.callRpc("replay", { fixture: "decision" });
     const next = await h.harness.lifecycle.reload(plugin);
@@ -298,7 +298,7 @@ describe("history adapter", () => {
     ).rejects.toThrow();
   });
   it("archive/delete erase local evidence; new input makes a fixture stale", async () => {
-    const h = host({ attentionEnabled: true, fixtureMode: true, approvedProject: "p" });
+    const h = host({ attentionEnabled: true, approvedProject: "p" });
 
     let thread = makeThreadResponse({
       id: "t",
@@ -326,7 +326,7 @@ describe("history adapter", () => {
 });
 
 it("coalesces duplicate notifications and keeps queue and runtime facts ahead of fixture attention", async () => {
-  const h = host({ attentionEnabled: true, fixtureMode: true, approvedProject: "p" });
+  const h = host({ attentionEnabled: true, approvedProject: "p" });
 
   let thread = makeThreadResponse({
     id: "t",

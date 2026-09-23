@@ -14,7 +14,7 @@ it.skipIf(process.env.RUN_RENAME_LIVE !== "1")(
           "USER: Add a right-click action to automatically rename a conversation from its original goal and recent messages.",
         ),
         defaultModelSelection,
-        profileCodexHome("/tmp/.bb-work", undefined),
+        profileCodexHome("/tmp/.bb-work"),
       ),
     );
 

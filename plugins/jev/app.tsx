@@ -15,7 +15,6 @@ import { createRowBridge } from "./src/bridge";
 type Snapshot = {
   issue: string | null;
   enabled: boolean;
-  fixtureMode: boolean;
   liveEnabled: boolean;
   requireZdr: boolean;
   keyConfigured: boolean;
@@ -158,7 +157,7 @@ function AttentionPage({ threadId }: { threadId?: string }) {
           </select>
           <button
             className={button}
-            disabled={!data?.enabled || !data.fixtureMode || pending}
+            disabled={!data?.enabled || pending}
             onClick={() => void replay()}
           >
             {threadId ? "Preview fixture on this thread" : "Run fixture"}

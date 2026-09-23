@@ -3,7 +3,9 @@ export function destinationUrl(
   localUrl: string,
   currentHostname: string,
 ): string {
-  return ["localhost", "127.0.0.1", "[::1]"].includes(currentHostname) ? localUrl : remoteUrl;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(currentHostname)
+    ? localUrl || remoteUrl
+    : remoteUrl;
 }
 
 export const LAST_THREAD_KEY = "bb-profiles:last-thread:v1";

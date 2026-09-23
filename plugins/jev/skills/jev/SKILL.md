@@ -8,11 +8,11 @@ description: Inspect Jev attention results or replay explicit offline Jev fixtur
 This release is read-only with offline fixtures and opt-in Gateway evaluation. Do not describe fixture labels as live
 analysis of a user's thread. Do not enable local capture without project approval.
 
-- `bb jev eval replay <id>` queues a fixture when attention and fixture mode are enabled.
+- `bb jev eval replay <id>` queues a fixture when attention is enabled; no separate fixture switch is needed.
 - IDs: `decision`, `rhetorical`, `quoted`, `credentials`, `unrelated-error`, `uncertain`.
 - `bb jev list` reads bounded result summaries. Original excerpts are in Jev Attention or the Jev evidence thread panel.
 - `bb jev clear` removes Jev-owned evidence, jobs, results and corrections.
-- Settings → Jev controls `attentionEnabled`, `fixtureMode`, `captureEnabled`, `approvedProject`, `maxEvidenceChars`, and `retentionDays`.
+- Settings → Jev controls `attentionEnabled`, `captureEnabled`, `approvedProject`, and `retentionDays`. Evidence packets have a fixed 8,000-character limit.
 - Disabling attention cancels work and clears stored projections. Changing settings clears captured state.
 - The server-only `gatewayApiKey` is used only server-side for live checks; offline fixtures never use it for inference. Never read or print secret settings.
 

@@ -61,7 +61,7 @@ export function makePlugin(generate: typeof generateTitle) {
               prompt,
               selection,
               yield* sync("resolve Codex profile", () =>
-                profileCodexHome(bb.server.experimental_dataDir, process.env.CODEX_HOME),
+                profileCodexHome(bb.server.experimental_dataDir),
               ),
             )
           : yield* generateProviderTitle(bb, prompt, selection);

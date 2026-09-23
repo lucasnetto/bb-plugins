@@ -23,8 +23,8 @@ describe("title context", () => {
     expect(normalizeTitle(' "Automatic thread renaming" ')).toBe("Automatic thread renaming");
   });
   it("never inherits the other local profile's login", () => {
-    expect(profileCodexHome("/home/user/.bb-work", "/wrong/.codex")).toMatch(/\.codex_work$/);
-    expect(profileCodexHome("/home/user/.bb", "/wrong/.codex_work")).toMatch(/\.codex$/);
-    expect(() => profileCodexHome("/custom/bb", undefined)).toThrow();
+    expect(profileCodexHome("/profiles/.bb-work")).toMatch(/\.codex_work$/);
+    expect(profileCodexHome("/profiles/.bb")).toMatch(/\.codex$/);
+    expect(() => profileCodexHome("/unknown")).toThrow(/configured Personal or Work/);
   });
 });

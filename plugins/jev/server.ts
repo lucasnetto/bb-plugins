@@ -10,14 +10,11 @@ import { fixtureEvaluator, fixtureId, fixturePacket, fixtures, packetSchema } fr
 import { Store, migrations } from "./src/store";
 import { captureHistory, revisionOf } from "./src/history";
 
+const MAX_EVIDENCE_CHARS = 8000;
+
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     attentionEnabled: { type: "boolean", label: "Enable Jev attention", default: false },
-    fixtureMode: {
-      type: "boolean",
-      label: "Allow explicitly selected offline fixtures",
-      default: false,
-    },
     captureEnabled: {
       type: "boolean",
       label: "Capture bounded visible messages locally",
@@ -43,12 +40,6 @@ export default async function plugin(bb: BbPluginApi) {
     approvedProject: {
       type: "project",
       label: "Approved project for capture and live evaluation",
-    },
-    maxEvidenceChars: {
-      type: "number",
-      label: "Maximum evidence characters per check",
-      default: 8000,
-      experimental_schema: z.number().int().min(256).max(16000),
     },
     retentionDays: {
       type: "number",
@@ -138,8 +129,7 @@ export default async function plugin(bb: BbPluginApi) {
     });
 
   async function replay(input: { fixture: z.infer<typeof fixtureId>; threadId?: string }) {
-    if (!config.attentionEnabled || !config.fixtureMode)
-      throw new Error("Enable attention and explicit fixture mode in Jev settings first.");
+    if (!config.attentionEnabled) throw new Error("Enable attention in Jev settings first.");
     const signal = AbortSignal.any([generation.signal, AbortSignal.timeout(10000)]);
     let packet = fixturePacket(input.fixture);
 
@@ -207,7 +197,7 @@ export default async function plugin(bb: BbPluginApi) {
       store,
       threadId,
       config.approvedProject,
-      config.maxEvidenceChars,
+      MAX_EVIDENCE_CHARS,
       config.gatewayApiKey ?? "",
       signal,
     );
@@ -270,7 +260,7 @@ export default async function plugin(bb: BbPluginApi) {
 
       return {
         enabled: config.attentionEnabled,
-        fixtureMode: config.fixtureMode,
+
         liveEnabled: config.liveEnabled,
         requireZdr: config.requireZdr,
         keyConfigured: Boolean(config.gatewayApiKey),
@@ -459,7 +449,7 @@ export default async function plugin(bb: BbPluginApi) {
                     store,
                     subject.thread_id,
                     config.approvedProject,
-                    config.maxEvidenceChars,
+                    MAX_EVIDENCE_CHARS,
                     config.gatewayApiKey ?? "",
                     signal,
                   );

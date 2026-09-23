@@ -2,45 +2,70 @@ import { execFile } from "node:child_process";
 import { z } from "zod";
 import { promisify } from "node:util";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { rpcContract } from "./contract.ts";
 import { cursorProvider } from "./cursor.ts";
 import { profileProviderIds, resolveProfile } from "./profile.ts";
+import { defineSettings } from "./settings.ts";
+import { cacheAdministration } from "./administration.ts";
 
-export default function plugin(bb: BbPluginApi) {
+export default async function plugin(bb: BbPluginApi) {
+  const settings = defineSettings(bb);
+  const initial = await settings.get();
+  let cache = Promise.resolve();
+
+  const saveCache = (values: typeof initial) => {
+    cache = cache
+      .then(() => cacheAdministration(values))
+      .catch(() => {
+        bb.log.warn("Could not update the desktop restart settings snapshot.");
+      });
+  };
+
+  if (initial.personalLocalUrl && initial.workLocalUrl) saveCache(initial);
+  settings.onChange(saveCache);
+  bb.onDispose(() => cache);
+
   const profile = resolveProfile(bb.server.experimental_dataDir);
   const allowedProviders = new Set(profileProviderIds(profile));
 
-  const info = {
-    current: profile,
-    profiles: [
-      {
-        id: "personal" as const,
-        name: "Personal",
-        email: "personal@example.com",
-        url: "https://personal.example.com",
-        localUrl: "http://127.0.0.1:38886",
-      },
-      {
-        id: "work" as const,
-        name: "Work",
-        email: "work@example.com",
-        url: "https://work.example.com",
-        localUrl: "http://127.0.0.1:48886",
-      },
-    ],
+  const info = async () => {
+    const values = await settings.get();
+
+    return {
+      current: profile,
+      profiles: (["personal", "work"] as const).flatMap((id) => {
+        const url = values[`${id}Url`];
+        const localUrl = values[`${id}LocalUrl`];
+
+        return url || localUrl
+          ? [
+              {
+                id,
+                name: id === "personal" ? "Personal" : "Work",
+                email: values[`${id}Email`],
+                url,
+                localUrl,
+              },
+            ]
+          : [];
+      }),
+    };
   };
 
-  const personalCommand = join(homedir(), ".local/bin/cursor-agent-personal-acp");
-  bb.providers.register(cursorProvider(profile, "acp-cursor", personalCommand));
+  const command =
+    profile === "personal"
+      ? join(homedir(), ".local/bin/cursor-agent-personal-acp")
+      : "bb-cursor-work-acp";
+
+  bb.providers.register(cursorProvider(profile, "acp-cursor", command));
 
   if (profile === "personal") {
-    // Preserve the provider ID persisted on existing Personal conversations.
-    bb.providers.register(cursorProvider(profile, "acp-cursor-personal", personalCommand));
+    bb.providers.register(cursorProvider(profile, "acp-cursor-personal", command));
   }
 
-  bb.rpc.register(rpcContract, { info: () => info });
+  bb.rpc.register(rpcContract, { info });
   bb.agents.contributeInstructions(
     () =>
       `This is the ${profile === "work" ? "Work" : "Personal"} bb instance. Use normal bb commands with the supplied BB_SERVER_URL. Children belong to this same instance. Do not change server URLs or account credentials to switch profiles. For authorized plugin maintenance across both profiles, use bb profiles refresh [plugin-id ...]; this bounded administrative command preserves the current thread and each account. Use --check for installation paths, build versions, and health.`,
@@ -88,7 +113,11 @@ export default function plugin(bb: BbPluginApi) {
           const result = await promisify(execFile)(
             "python3",
             [join(self.rootDir, "refresh.py"), ...argv.slice(1)],
-            { timeout: 3_600_000, maxBuffer: 2 * 1024 * 1024 },
+            {
+              timeout: 3_600_000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: { ...process.env, BB_PROFILES_CONFIG: JSON.stringify(await settings.get()) },
+            },
           );
 
           return { exitCode: 0, stdout: result.stdout };
@@ -114,7 +143,7 @@ export default function plugin(bb: BbPluginApi) {
         return { exitCode: 1, stderr: "Usage: bb profiles status" };
       }
 
-      return { exitCode: 0, stdout: JSON.stringify(info, null, 2) };
+      return { exitCode: 0, stdout: JSON.stringify(await info(), null, 2) };
     },
   });
 }

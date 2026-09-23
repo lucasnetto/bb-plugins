@@ -12,9 +12,9 @@ the current title.
 
 For Codex, the helper runs on the BB server machine, in a temporary directory, with
 `codex exec --ephemeral --sandbox read-only`, structured JSON output, the selected
-reasoning level and a 60-second timeout. Codex must be on the server's PATH. Personal
-uses `~/.codex`; Work uses `~/.codex_work`. Other server profiles must explicitly
-set `CODEX_HOME`. Authentication is handled by Codex; this plugin never reads
+reasoning level and a 60-second timeout. Codex must be on the server's PATH. The BB data directory determines the login: `.bb` uses `~/.codex` and
+`.bb-work` uses `~/.codex_work`. Unknown profiles fail instead of inheriting
+another account's login. Authentication is handled by Codex; this plugin never reads
 credential files. The model picker in the plugin settings uses BB's live provider
 catalog and defaults to Codex `gpt-5.6-luna` with low reasoning. Provider, model,
 reasoning and service tier are stored in this BB profile.

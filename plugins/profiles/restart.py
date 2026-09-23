@@ -13,10 +13,12 @@ import tempfile
 import time
 import urllib.request
 
-PERMANENT = Path.home() / 'Developer/lucasnetto/bb-plugins'
+from configuration import PROFILE_IDS, load_settings, permanent_source, profile_urls, desktop_contents
+
+PROFILES = PROFILE_IDS
+URLS = {}
 APP = Path('/Applications/bb.app/Contents')
 PACKAGE = APP / 'Resources/app.asar.unpacked/node_modules/bb-app'
-PROFILES = {'personal': 38886, 'work': 48886}
 
 
 def launchctl(*args):
@@ -25,6 +27,7 @@ def launchctl(*args):
 
 
 def service_target(profile):
+    # These are the services installed by the profile bootstrap, not user preferences.
     label = f'com.orbisa.bb-{profile}'
     plist = Path.home() / 'Library/LaunchAgents' / (label + '.plist')
     config = plistlib.loads(plist.read_bytes())
@@ -57,7 +60,7 @@ def ready(profile, target, previous_pid, version):
     if pid is None or pid == previous_pid:
         return False
     # Only these fixed local services are queried; no account environment changes.
-    url = f'http://127.0.0.1:{PROFILES[profile]}/api/v1/system/version'
+    url = URLS[profile] + '/api/v1/system/version'
     with urllib.request.urlopen(url, timeout=2) as response:
         return json.load(response).get('currentVersion') == version
 
@@ -89,8 +92,7 @@ def restart_profile(profile, bundle, timeout=60):
 
 def install():
     source = Path(__file__).resolve()
-    if source.parents[2] != PERMANENT.resolve():
-        raise RuntimeError(f'Install from the permanent source at {PERMANENT}')
+    permanent_source()
     destination = Path.home() / '.local/bin/bb-restart'
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_symlink() and destination.resolve() == source:
@@ -109,6 +111,10 @@ def main():
                         help='profile to restart (default: both)')
     parser.add_argument('--install', action='store_true', help='install bb-restart on PATH')
     args = parser.parse_args()
+    global URLS, APP, PACKAGE
+    URLS = profile_urls(load_settings())
+    APP = desktop_contents()
+    PACKAGE = APP / 'Resources/app.asar.unpacked/node_modules/bb-app'
     if args.install:
         install()
         return 0

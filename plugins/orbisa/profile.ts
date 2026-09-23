@@ -1,39 +1,55 @@
 import { readFile } from "node:fs/promises";
+import { basename, normalize, join } from "node:path";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
 import { checked, command } from "./process.ts";
+import type { ProfileSettings } from "./settings.ts";
+
+export function profilePaths(dataDir: string) {
+  const profile = basename(normalize(dataDir));
+
+  if (profile !== ".bb" && profile !== ".bb-work")
+    throw new Error("Orbisa requires a configured Personal or Work profile.");
+
+  return {
+    codexHome: join(homedir(), profile === ".bb-work" ? ".codex_work" : ".codex"),
+    signingKey: join(homedir(), ".config/orbisa/signing_key"),
+  };
+}
 
 export async function prepareProfile(
   dataDir: string,
+  settings: ProfileSettings,
   guest: (command: string[], stdin?: string) => Promise<string>,
   signal: AbortSignal,
   report: (message: string) => void,
 ) {
-  const profile = basename(dataDir) === ".bb-work" ? "work" : "personal";
+  const paths = profilePaths(dataDir);
+
   const optional = async (args: string[]) => {
     const result = await command(args, { signal }).catch(() => null);
     signal.throwIfAborted();
+
     return result?.exitCode === 0 ? result.stdout.trim() : null;
   };
+
   const [auth, versionText, github, aws, name, email, signing] = await Promise.all([
-    readFile(join(homedir(), profile === "work" ? ".codex_work" : ".codex", "auth.json"), "utf8"),
+    readFile(join(paths.codexHome, "auth.json"), "utf8"),
     checked(["codex", "--version"], { signal }),
     checked(["gh", "auth", "token"], { signal }),
     optional(["aws", "configure", "export-credentials", "--format", "process"]),
     optional(["git", "config", "--global", "user.name"]),
     optional(["git", "config", "--global", "user.email"]),
-    readFile(
-      process.env.ORBISA_SIGNING_KEY ?? join(homedir(), ".config/orbisa/signing_key"),
-      "utf8",
-    ).catch((error: NodeJS.ErrnoException) => {
+    readFile(paths.signingKey, "utf8").catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;
       throw error;
     }),
   ]);
+
   const version = versionText.match(/^codex-cli (\d+\.\d+\.\d+)/)?.[1];
+
   if (!version) throw new Error("Cannot determine the server's Codex version.");
   JSON.parse(auth);
-  report(`Preparing Codex ${version} and ${profile} credentials`);
+  report(`Preparing Codex ${version} and configured credentials`);
   await guest([
     "sh",
     "-ec",
@@ -48,9 +64,10 @@ export async function prepareProfile(
       name,
       email,
       signing,
-      region: process.env.ORBISA_AWS_REGION ?? "us-east-2",
+      region: settings.awsRegion,
     }),
   );
+
   if (!aws) report("AWS session unavailable; GitHub and Codex are ready.");
 }
 
@@ -83,7 +100,7 @@ if p['aws']:
  a=p['aws']
  write(root/'credentials','[default]\naws_access_key_id = '+a['AccessKeyId']+'\naws_secret_access_key = '+a['SecretAccessKey']+'\naws_session_token = '+a.get('SessionToken','')+'\n')
  link(home/'.aws/credentials',root/'credentials')
- write(home/'.aws/config','[default]\nregion = '+p['region']+'\n')
+ write(home/'.aws/config','[default]\n'+('region = '+p['region']+'\n' if p['region'] else ''))
 else:
  (root/'credentials').unlink(missing_ok=True)
  (home/'.aws/credentials').unlink(missing_ok=True)

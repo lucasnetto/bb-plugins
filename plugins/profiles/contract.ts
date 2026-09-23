@@ -14,8 +14,8 @@ export const profileInfoSchema = z
           id: profileSchema,
           name: z.string(),
           email: z.string(),
-          url: z.string().url(),
-          localUrl: z.string().url(),
+          url: z.union([z.literal(""), z.string().url()]),
+          localUrl: z.union([z.literal(""), z.string().url()]),
         })
         .strict(),
     ),

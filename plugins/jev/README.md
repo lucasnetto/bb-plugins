@@ -14,7 +14,6 @@ pnpm install
 bb profiles refresh jev --install-missing
 bb profiles refresh jev --check
 bb plugin config jev set attentionEnabled true
-bb plugin config jev set fixtureMode true
 bb jev eval replay decision
 bb jev list
 ```
@@ -53,7 +52,7 @@ so a crash between page ingestion and enqueue is replayable.
 
 Limits: 100 tracked subjects, 100 pending jobs, 100 retained message excerpts
 per thread, 100 results per RPC, 10 history pages per subject per cycle, and
-256–16,000 characters per evidence packet. Recent messages are preferred when
+8,000 characters per evidence packet (a plugin limit, not a setting). Recent messages are preferred when
 packets truncate. Coverage explicitly records omitted events (including
 nonmessage events). Project discovery advances in 20-thread pages every 30
 seconds; lifecycle notifications wake dirty subjects sooner. Threads beyond the
@@ -89,8 +88,7 @@ RPCs or included in the frontend bundle. Do not paste credentials into chat.
 Live evaluation uses AI SDK 7's `experimental_evaluate` with
 `gateway.evaluationModel("typesafe-ai/jev")`. Every request sets `providerOptions.gateway.zeroDataRetention` from the
 `requireZdr` setting (default true) and `disallowPromptTraining: true`.
-There is no automatic policy fallback. The user authorized `requireZdr=false`
-for Personal bb-plugins testing; Work retains the default.
+There is no automatic policy fallback. Choose the retention policy explicitly on the plugin page.
 No team-wide setting is needed by this implementation.
 
 Provide `AI_GATEWAY_API_KEY` through BB's Secrets plugin into a private dotenv

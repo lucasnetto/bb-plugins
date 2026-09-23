@@ -7,7 +7,6 @@ export const rpcContract = defineRpcContract({
     input: z.object({ threadId: z.string().min(1).max(200).optional() }).strict(),
     output: z.object({
       enabled: z.boolean(),
-      fixtureMode: z.boolean(),
       liveEnabled: z.boolean(),
       requireZdr: z.boolean(),
       keyConfigured: z.boolean(),

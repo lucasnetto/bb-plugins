@@ -38,7 +38,7 @@ for (const profile of ["personal", "work"] as const) {
     });
 
     try {
-      plugin(bb);
+      await plugin(bb);
       const info = profileInfoSchema.parse(await harness.behavior.callRpc("info", null));
       assert.equal(info.current, profile);
       const registrations = harness.inspection.registrations;
@@ -119,7 +119,7 @@ for (const profile of ["personal", "work"] as const) {
 
       assert.equal(
         profile === "personal"
-          ? launch.command.endsWith("cursor-agent-personal-acp")
+          ? launch.command.endsWith("/.local/bin/cursor-agent-personal-acp")
           : launch.command === "bb-cursor-work-acp",
         true,
       );
@@ -237,5 +237,38 @@ void test("missing, unsafe and unavailable storage leave New thread open and cle
 
     resumeThread(browser, () => assert.fail("Should not navigate"));
     assert.equal(location.href, "https://work.example.com/");
+  }
+});
+
+void test("account settings update live and reject unsafe addresses", async () => {
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "profiles",
+    dataDir: "/tmp/.bb",
+  });
+
+  await plugin(bb);
+
+  try {
+    assert.deepEqual(
+      profileInfoSchema.parse(await harness.behavior.callRpc("info", null)).profiles,
+      [],
+    );
+    await harness.behavior.setSettings({
+      workUrl: "https://work.example.com",
+      workEmail: "work@example.com",
+    });
+    const info = profileInfoSchema.parse(await harness.behavior.callRpc("info", null));
+    assert.equal(info.profiles[0]?.email, "work@example.com");
+    assert.equal(info.profiles[0]?.url, "https://work.example.com");
+    await assert.rejects(() => harness.behavior.setSettings({ workUrl: "javascript:alert(1)" }));
+    await assert.rejects(() =>
+      harness.behavior.setSettings({ workLocalUrl: "https://remote.example.com" }),
+    );
+    await assert.rejects(() =>
+      harness.behavior.setSettings({ workUrl: "https://user:password@example.com" }),
+    );
+    assert.equal(harness.inspection.registrations.providerRegistrations.length, 2);
+  } finally {
+    await harness.lifecycle.dispose();
   }
 });

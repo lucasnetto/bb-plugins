@@ -4,6 +4,7 @@ import {
   useBbContext,
   useBbNavigate,
   useRpc,
+  useSettings,
   type ExperimentalSidebarNavigationProps,
 } from "@get-bb/plugin-sdk/app";
 import type { ProfileInfo, rpcContract } from "./contract.ts";
@@ -12,6 +13,7 @@ import "./app.css";
 
 function ProfileOptions({ compact = false }: { compact?: boolean }) {
   const rpc = useRpc<typeof rpcContract>();
+  const { values } = useSettings();
   const [info, setInfo] = useState<ProfileInfo | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -28,7 +30,7 @@ function ProfileOptions({ compact = false }: { compact?: boolean }) {
     return () => {
       disposed = true;
     };
-  }, [rpc]);
+  }, [rpc, values]);
 
   if (error)
     return (
@@ -39,10 +41,21 @@ function ProfileOptions({ compact = false }: { compact?: boolean }) {
 
   if (!info) return <p className="bb-profiles-loading">Loading profiles…</p>;
 
+  const available = info.profiles.filter((profile) =>
+    ["localhost", "127.0.0.1", "::1", "[::1]"].includes(window.location.hostname)
+      ? profile.localUrl || profile.url
+      : profile.url,
+  );
+
+  if (!available.length)
+    return (
+      <p className="bb-profiles-note">Configure account addresses on the Profiles plugin page.</p>
+    );
+
   if (compact)
     return (
       <div className="bb-profiles-strip" role="group" aria-label="Account profiles">
-        {info.profiles.map((profile) => (
+        {available.map((profile) => (
           <a
             key={profile.id}
             className="bb-profiles-icon"
@@ -85,7 +98,7 @@ function ProfileOptions({ compact = false }: { compact?: boolean }) {
   return (
     <div className="bb-profiles-menu" aria-label="Account profiles">
       <p className="bb-profiles-heading">Profile</p>
-      {info.profiles.map((profile) => (
+      {available.map((profile) => (
         <a
           key={profile.id}
           className="bb-profiles-option"

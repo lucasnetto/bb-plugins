@@ -10,18 +10,19 @@ import shutil
 import subprocess
 import tempfile
 
-PROFILES = {'personal': 38886, 'work': 48886}
-PERMANENT = Path.home() / 'Developer/lucasnetto/bb-plugins'
+from configuration import PROFILE_IDS, load_settings, permanent_source, profile_urls
+
+PROFILES = PROFILE_IDS
 
 
-def cli(arguments, profile=None):
+def cli(arguments, profile=None, urls=None):
     env = dict(os.environ)
     # Administrative plugin commands only. Never run threads or provider logins
     # through this helper, and never modify the invoking process's environment.
     for key in ('BB_THREAD_ID', 'BB_PROJECT_ID', 'BB_ENVIRONMENT_ID'):
         env.pop(key, None)
     if profile:
-        env['BB_SERVER_URL'] = f'http://127.0.0.1:{PROFILES[profile]}'
+        env['BB_SERVER_URL'] = urls[profile]
     executable = os.environ.get('BB_CLI') or shutil.which('bb')
     if not executable:
         raise RuntimeError('BB CLI missing; restore bb on PATH.')
@@ -106,9 +107,9 @@ def main():
     parser.add_argument('--check', action='store_true', help='report paths, builds and health without refreshing')
     parser.add_argument('--install-missing', action='store_true', help='install explicitly named local plugins when absent')
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[2]
-    if root != PERMANENT.resolve():
-        parser.error(f'Run from the permanent source at {PERMANENT}; never install from a task checkout.')
+    settings = load_settings()
+    root = permanent_source()
+    urls = profile_urls(settings)
     lock_path = Path(tempfile.gettempdir()) / f'bb-plugins-profile-refresh-{os.getuid()}.lock'
     with lock_path.open('a') as lock:
         try:
@@ -116,7 +117,7 @@ def main():
         except BlockingIOError:
             parser.error('A profile refresh is already running; wait for its result.')
         try:
-            result = refresh(root, args.plugins, args.check, install_missing=args.install_missing)
+            result = refresh(root, args.plugins, args.check, run=lambda arguments, profile=None: cli(arguments, profile, urls), install_missing=args.install_missing)
         except RuntimeError as error:
             parser.error(str(error))
         print(json.dumps(result, indent=2))

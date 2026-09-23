@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { orbisaHostContract, orbisaRequest } from "./contract.ts";
 import { createOrbisaPolicy } from "./policy.ts";
 import { prepareProfile } from "./profile.ts";
+import { defineSettings } from "./settings.ts";
 
 const inputsSchema = z.object({
   runtimeHostId: z.string().min(1),
@@ -36,6 +37,7 @@ export function registerOrbisaProvider(
     prepareCredentials?: (executor: MachineExecutor, signal: AbortSignal) => Promise<void>;
   } = {},
 ) {
+  const settings = defineSettings(bb);
   const owner =
     "bb-" + createHash("sha256").update(bb.server.experimental_dataDir).digest("hex").slice(0, 20);
   const client = bb.hosts.experimental_client({ contract: orbisaHostContract });
@@ -103,6 +105,7 @@ export function registerOrbisaProvider(
     }
     await prepareProfile(
       bb.server.experimental_dataDir,
+      await settings.get(),
       async (command, stdin = "") => {
         const result = await call(r, "exec", signal, { command, stdin });
         if (result.exitCode !== 0) throw new Error("Orbisa guest preparation failed.");

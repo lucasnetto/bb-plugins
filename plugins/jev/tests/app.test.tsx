@@ -69,7 +69,7 @@ it.each(["before", "after"])(
       {},
       {
         rpc: {
-          list: () => ({ enabled: true, fixtureMode: true, eligibleThreadIds: ["t"], results }),
+          list: () => ({ enabled: true, eligibleThreadIds: ["t"], results }),
         },
         sidebarThreads: { threads: [thread], status: "ready" },
       },
@@ -115,7 +115,7 @@ it("renders evidence fallback without the setter and writes correction against t
     { threadId: "t", params: null },
     {
       rpc: {
-        list: () => ({ enabled: true, fixtureMode: true, eligibleThreadIds: [], results: [r] }),
+        list: () => ({ enabled: true, eligibleThreadIds: [], results: [r] }),
         annotate: () => ({ changed: true }),
       },
     },
@@ -217,7 +217,6 @@ it("shows failed live checks honestly and queues an explicit thread check", asyn
       rpc: {
         list: () => ({
           enabled: true,
-          fixtureMode: false,
           liveEnabled: true,
           requireZdr: true,
           keyConfigured: true,

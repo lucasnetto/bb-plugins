@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, join, normalize } from "node:path";
+import { basename, normalize, join } from "node:path";
 import { Effect } from "effect";
 import { z } from "zod";
 import type { ModelSelection } from "../shared/contract";
@@ -27,16 +27,13 @@ export function normalizeTitle(raw: string): string {
   return title;
 }
 
-export function profileCodexHome(dataDir: string, inherited: string | undefined): string {
-  // Both local profiles run under the same OS user; never let Work fall back to Personal auth.
+export function profileCodexHome(dataDir: string): string {
   const profile = basename(normalize(dataDir));
 
   if (profile === ".bb-work") return join(homedir(), ".codex_work");
 
   if (profile === ".bb") return join(homedir(), ".codex");
-
-  if (inherited) return inherited;
-  throw new Error("Set CODEX_HOME for this BB server before generating titles.");
+  throw new Error("Rename Thread requires a configured Personal or Work profile.");
 }
 
 export const generateTitle = Effect.fn("Rename.generateTitle")(function* (

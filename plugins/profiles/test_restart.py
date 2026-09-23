@@ -9,6 +9,9 @@ spec.loader.exec_module(restart)
 
 
 class RestartTest(unittest.TestCase):
+    def setUp(self):
+        restart.URLS = {"personal": "http://127.0.0.1:31001", "work": "http://127.0.0.1:31002"}
+
     def test_old_launcher_cannot_count_as_ready(self):
         with patch.object(restart, 'service_pid', return_value=123), patch.object(restart.urllib.request, 'urlopen') as http:
             self.assertFalse(restart.ready('personal', 'target', 123, '1'))
