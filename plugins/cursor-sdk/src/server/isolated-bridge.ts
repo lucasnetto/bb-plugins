@@ -119,6 +119,7 @@ export function createIsolatedBridge(
   launch: LaunchSession = launcher(moduleUrl),
   stopTimeoutMs = 10_000,
   startupTimeouts: Partial<Record<StartupPhase, number>> = {},
+  idleTimeoutMs = 60_000,
 ) {
   const maintenance = createSdkBridge({}, write);
   let context: ProviderBridgeContext;
@@ -136,6 +137,7 @@ export function createIsolatedBridge(
     construction?: Message;
     recycle?: boolean;
     stopTimer?: ReturnType<typeof setTimeout>;
+    idleTimer?: ReturnType<typeof setTimeout>;
     forcedStop?: boolean;
     phase?: { name: StartupPhase; started: number };
     deadline?: ReturnType<typeof setTimeout>;
@@ -156,6 +158,7 @@ export function createIsolatedBridge(
     sessions.delete(threadId);
     clearTimeout(session.stopTimer);
     clearTimeout(session.deadline);
+    clearTimeout(session.idleTimer);
 
     if (!closing)
       for (const id of session.pending.keys())
@@ -176,7 +179,36 @@ export function createIsolatedBridge(
     });
   };
 
+  const cancelIdle = (session: Session) => {
+    clearTimeout(session.idleTimer);
+    session.idleTimer = undefined;
+  };
+
+  const canIdle = (threadId: string, session: Session) =>
+    !closing &&
+    sessions.get(threadId) === session &&
+    session.ready &&
+    session.providerThreadId?.startsWith("agent-") &&
+    restores.has(threadId) &&
+    !session.active &&
+    !session.phase &&
+    session.pending.size === 0 &&
+    ![...callbacks.values()].some((callback) => callback.session === session);
+
+  const scheduleIdle = (threadId: string, session: Session) => {
+    if (session.idleTimer || !canIdle(threadId, session)) return;
+    session.idleTimer = setTimeout(() => {
+      session.idleTimer = undefined;
+
+      // Keep the resume record, and wait for graceful disposal/OS exit before
+      // a subsequent message can acquire the same conversation's lease.
+      if (canIdle(threadId, session)) release(threadId, session);
+    }, idleTimeoutMs);
+    session.idleTimer.unref();
+  };
+
   const watchPhase = (threadId: string, session: Session, name: StartupPhase) => {
+    cancelIdle(session);
     clearTimeout(session.deadline);
     session.phase = { name, started: Date.now() };
     recordDiagnostic(context.dataDir, threadId, { phase: name, state: "started" });
@@ -233,6 +265,7 @@ export function createIsolatedBridge(
               if (session.phase?.name === event.phase) {
                 clearTimeout(session.deadline);
                 session.phase = undefined;
+                scheduleIdle(threadId, session);
               }
             }
 
@@ -275,6 +308,7 @@ export function createIsolatedBridge(
           }
 
           if (message.method && message.id != null) {
+            cancelIdle(session);
             const id = `cursor-callback-${++sequence}`;
             callbacks.set(id, { session, id: message.id });
 
@@ -354,6 +388,7 @@ export function createIsolatedBridge(
           }
 
           if (session.recycle && session.pending.size === 0) release(threadId, session);
+          else scheduleIdle(threadId, session);
         },
         () => {
           if (sessions.get(threadId) !== session) return;
@@ -463,6 +498,9 @@ export function createIsolatedBridge(
           }
 
           callback.session.process.send(JSON.stringify({ ...message, id: callback.id }));
+          const entry = [...sessions.entries()].find(([, session]) => session === callback.session);
+
+          if (entry) scheduleIdle(entry[0], callback.session);
         }
 
         return;
@@ -524,6 +562,7 @@ export function createIsolatedBridge(
           sessions.get(threadId) ??
           open(threadId, message.method === "turn/start" ? restores.get(threadId) : undefined);
 
+        cancelIdle(session);
         session.pending.set(message.id, message.method ?? "");
 
         if (["thread/start", "thread/resume", "thread/fork"].includes(message.method ?? ""))

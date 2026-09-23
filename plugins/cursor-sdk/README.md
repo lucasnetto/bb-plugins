@@ -115,6 +115,14 @@ workspace under the agent lease, preserving its identity, checkpoints and run hi
 
 ## Session recovery
 
+Completed local sessions keep their process warm for one minute, then release it
+to reclaim the SDK runtime's memory. The next message starts a fresh process and
+resumes the same saved conversation, workspace, and tools. Quick follow-ups reuse
+the warm process; active turns, pending requests, and host tool callbacks prevent
+idle retirement. Replacement waits for the old process to finish disposal and
+exit. Cloud sessions retain their existing lifecycle. Resuming after the idle
+timeout adds SDK startup/checkpoint loading latency.
+
 Local sessions claim exclusive ownership of their Cursor agent. If the owning
 process dies, the next resume can reclaim it and use the SDK's `local.force`
 option on its first send to expire the abandoned run while retaining the saved
@@ -281,6 +289,14 @@ conversation, and leave the legacy backup intact:
 ```sh
 bb plugin build plugins/cursor-sdk
 CURSOR_SDK_LIVE_RECOVERY=1 vp test plugins/cursor-sdk/tests/server/recovery.live.test.ts
+```
+
+Verify idle process disposal and checkpoint recall with two Personal Composer 2.5
+requests in a temporary store (the test shortens the idle timeout):
+
+```sh
+bb plugin build plugins/cursor-sdk
+CURSOR_SDK_LIVE_IDLE=1 vp test plugins/cursor-sdk/tests/server/idle.live.test.ts
 ```
 
 Verify that editing excludes later conversation state with the Personal Cursor API key:
