@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { basename, normalize, join } from "node:path";
 import { homedir } from "node:os";
+import { promisify } from "node:util";
 import { checked, command } from "./process.ts";
 import type { ProfileSettings } from "./settings.ts";
 
@@ -32,7 +34,7 @@ export async function prepareProfile(
     return result?.exitCode === 0 ? result.stdout.trim() : null;
   };
 
-  const [auth, versionText, github, aws, name, email, signing] = await Promise.all([
+  const [auth, versionText, github, aws, name, email, signing, skills] = await Promise.all([
     readFile(join(paths.codexHome, "auth.json"), "utf8"),
     checked(["codex", "--version"], { signal }),
     checked(["gh", "auth", "token"], { signal }),
@@ -42,6 +44,13 @@ export async function prepareProfile(
     readFile(paths.signingKey, "utf8").catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;
       throw error;
+    }),
+    // The base64 archive must fit the host contract's 16 MiB stdin limit.
+    promisify(execFile)("tar", ["-czhf", "-", "--no-xattrs", "-C", homedir(), ".agents/skills"], {
+      encoding: "buffer",
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+      maxBuffer: 12 * 1024 * 1024,
+      signal,
     }),
   ]);
 
@@ -65,6 +74,7 @@ export async function prepareProfile(
       email,
       signing,
       region: settings.awsRegion,
+      skills: skills.stdout.toString("base64"),
     }),
   );
 
@@ -74,7 +84,7 @@ export async function prepareProfile(
 // Credentials are sent through private stdin, stored in tmpfs, and refreshed on
 // every wake. They never enter the clean image, resource JSON or progress logs.
 export const INSTALL_PROFILE = String.raw`
-import json, os, pathlib, subprocess, sys, tempfile
+import base64, json, os, pathlib, shutil, subprocess, sys, tempfile
 p=json.load(sys.stdin)
 os.umask(0o077)
 home=pathlib.Path.home()
@@ -128,4 +138,13 @@ if p['signing']:
  write(root/'signing_key',p['signing']); git('gpg.format','ssh'); git('user.signingkey',str(root/'signing_key')); git('commit.gpgsign','true')
 else:
  (root/'signing_key').unlink(missing_ok=True); git('commit.gpgsign','false')
+staging=pathlib.Path(tempfile.mkdtemp(dir=home))
+try:
+ subprocess.run(['tar','-xzf','-','-C',str(staging)],input=base64.b64decode(p['skills']),check=True)
+ shutil.rmtree(home/'.agents/skills',ignore_errors=True)
+ (home/'.agents').mkdir(exist_ok=True)
+ os.replace(staging/'.agents/skills',home/'.agents/skills')
+finally:
+ shutil.rmtree(staging,ignore_errors=True)
+link(home/'.claude/skills',home/'.agents/skills')
 `;

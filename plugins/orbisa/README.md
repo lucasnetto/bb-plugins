@@ -24,7 +24,9 @@ credentials and enrollment payloads travel through private stdin and are never
 stored in resource JSON or images. The profile's Codex login is installed in
 tmpfs, with the server's exact Codex version. GitHub, npm GitHub Packages, optional
 AWS credentials and the dedicated Git signing identity are prepared on create
-and wake. BB supplies its global skills and provider configuration normally.
+and wake. Each create and wake also replaces the guest's `~/.agents/skills` with
+a copy of the server's, and links `~/.claude/skills` to it. BB supplies its own
+data-dir skills and provider configuration normally.
 The tooling image contains no editor or agent account.
 
 Archiving/settling the last owning thread immediately requests suspension.
