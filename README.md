@@ -1,22 +1,50 @@
 # bb-plugins
 
-Lucas Netto's bb plugins.
+Lucas Netto's collection of [BB](https://getbb.app/) plugins. Clone this repo,
+build the plugins you want, and install them from your local checkout. No npm
+publication or marketplace listing is needed.
+
+## Set up with your agent
+
+Give your coding agent this prompt:
+
+> Read https://github.com/lucasnetto/bb-plugins/blob/main/INSTALL.md. Walk me through
+> the plugins and their features, help me choose which ones fit my setup, then
+> clone the repository to a permanent location, build and install my choices,
+> and verify them in BB. Follow the guide's prerequisites and explain any
+> plugin that needs additional setup.
+
+[INSTALL.md](INSTALL.md) is the agent-facing installation guide and plugin tour.
+It also covers configuration, updates, troubleshooting, and removal. You can
+follow it yourself with the same commands.
+
+## Plugins
 
 Each plugin lives in `plugins/<name>` with its own package manifest.
 A pnpm workspace manages dependencies with one root lockfile.
-`.bb/plugins.json` indexes the collection for bb.
+`.bb/plugins.json` indexes a subset of the collection for bb; the installation
+guide uses directory paths so every plugin below can be selected.
 
-| Plugin                | Purpose                                                       |
-| --------------------- | ------------------------------------------------------------- |
-| cursor-sdk            | Run Cursor locally with BB tools or on Cursor Cloud.          |
-| workspace-opener      | Open a folder’s workspace file in Cursor or VS Code.          |
-| bb-fonts           | Choose interface and code fonts with live previews.           |
-| hide-models           | Hide selected models from the model picker.                   |
-| model-thinking-level  | Keep the selected thinking level visible beside the model.    |
-| pr-review             | Find PRs, review code with agents, and settle completed work. |
-| rename-thread         | Regenerate thread titles from conversation context.          |
-| t3-sidebar            | Display a T3-style thread sidebar.                            |
-| workers               | Inspect hidden child workers and chat in the parent panel.    |
+| Plugin                                                         | Purpose                                                                       |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [bb-fonts](plugins/fonts/README.md)                         | Choose interface and code fonts and sizes, with live previews.                |
+| [ocean-theme](plugins/ocean-theme/README.md)                   | Use T3 Code's Ocean palette in light or dark mode.                            |
+| [hide-models](plugins/hide-models/README.md)                   | Hide selected models from the model picker.                                   |
+| [model-thinking-level](plugins/model-thinking-level/README.md) | Keep the thinking level visible beside the model.                             |
+| [t3-sidebar](plugins/t3-sidebar/README.md)                     | Organize threads with cards, pinning, snoozing, and a Settled shelf.          |
+| [pr-review](plugins/pr-review/README.md)                       | Find and review PRs, generate guided reviews, and inspect local changes.      |
+| [rename-thread](plugins/rename-thread/README.md)               | Regenerate thread titles from conversation context.                           |
+| [workers](plugins/workers/README.md)                           | Delegate to hidden workers and chat with them in the parent panel.            |
+| [workspace-opener](plugins/workspace-opener/README.md)         | Open a folder's workspace file in Cursor or VS Code.                          |
+| [environment-recovery](plugins/environment-recovery/README.md) | Continue a conversation in a fresh worktree after its environment is removed. |
+| [jev](plugins/jev/README.md)                                   | Explore attention signals and their evidence, with optional live evaluation.  |
+| [cursor-sdk](plugins/cursor-sdk/README.md)                     | Run Cursor locally with BB tools or on Cursor Cloud.                          |
+| [orbisa](plugins/orbisa/README.md)                             | Create isolated machines with Orbisa on Incus or OrbStack.                    |
+| [profiles](plugins/profiles/README.md)                         | Switch between separately configured Personal and Work BB instances.          |
+
+Cursor SDK, Orbisa, and Profiles currently depend on specific profile and
+credential conventions. Read their prerequisites in the
+[plugin tour](INSTALL.md#plugin-tour) before selecting them.
 
 ## Development
 
@@ -43,10 +71,10 @@ lives in the root `vite.config.ts`; test projects have their own
 `plugins/<name>/vite.config.ts`. Tests import Vitest APIs from `vite-plus/test`.
 T3 tests run against source, so tests do not require a preceding build.
 
-`vp run build` orchestrates `bb plugin build` for every plugin. BB's builder
-produces required plugin artifacts and metadata, so use this command instead
-of the built-in Vite application command `vp build`. Likewise, `vp pack` is a
-library builder; use `pnpm pack` for release tarballs as shown below.
+`vp run build` orchestrates `bb plugin build` for packages with a build script.
+To build any plugin directly, including Ocean Theme, use
+`bb plugin build plugins/<directory>`. BB's builder produces required plugin
+artifacts and metadata; the Vite application command `vp build` does not.
 
 For CI or a reproducible install, use `vp install --frozen-lockfile`.
 
@@ -73,18 +101,14 @@ catalog and restore the manifest's `catalog:` references before installing.
 
 ## Distribution
 
-Develop and install locally from this workspace after `vp install` and
-`vp run build`. For npm releases, build first and use `pnpm pack` or
-`pnpm publish`: pnpm replaces catalog references with ordinary versions in
-the published package. For example, from the root:
-
-```sh
-pnpm --filter bb-plugin-hide-models pack --pack-destination /tmp/bb-plugins-packages
-```
+This collection is distributed through source checkouts. Follow
+[INSTALL.md](INSTALL.md) to install dependencies, build selected plugins, and
+register their local paths with BB. Keep the checkout available for as long as
+the plugins are installed.
 
 Direct BB Git installs of these source manifests are unsupported: BB runs
-`npm install` for Git plugins, and npm cannot resolve `catalog:`. Distribute
-packed npm releases or use the local checkout workflow above.
+`npm install` for Git plugins, and npm cannot resolve `catalog:`. Clone with Git
+first, then use the local path workflow. There is no publishing step.
 
 Generated bundles, dependencies, and local configuration stay out of Git.
 
