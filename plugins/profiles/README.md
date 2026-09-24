@@ -17,7 +17,7 @@ enabling Profiles because both register Cursor. The old Personal provider ID
 remains available for existing conversations.
 
 The plugin follows the profile bootstrap's service and launcher conventions.
-It discovers the permanent checkout from its installed source and rejects task
+Refresh discovers each plugin's registered source and rejects local task
 worktrees. The desktop app location comes from the running BB CLI, falling back
 to the standard macOS installation. These implementation details need no settings.
 The restart helper caches only the two local URLs so it also works while BB is
@@ -70,22 +70,35 @@ checkout. Keep that checkout available and `~/.local/bin` on PATH. The command
 uses the existing account-aware profile services and never switches provider
 credentials or the calling shell's server URL.
 
-### Local plugin builds
+### Installed plugin refresh
 
-Use `bb profiles refresh <plugin-id> ...` after validating a change in the
-main repository checkout. With no IDs it refreshes
-installed local bb-plugins plugins. `--check` only reports installation path,
-package version, content-derived build ID, app bundle hash, enabled state,
-and health for each profile. It reports an unreachable profile as a failure.
+Use `bb profiles refresh <plugin-id> ...` after validating changes in a plugin's
+permanent checkout. With no IDs it refreshes all installed plugins in each
+profile, including plugins outside bb-plugins. Discovery uses BB's installed-plugin
+inventory; it does not scan repositories or require a particular working directory.
+`--check` only reports installation path, package version, content-derived build
+ID when files are available, app bundle hash, enabled state, and health. An
+unreachable profile or unhealthy installation is reported as a failure.
 
-The command builds each plugin once, reloads both installations, repairs stale
-local source paths, preserves disabled state, and verifies the result. A failed
-build is never loaded. It does not pull Git, discard local changes, update
-managed third-party plugins, or install missing plugins unless explicitly requested with `--install-missing`.
-Use `bb profiles refresh <plugin-id> --install-missing` to install a new local
-plugin in both profiles. This option requires explicit plugin IDs and cannot
-be combined with `--check`. Publish source changes
-through the normal repository workflow.
+Local `path:` plugins are built once per resolved package directory, with their
+dependencies already installed. Git, npm, and built-in plugins reload their
+installed versions without rebuilding or fetching updates. Disabled plugins stay
+disabled and are not reloaded. Each profile keeps its own source and version;
+different local sources for the same plugin are built separately. A failed build
+is never loaded. Builds run on the server machine containing the registered paths.
+
+Missing local directories and task worktrees are reported instead of rewritten.
+After moving a plugin, register its new permanent path with `bb plugin install
+path:<directory>` in each profile. The next refresh discovers it automatically.
+The command does not pull Git, install dependencies, discard local changes, or
+update managed plugins. Use `bb plugin update` for explicit managed updates.
+
+`bb profiles refresh <plugin-id> --install-missing` can copy an existing local
+installation from the other profile, including its enabled state. It requires
+explicit IDs and cannot be combined with `--check`. A plugin absent from both
+profiles, or installed from Git/npm, must first be installed explicitly in the
+target profile. Without this flag, refresh never installs missing plugins.
+Publish source changes through the normal repository workflow.
 
 Profile isolation still applies to threads and provider accounts. The bounded
 refresh helper addresses the two local servers only for plugin administration;

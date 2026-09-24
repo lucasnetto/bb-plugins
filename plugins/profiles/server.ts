@@ -87,7 +87,7 @@ export default async function plugin(bb: BbPluginApi) {
       { name: "status", summary: "Show the active profile", usage: "bb profiles status" },
       {
         name: "refresh",
-        summary: "Build and refresh local bb-plugins plugins in both profiles",
+        summary: "Refresh installed plugins across repositories in both profiles",
         usage: "bb profiles refresh [plugin-id ...] [--check | --install-missing]",
       },
     ],
