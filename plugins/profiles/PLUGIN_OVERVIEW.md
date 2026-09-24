@@ -40,3 +40,6 @@ versions. Sources and enabled states are preserved. Use `--check` to inspect
 paths, builds, and health without changing anything. Explicit `--install-missing`
 can copy a local installation from the other profile. Dependencies must already
 be installed, and local sources must be permanent directories.
+To relocate an existing local plugin in both profiles, use
+`bb profiles refresh <id> --source /absolute/package-directory`. It validates
+the package identity and preserves configuration without uninstalling.

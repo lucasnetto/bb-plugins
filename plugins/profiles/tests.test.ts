@@ -272,3 +272,38 @@ void test("account settings update live and reject unsafe addresses", async () =
     await harness.lifecycle.dispose();
   }
 });
+
+void test("refresh accepts one explicit absolute source and rejects malformed migration arguments", async () => {
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "profiles",
+    dataDir: "/tmp/.bb",
+    sdk: { plugins: { list: async () => ({ plugins: [] }) } },
+  });
+
+  await plugin(bb);
+
+  try {
+    for (const args of [
+      ["refresh", "orbisa", "--source"],
+      ["refresh", "orbisa", "--source", "relative/path"],
+      ["refresh", "orbisa", "profiles", "--source", "/permanent/plugin"],
+      ["refresh", "orbisa", "--source", "/permanent/plugin", "--check"],
+      ["refresh", "orbisa", "--source", "/permanent/plugin", "--install-missing"],
+    ]) {
+      const result = await harness.behavior.runCli(args);
+      assert.equal(result.exitCode, 1);
+      assert.match(result.stderr!, /^Usage:/);
+    }
+
+    const result = await harness.behavior.runCli([
+      "refresh",
+      "orbisa",
+      "--source",
+      "/permanent checkout/plugins/bb",
+    ]);
+
+    assert.equal(result.stderr, "Profiles installation is missing.");
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});

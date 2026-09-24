@@ -67,9 +67,17 @@ def same_installation(current, expected):
     return all(current.get(key) == expected.get(key) for key in ('source', 'rootDir', 'enabled'))
 
 
-def refresh(ids, check=False, run=cli, install_missing=False):
+def refresh(ids, check=False, run=cli, install_missing=False, source_override=None):
     if install_missing and (check or not ids):
         raise RuntimeError("--install-missing requires explicit plugin IDs and cannot be used with --check")
+    destination = None
+    if source_override is not None:
+        if len(ids) != 1 or check or install_missing:
+            raise RuntimeError('--source requires exactly one plugin ID and cannot be used with --check or --install-missing')
+        destination = local_directory({'rootDir': str(source_override)})
+        manifest = json.loads((destination / 'package.json').read_text())
+        if manifest.get('name', '').rsplit('/', 1)[-1] != 'bb-plugin-' + ids[0]:
+            raise RuntimeError('--source package identity does not match the requested plugin ID')
     inventories, errors, rows, builds = {}, [], [], {}
     for profile in PROFILES:
         try:
@@ -100,7 +108,9 @@ def refresh(ids, check=False, run=cli, install_missing=False):
                 kind = plugin['source'].split(':', 1)[0]
                 if kind not in ('path', 'git', 'npm', 'builtin'):
                     raise RuntimeError('unsupported plugin source; refresh it explicitly with bb plugin reload')
-                source = local_directory(plugin) if kind == 'path' else Path(plugin['rootDir'])
+                if destination is not None and kind != 'path':
+                    raise RuntimeError('--source can only move an existing local path installation')
+                source = destination if destination is not None else local_directory(plugin) if kind == 'path' else Path(plugin['rootDir'])
                 if not check:
                     if kind == 'path' and source not in builds:
                         try:
@@ -119,10 +129,14 @@ def refresh(ids, check=False, run=cli, install_missing=False):
                             run(['disable', plugin_id], profile)
                     elif before is None or not same_installation(before, plugin):
                         raise RuntimeError('installation changed during refresh; retry')
+                    elif destination is not None and (plugin['source'] != 'path:' + str(source) or plugin['rootDir'] != str(source)):
+                        run(['install', 'path:' + str(source), '--yes'], profile)
+                        if not plugin['enabled']:
+                            run(['disable', plugin_id], profile)
                     elif plugin['enabled']:
                         run(['reload', plugin_id], profile)
                 current = plugin if check else next(p for p in json.loads(run(['list', '--json'], profile))['plugins'] if p['id'] == plugin_id)
-                expected = {**plugin, 'source': 'path:' + str(source), 'rootDir': str(source)} if missing else plugin
+                expected = {**plugin, 'source': 'path:' + str(source), 'rootDir': str(source)} if missing or destination is not None else plugin
                 healthy = (same_installation(current, expected)
                            and (current['status'] == ('running' if current['enabled'] else 'disabled'))
                            and (kind == 'path' or current['version'] == plugin['version']))
@@ -144,6 +158,7 @@ def main():
     parser.add_argument('plugins', nargs='*')
     parser.add_argument('--check', action='store_true', help='report paths, builds and health without refreshing')
     parser.add_argument('--install-missing', action='store_true', help='copy explicitly named local plugins from the other profile when absent')
+    parser.add_argument('--source', help='move one installed local plugin to this absolute permanent package directory in both profiles')
     args = parser.parse_args()
     settings = load_settings()
     urls = profile_urls(settings)
@@ -154,7 +169,7 @@ def main():
         except BlockingIOError:
             parser.error('A profile refresh is already running; wait for its result.')
         try:
-            result = refresh(args.plugins, args.check, run=lambda arguments, profile=None: cli(arguments, profile, urls), install_missing=args.install_missing)
+            result = refresh(args.plugins, args.check, run=lambda arguments, profile=None: cli(arguments, profile, urls), install_missing=args.install_missing, source_override=args.source)
         except RuntimeError as error:
             parser.error(str(error))
         print(json.dumps(result, indent=2))

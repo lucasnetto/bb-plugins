@@ -88,22 +88,30 @@ export default async function plugin(bb: BbPluginApi) {
       {
         name: "refresh",
         summary: "Refresh installed plugins across repositories in both profiles",
-        usage: "bb profiles refresh [plugin-id ...] [--check | --install-missing]",
+        usage:
+          "bb profiles refresh [plugin-id ...] [--check | --install-missing | --source <absolute-directory>]",
       },
     ],
     async run(argv) {
       if (argv[0] === "refresh") {
+        const args = argv.slice(1);
+        const sourceIndex = args.indexOf("--source");
+        const sourcePath = sourceIndex >= 0 ? args[sourceIndex + 1] : undefined;
+
+        const remaining =
+          sourceIndex >= 0 ? [...args.slice(0, sourceIndex), ...args.slice(sourceIndex + 2)] : args;
+
         if (
-          argv
-            .slice(1)
-            .some(
-              (arg) =>
-                arg !== "--check" && arg !== "--install-missing" && !/^[a-z][a-z0-9-]*$/.test(arg),
-            )
+          (sourceIndex >= 0 && (!sourcePath?.startsWith("/") || remaining.length !== 1)) ||
+          remaining.some(
+            (arg) =>
+              arg !== "--check" && arg !== "--install-missing" && !/^[a-z][a-z0-9-]*$/.test(arg),
+          )
         )
           return {
             exitCode: 1,
-            stderr: "Usage: bb profiles refresh [plugin-id ...] [--check | --install-missing]",
+            stderr:
+              "Usage: bb profiles refresh [plugin-id ...] [--check | --install-missing | --source <absolute-directory>]",
           };
         const self = (await bb.sdk.plugins.list()).plugins.find((p) => p.id === bb.pluginId);
 

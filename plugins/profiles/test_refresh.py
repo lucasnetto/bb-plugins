@@ -37,7 +37,11 @@ class RefreshTest(unittest.TestCase):
         if args[0] == 'install':
             source = Path(args[1].removeprefix('path:'))
             plugin_id = json.loads((source / 'package.json').read_text())['name'].removeprefix('bb-plugin-')
-            self.installed[profile].append(self.plugin(source, plugin_id))
+            existing = next((p for p in self.installed[profile] if p['id'] == plugin_id), None)
+            if existing is None:
+                self.installed[profile].append(self.plugin(source, plugin_id))
+            else:
+                existing.update(self.plugin(source, plugin_id))
         if args[0] == 'disable':
             next(p for p in self.installed[profile] if p['id'] == args[1]).update(enabled=False, status='disabled')
         return ''
@@ -228,6 +232,56 @@ class RefreshTest(unittest.TestCase):
         for ids, check in [([], False), (['orbisa'], True)]:
             with self.assertRaises(RuntimeError):
                 refresh.refresh(ids, check=check, run=self.run_cli, install_missing=True)
+        self.assertEqual(self.calls, [])
+
+    def test_source_override_moves_both_profiles_without_removing_state(self):
+        self.both(self.plugin(self.root / 'deleted-old-checkout'))
+        self.installed['work'][0].update(enabled=False, status='disabled', settings={'region': 'test'})
+        destination = self.package()
+        result = refresh.refresh(['orbisa'], run=self.run_cli, source_override=str(destination))
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(sum(args[0] == 'build' for _, args in self.calls), 1)
+        self.assertEqual(sum(args[0] == 'install' for _, args in self.calls), 2)
+        self.assertFalse(any(args[0] == 'remove' for _, args in self.calls))
+        self.assertTrue(all(p['healthy'] and p['installationPath'] == str(destination.resolve()) for p in result['plugins']))
+        self.assertEqual(self.installed['work'][0]['settings'], {'region': 'test'})
+        self.assertFalse(self.installed['work'][0]['enabled'])
+
+    def test_source_override_requires_matching_package_before_any_mutation(self):
+        destination = self.package(plugin_id='different')
+        with self.assertRaisesRegex(RuntimeError, 'identity'):
+            refresh.refresh(['orbisa'], run=self.run_cli, source_override=destination)
+        self.assertEqual(self.calls, [])
+
+    def test_source_override_does_not_replace_managed_installations(self):
+        self.both(self.plugin(self.root / 'managed', kind='git'))
+        result = refresh.refresh(['orbisa'], run=self.run_cli, source_override=self.package())
+        self.assertEqual(len(result['errors']), 2)
+        self.assertEqual(self.mutations(), [])
+
+    def test_source_override_does_not_install_absent_plugins(self):
+        result = refresh.refresh(['orbisa'], run=self.run_cli, source_override=self.package())
+        self.assertEqual(len(result['errors']), 2)
+        self.assertEqual(self.mutations(), [])
+
+    def test_source_override_failed_build_keeps_old_source(self):
+        self.both(self.plugin(self.root / 'old'))
+        original = copy.deepcopy(self.installed)
+        def run(args, profile=None):
+            result = self.run_cli(args, profile)
+            if args[0] == 'build':
+                raise RuntimeError('failed')
+            return result
+        result = refresh.refresh(['orbisa'], run=run, source_override=self.package())
+        self.assertEqual(len(result['errors']), 2)
+        self.assertEqual(self.installed, original)
+        self.assertEqual(len(self.mutations()), 1)
+
+    def test_source_override_requires_one_id_and_mutating_mode(self):
+        for ids, check, install in [([], False, False), (['a', 'b'], False, False),
+                                    (['orbisa'], True, False), (['orbisa'], False, True)]:
+            with self.assertRaises(RuntimeError):
+                refresh.refresh(ids, check=check, install_missing=install, run=self.run_cli, source_override='/unused')
         self.assertEqual(self.calls, [])
 
 

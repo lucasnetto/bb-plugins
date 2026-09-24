@@ -28,10 +28,6 @@
       "source": "./plugins/workers"
     },
     {
-      "name": "orbisa",
-      "source": "./plugins/orbisa"
-    },
-    {
       "name": "cursor-sdk",
       "source": "./plugins/cursor-sdk"
     },

@@ -88,8 +88,13 @@ different local sources for the same plugin are built separately. A failed build
 is never loaded. Builds run on the server machine containing the registered paths.
 
 Missing local directories and task worktrees are reported instead of rewritten.
-After moving a plugin, register its new permanent path with `bb plugin install
-path:<directory>` in each profile. The next refresh discovers it automatically.
+To move an existing local plugin in both profiles, run
+`bb profiles refresh <plugin-id> --source /absolute/permanent/package-directory`.
+This builds the new package once, checks its identity, and registers the new
+source without uninstalling, preserving configuration and enabled state. It
+requires exactly one ID and cannot be combined with `--check` or
+`--install-missing`. Managed Git/npm sources are not replaced. The next normal
+refresh discovers the new path automatically.
 The command does not pull Git, install dependencies, discard local changes, or
 update managed plugins. Use `bb plugin update` for explicit managed updates.
 

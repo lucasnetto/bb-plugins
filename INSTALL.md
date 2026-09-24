@@ -231,14 +231,13 @@ first useful action. The linked READMEs contain full details.
   is the supported permission mode. Cloud also needs a clean, pushed GitHub
   commit and Cursor repository access; local BB tools and credentials are not
   forwarded. The cloud switch changes the default for new conversations only.
-- **[Orbisa](plugins/orbisa/README.md)** — ID `orbisa`, directory `plugins/orbisa`.
-  Isolated BB machines via the separate Orbisa CLI with Incus on Linux or OrbStack
-  on macOS. Requires Orbisa 0.2.0, a prepared tooling image, an enrolled runtime
-  host, and the documented profile/credential bootstrap. Review that setup before
-  creating a machine with `orbisa-machine`; `bb orbisa machines` shows lifecycle
-  status. Archiving the last owning thread requests suspension and deletion ten
-  minutes later. Commit and push work before settling; deletion includes unpushed
-  commits, uncommitted files, and ignored data.
+- **[Orbisa](https://github.com/lucasnetto/orbisa/tree/main/plugins/bb)** — ID
+  `orbisa`, maintained separately in the Orbisa repository under `plugins/bb`.
+  Follow that package's README for isolated BB machines via Incus or OrbStack,
+  prerequisites, installation, and migration from an existing bb-plugins source.
+  It is no longer included in this workspace or its plugin index. Existing local
+  installations move by installing the new path over the same ID; do not
+  uninstall first, because removal deletes plugin configuration.
 - **[Profiles](plugins/profiles/README.md)** — ID `profiles`, directory
   `plugins/profiles`. Switches between already configured Personal and Work BB
   instances, with separate accounts, thread history, and plugin settings. This

@@ -4,6 +4,11 @@ Lucas Netto's collection of [BB](https://getbb.app/) plugins. Clone this repo,
 build the plugins you want, and install them from your local checkout. No npm
 publication or marketplace listing is needed.
 
+The Orbisa integration now lives in the
+[Orbisa repository](https://github.com/lucasnetto/orbisa/tree/main/plugins/bb).
+Its README covers installation and moving an existing `orbisa` plugin source
+while retaining configuration and machine state.
+
 ## Set up with your agent
 
 Give your coding agent this prompt:
@@ -39,10 +44,9 @@ guide uses directory paths so every plugin below can be selected.
 | [environment-recovery](plugins/environment-recovery/README.md) | Continue a conversation in a fresh worktree after its environment is removed. |
 | [jev](plugins/jev/README.md)                                   | Explore attention signals and their evidence, with optional live evaluation.  |
 | [cursor-sdk](plugins/cursor-sdk/README.md)                     | Run Cursor locally with BB tools or on Cursor Cloud.                          |
-| [orbisa](plugins/orbisa/README.md)                             | Create isolated machines with Orbisa on Incus or OrbStack.                    |
 | [profiles](plugins/profiles/README.md)                         | Switch between separately configured Personal and Work BB instances.          |
 
-Cursor SDK, Orbisa, and Profiles currently depend on specific profile and
+Cursor SDK and Profiles currently depend on specific profile and
 credential conventions. Read their prerequisites in the
 [plugin tour](INSTALL.md#plugin-tour) before selecting them.
 
