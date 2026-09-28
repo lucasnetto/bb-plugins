@@ -284,6 +284,70 @@ class RefreshTest(unittest.TestCase):
                 refresh.refresh(ids, check=check, install_missing=install, run=self.run_cli, source_override='/unused')
         self.assertEqual(self.calls, [])
 
+class MachineRefreshTest(unittest.TestCase):
+    setUp = RefreshTest.setUp
+    plugin = RefreshTest.plugin
+    both = RefreshTest.both
+    run_cli = RefreshTest.run_cli
+    mutations = RefreshTest.mutations
+    def remote(self, hosts=None, offline=None):
+        owner = self
+        class Runner:
+            def __init__(self):
+                self.hosts = hosts or {'personal': 'linux', 'work': 'mac'}
+                self.inspections = []
+            def inspect_source(self, path, profile):
+                self.inspections.append((profile, path))
+                return {'path': path, 'name': 'bb-plugin-orbisa', 'hash': profile + '-hash'}
+            def __call__(self, args, profile=None):
+                if profile == offline:
+                    raise RuntimeError('offline')
+                return owner.run_cli(args, profile)
+        return Runner()
+
+    def test_same_path_on_different_hosts_builds_twice_on_owning_hosts(self):
+        self.both(self.plugin('/permanent/plugin'))
+        runner = self.remote()
+        result = refresh.refresh(['orbisa'], run=runner)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual([(p, a) for p, a in self.calls if a[0] == 'build'],
+                         [('personal', ['build', '/permanent/plugin']), ('work', ['build', '/permanent/plugin'])])
+        self.assertEqual([p['build'] for p in result['plugins']], ['personal-hash', 'work-hash'])
+
+    def test_check_inspects_remote_sources_without_local_files_or_mutations(self):
+        self.both(self.plugin('/not/on/this/machine'))
+        runner = self.remote()
+        result = refresh.refresh(['orbisa'], check=True, run=runner)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(self.mutations(), [])
+        self.assertEqual({p for p, _ in runner.inspections}, {'personal', 'work'})
+
+    def test_same_machine_can_share_build(self):
+        self.both(self.plugin('/permanent/plugin'))
+        result = refresh.refresh(['orbisa'], run=self.remote({'personal': 'mac', 'work': 'mac'}))
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(sum(a[0] == 'build' for _, a in self.calls), 1)
+
+    def test_cross_machine_source_copy_fails_before_any_operation(self):
+        for kwargs in [{'source_override': '/permanent/plugin'}, {'install_missing': True}]:
+            with self.assertRaisesRegex(RuntimeError, 'same machine'):
+                refresh.refresh(['orbisa'], run=self.remote(), **kwargs)
+        self.assertEqual(self.calls, [])
+
+    def test_offline_machine_leaves_other_machine_refresh_available(self):
+        self.both(self.plugin('/permanent/plugin'))
+        result = refresh.refresh(['orbisa'], run=self.remote(offline='work'))
+        self.assertEqual(len(result['errors']), 1)
+        self.assertTrue(result['plugins'][0]['healthy'])
+
+    def test_coordinating_profile_runs_after_remote_profile(self):
+        self.both(self.plugin('/permanent/plugin'))
+        runner = self.remote()
+        runner.current_profile = 'personal'
+        result = refresh.refresh(['orbisa'], run=runner)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual([p for p, a in self.calls if a[0] == 'reload'], ['work', 'personal'])
+
 
 if __name__ == '__main__':
     unittest.main()

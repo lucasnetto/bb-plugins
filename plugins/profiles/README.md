@@ -110,3 +110,31 @@ refresh helper addresses the two local servers only for plugin administration;
 it never changes the calling thread environment or account credentials. Do not
 copy its internal server selection into agent commands. The former shell
 `bb-reload-all` function can be replaced by `bb profiles refresh "$@"`.
+
+## Refresh across machines
+
+`bb profiles refresh [plugin-id ...]` and `--check` use each profile's administration
+machine. Set `personalHostId` and `workHostId` to enrolled machine IDs visible to
+this BB instance (`bb machine list`). An empty ID uses this instance's server
+machine, preserving the original same-machine setup.
+
+Set `personalCliPath` / `workCliPath` to the absolute official BB CLI on each
+machine, and `personalDataDir` / `workDataDir` to that profile's server data
+directory. Empty CLI paths use the machine's `BB_CLI`; empty data directories use
+this server's data directory for its own profile, or `~/.bb` / `~/.bb-work` on the
+other machine. Local URLs remain loopback addresses, interpreted on the selected
+machine. The helper verifies that the endpoint reports the configured data
+directory before issuing plugin commands.
+
+The enrolled-machine connection carries bounded plugin maintenance requests.
+Credentials stay on the owning machine; thread execution and login commands are
+not supported. Each machine inspects and builds its own permanent source paths.
+Matching path strings on different machines never share a build. Managed plugins
+keep their versions; disabled plugins stay disabled. One unavailable machine is
+reported without preventing the other profile's refresh.
+
+`--source` and `--install-missing` require both profiles on the same machine.
+Across machines, register a permanent source explicitly on the destination first;
+refresh never copies or guesses source directories. Run refresh from the instance
+whose settings describe both enrolled machines. This does not rewrite settings in
+the other profile.

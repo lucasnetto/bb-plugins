@@ -43,3 +43,10 @@ be installed, and local sources must be permanent directories.
 To relocate an existing local plugin in both profiles, use
 `bb profiles refresh <id> --source /absolute/package-directory`. It validates
 the package identity and preserves configuration without uninstalling.
+
+Refresh can route through enrolled machines using per-profile administration host,
+CLI and data-directory settings. Host RPC exposes only inspect/list/build/reload/
+local-source install/disable operations; the Python coordinator uses a private
+JSON-lines channel. Source checks and hashes run on the owning machine, and build
+reuse is keyed by machine plus canonical path. Cross-machine source moves and
+implicit installation are rejected. See README for setup and verification.

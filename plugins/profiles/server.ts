@@ -1,6 +1,3 @@
-import { execFile } from "node:child_process";
-import { z } from "zod";
-import { promisify } from "node:util";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -9,6 +6,9 @@ import { cursorProvider } from "./cursor.ts";
 import { profileProviderIds, resolveProfile } from "./profile.ts";
 import { defineSettings } from "./settings.ts";
 import { cacheAdministration } from "./administration.ts";
+import { maintenanceContract } from "./refresh-contract.ts";
+import { runRefresh } from "./refresh-runner.ts";
+import { maintain } from "./refresh-host.ts";
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = defineSettings(bb);
@@ -117,34 +117,60 @@ export default async function plugin(bb: BbPluginApi) {
 
         if (!self) return { exitCode: 1, stderr: "Profiles installation is missing." };
 
-        try {
-          const result = await promisify(execFile)(
-            "python3",
-            [join(self.rootDir, "refresh.py"), ...argv.slice(1)],
-            {
-              timeout: 3_600_000,
-              maxBuffer: 2 * 1024 * 1024,
-              env: { ...process.env, BB_PROFILES_CONFIG: JSON.stringify(await settings.get()) },
-            },
-          );
+        const values = await settings.get();
+        const { primaryHostId } = await bb.sdk.system.config();
 
-          return { exitCode: 0, stdout: result.stdout };
-        } catch (error) {
-          const result = z
-            .object({
-              stdout: z.string().optional(),
-              stderr: z.string().optional(),
-            })
-            .safeParse(error);
+        const hosts = Object.fromEntries(
+          (["personal", "work"] as const).map((id) => [
+            id,
+            String(values[`${id}HostId`] || primaryHostId || ""),
+          ]),
+        );
 
-          return {
-            exitCode: 1,
-            stdout: result.success ? (result.data.stdout ?? "") : "",
-            stderr:
-              (result.success ? result.data.stderr : undefined) ??
-              "Profile refresh failed; inspect plugin logs.",
-          };
-        }
+        return runRefresh(
+          join(self.rootDir, "refresh.py"),
+          argv.slice(1),
+          { ...values, refreshCurrentProfile: profile },
+          hosts,
+          async (request) => {
+            const id = request.profile;
+
+            if (!hosts[id]) throw new Error("Configure an administration machine.");
+
+            if (
+              request.action === "reload" &&
+              request.argument === bb.pluginId &&
+              id === profile &&
+              hosts[id] === primaryHostId
+            ) {
+              // Reloading this host worker would destroy the reply channel. Core owns self-reload.
+              await bb.sdk.plugins.reload({ pluginId: bb.pluginId });
+
+              return "";
+            }
+
+            const target = {
+              ...request,
+              url: values[`${id}LocalUrl`],
+              cliPath: values[`${id}CliPath`],
+              dataDir:
+                values[`${id}DataDir`] ||
+                (id === profile && hosts[id] === primaryHostId
+                  ? bb.server.experimental_dataDir
+                  : ""),
+            };
+
+            if (hosts[id] === primaryHostId) return maintain(target);
+            const host = bb.hosts.experimental_client({ contract: maintenanceContract });
+
+            return host.call("maintain", target, {
+              hostId: hosts[id],
+              signal: AbortSignal.timeout(
+                request.action === "build" || request.action === "install" ? 310_000 : 30_000,
+              ),
+            });
+          },
+        );
       }
 
       if (argv.length !== 1 || argv[0] !== "status") {

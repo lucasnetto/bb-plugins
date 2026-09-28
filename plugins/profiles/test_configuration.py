@@ -14,6 +14,12 @@ class ConfigurationTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 profile_urls({**values, 'workLocalUrl': invalid})
 
+    def test_same_port_on_distinct_machines_is_valid(self):
+        values = {'personalLocalUrl': 'http://127.0.0.1:38886', 'workLocalUrl': 'http://127.0.0.1:38886'}
+        self.assertEqual(profile_urls(values, {'personal': 'linux', 'work': 'mac'})['work'], values['workLocalUrl'])
+        with self.assertRaises(RuntimeError):
+            profile_urls(values, {'personal': 'mac', 'work': 'mac'})
+
     def test_main_checkout_is_discovered_and_task_worktrees_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'main'

@@ -32,6 +32,16 @@ const localUrl = url.refine((value) => {
 
 export function defineSettings(bb: BbPluginApi) {
   return bb.settings.define({
+    personalHostId: { type: "string", label: "Personal administration machine ID", default: "" },
+    workHostId: { type: "string", label: "Work administration machine ID", default: "" },
+    personalCliPath: { type: "string", label: "Personal BB CLI path on its machine", default: "" },
+    workCliPath: { type: "string", label: "Work BB CLI path on its machine", default: "" },
+    personalDataDir: {
+      type: "string",
+      label: "Personal data directory on its machine",
+      default: "",
+    },
+    workDataDir: { type: "string", label: "Work data directory on its machine", default: "" },
     personalEmail: { type: "string", label: "Personal account label", default: "" },
     personalUrl: {
       type: "string",

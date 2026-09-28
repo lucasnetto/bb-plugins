@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import sys
 
 from configuration import PROFILE_IDS, load_settings, profile_urls
 
@@ -70,12 +71,20 @@ def same_installation(current, expected):
 def refresh(ids, check=False, run=cli, install_missing=False, source_override=None):
     if install_missing and (check or not ids):
         raise RuntimeError("--install-missing requires explicit plugin IDs and cannot be used with --check")
+    transport = getattr(run, 'inspect_source', None)
+    if transport and (source_override is not None or install_missing) and len(set(run.hosts.values())) > 1:
+        raise RuntimeError('--source and --install-missing require profiles on the same machine; install a source explicitly on its owning machine first')
     destination = None
     if source_override is not None:
         if len(ids) != 1 or check or install_missing:
             raise RuntimeError('--source requires exactly one plugin ID and cannot be used with --check or --install-missing')
-        destination = local_directory({'rootDir': str(source_override)})
-        manifest = json.loads((destination / 'package.json').read_text())
+        if transport:
+            info = transport(str(source_override), PROFILES[0])
+            destination = Path(info['path'])
+            manifest = {'name': info['name']}
+        else:
+            destination = local_directory({'rootDir': str(source_override)})
+            manifest = json.loads((destination / 'package.json').read_text())
         if manifest.get('name', '').rsplit('/', 1)[-1] != 'bb-plugin-' + ids[0]:
             raise RuntimeError('--source package identity does not match the requested plugin ID')
     inventories, errors, rows, builds = {}, [], [], {}
@@ -84,7 +93,8 @@ def refresh(ids, check=False, run=cli, install_missing=False, source_override=No
             inventories[profile] = json.loads(run(['list', '--json'], profile))['plugins']
         except Exception as error:
             errors.append(f'{profile}: unavailable ({type(error).__name__}); start the profile and retry.')
-    for profile, plugins in inventories.items():
+    # Refresh the coordinating instance last: self-reload disposes its remote host clients.
+    for profile, plugins in sorted(inventories.items(), key=lambda item: item[0] == getattr(run, 'current_profile', None)):
         selected = [(p, False) for p in plugins if not ids or p['id'] in ids]
         for plugin_id in sorted(set(ids) - {p['id'] for p in plugins}):
             if install_missing:
@@ -99,7 +109,7 @@ def refresh(ids, check=False, run=cli, install_missing=False, source_override=No
         selected.sort(key=lambda item: (item[0]['id'] == 'profiles', item[0]['id']))
         for plugin, missing in selected:
             plugin_id = plugin['id']
-            row = {'profile': profile, 'plugin': plugin_id, 'source': plugin['source'],
+            row = {'profile': profile, 'hostId': run.hosts[profile] if transport else None, 'plugin': plugin_id, 'source': plugin['source'],
                    'installationPath': plugin['rootDir'], 'version': plugin.get('version'),
                    'build': None, 'bundle': None, 'enabled': plugin['enabled'],
                    'status': plugin.get('status'), 'healthy': False}
@@ -110,15 +120,20 @@ def refresh(ids, check=False, run=cli, install_missing=False, source_override=No
                     raise RuntimeError('unsupported plugin source; refresh it explicitly with bb plugin reload')
                 if destination is not None and kind != 'path':
                     raise RuntimeError('--source can only move an existing local path installation')
-                source = destination if destination is not None else local_directory(plugin) if kind == 'path' else Path(plugin['rootDir'])
+                if kind == 'path' and transport:
+                    info = transport(str(destination or plugin['rootDir']), profile)
+                    source = Path(info['path'])
+                else:
+                    source = destination if destination is not None else local_directory(plugin) if kind == 'path' else Path(plugin['rootDir'])
+                build_key = (run.hosts[profile], str(source)) if transport else source
                 if not check:
-                    if kind == 'path' and source not in builds:
+                    if kind == 'path' and build_key not in builds:
                         try:
-                            run(['build', str(source)])
-                            builds[source] = True
+                            run(['build', str(source)], profile) if transport else run(['build', str(source)])
+                            builds[build_key] = True
                         except Exception:
-                            builds[source] = False
-                    if kind == 'path' and not builds[source]:
+                            builds[build_key] = False
+                    if kind == 'path' and not builds[build_key]:
                         raise RuntimeError('build failed; fix the build before retrying')
                     before = next((p for p in json.loads(run(['list', '--json'], profile))['plugins'] if p['id'] == plugin_id), None)
                     if missing:
@@ -141,7 +156,7 @@ def refresh(ids, check=False, run=cli, install_missing=False, source_override=No
                            and (current['status'] == ('running' if current['enabled'] else 'disabled'))
                            and (kind == 'path' or current['version'] == plugin['version']))
                 row.update(source=current['source'], installationPath=current['rootDir'], version=current['version'],
-                           build=build_hash(source) if (source / 'package.json').is_file() else None,
+                           build=(transport(str(source), profile)['hash'] if kind == 'path' else None) if transport else build_hash(source) if (source / 'package.json').is_file() else None,
                            bundle=(current.get('app', {}).get('bundle') or {}).get('hash'),
                            enabled=current['enabled'], status=current['status'], healthy=healthy)
                 if not healthy:
@@ -153,6 +168,32 @@ def refresh(ids, check=False, run=cli, install_missing=False, source_override=No
     return {'mode': 'check' if check else 'refresh', 'plugins': rows, 'errors': errors}
 
 
+class HostRunner:
+    """Private JSON-lines channel to the owning plugin, which selects enrolled machines."""
+    def __init__(self, hosts, current_profile=None):
+        self.hosts = hosts
+        self.current_profile = current_profile
+
+    def request(self, profile, action, argument=''):
+        print(json.dumps({'request': {'profile': profile, 'action': action, 'argument': argument}}), flush=True)
+        response = json.loads(sys.stdin.readline())
+        if 'error' in response:
+            raise RuntimeError(response['error'])
+        return response['value']
+
+    def inspect_source(self, path, profile):
+        return json.loads(self.request(profile, 'inspect', path))
+
+    def __call__(self, args, profile=None):
+        if profile not in self.hosts:
+            raise RuntimeError('Missing maintenance machine')
+        action = args[0]
+        argument = args[1] if len(args) > 1 and action != 'list' else ''
+        if action == 'install':
+            argument = argument.removeprefix('path:')
+        return self.request(profile, action, argument)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('plugins', nargs='*')
@@ -161,7 +202,10 @@ def main():
     parser.add_argument('--source', help='move one installed local plugin to this absolute permanent package directory in both profiles')
     args = parser.parse_args()
     settings = load_settings()
-    urls = profile_urls(settings)
+    host_transport = os.environ.get('BB_PROFILES_HOST_TRANSPORT') == '1'
+    hosts = json.loads(os.environ['BB_PROFILES_HOSTS']) if host_transport else None
+    urls = profile_urls(settings, hosts)
+    runner = HostRunner(hosts, settings.get('refreshCurrentProfile')) if host_transport else lambda arguments, profile=None: cli(arguments, profile, urls)
     lock_path = Path(tempfile.gettempdir()) / f'bb-plugins-profile-refresh-{os.getuid()}.lock'
     with lock_path.open('a') as lock:
         try:
@@ -169,10 +213,10 @@ def main():
         except BlockingIOError:
             parser.error('A profile refresh is already running; wait for its result.')
         try:
-            result = refresh(args.plugins, args.check, run=lambda arguments, profile=None: cli(arguments, profile, urls), install_missing=args.install_missing, source_override=args.source)
+            result = refresh(args.plugins, args.check, run=runner, install_missing=args.install_missing, source_override=args.source)
         except RuntimeError as error:
             parser.error(str(error))
-        print(json.dumps(result, indent=2))
+        print(json.dumps({'result': result}) if host_transport else json.dumps(result, indent=2))
         return int(bool(result['errors']))
 
 

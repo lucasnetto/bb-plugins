@@ -45,7 +45,7 @@ def desktop_contents():
     return Path('/Applications/bb.app/Contents')
 
 
-def profile_urls(settings):
+def profile_urls(settings, hosts=None):
     urls = {}
     for profile in PROFILE_IDS:
         value = settings.get(profile + 'LocalUrl', '')
@@ -54,6 +54,6 @@ def profile_urls(settings):
                 or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('', '/')):
             raise RuntimeError('Set both loopback local URLs on the Profiles plugin page.')
         urls[profile] = value.rstrip('/')
-    if urls['personal'] == urls['work']:
+    if urls['personal'] == urls['work'] and (not hosts or hosts['personal'] == hosts['work']):
         raise RuntimeError('Personal and Work must use different local URLs.')
     return urls
