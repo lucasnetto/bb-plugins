@@ -79,6 +79,7 @@ export function CardThreadLayout({
   wakeLabel?: string;
 }) {
   const branch = thread.environment?.branchName ?? null;
+  const branchLabel = branch?.replace(/[-_]thr_[a-z0-9]+$/, "") || branch;
   const machine = thread.host?.name ?? thread.environment?.name ?? null;
 
   return (
@@ -178,22 +179,24 @@ export function CardThreadLayout({
       {wakeLabel !== undefined ? (
         <div className="mt-1 text-xs tabular-nums text-muted-foreground">Wakes {wakeLabel}</div>
       ) : null}
-      {/* Environment and PRs share a line without squeezing the environment. */}
+      {/* Keep environment labels compact; PR badges can wrap onto their own line. */}
       <div className="mt-0.5 flex min-h-4 min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
         {machine || branch ? (
-          <div className="mr-auto flex min-w-0 max-w-full shrink-0 flex-wrap items-start gap-x-1.5 gap-y-1 text-muted-foreground/50">
+          <div className="mr-auto flex min-w-0 flex-1 basis-24 items-center gap-1.5 text-muted-foreground/50">
             {machine ? (
-              <span className="min-w-0 max-w-full whitespace-normal break-all">{machine}</span>
+              <span title={machine} className="min-w-0 max-w-[40%] truncate">
+                {machine}
+              </span>
             ) : null}
             {branch ? (
-              <span className="flex min-w-0 max-w-full items-start gap-1.5">
+              <span title={branch} className="flex min-w-0 flex-1 items-center gap-1.5">
                 <Icon
                   name={
                     thread.environment?.workspaceDisplayKind === "other" ? "GitBranch" : "FolderGit"
                   }
-                  className="mt-0.5 size-3 shrink-0"
+                  className="size-3 shrink-0"
                 />
-                <span className="min-w-0 flex-1 whitespace-normal break-all">{branch}</span>
+                <span className="min-w-0 flex-1 truncate">{branchLabel}</span>
               </span>
             ) : null}
           </div>
