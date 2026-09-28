@@ -12,6 +12,6 @@ export function resolveProfile(dataDir: string): Profile {
 
 export function profileProviderIds(profile: Profile): string[] {
   return profile === "personal"
-    ? ["codex", "pi", "acp-cursor", "acp-cursor-personal", "cursor-sdk"]
-    : ["codex", "pi", "acp-cursor", "cursor-sdk"];
+    ? ["codex", "claude-code", "pi", "acp-cursor", "acp-cursor-personal", "cursor-sdk"]
+    : ["codex", "claude-code", "pi", "acp-cursor", "cursor-sdk"];
 }

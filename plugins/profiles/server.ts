@@ -74,7 +74,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (!allowedProviders.has(requestedExecution.providerId)) {
       return {
         action: "reject",
-        message: `This ${profile} instance supports Codex, Cursor, and Pi. Select one of those providers.`,
+        message: `This ${profile} instance supports Codex, Claude Code, Cursor, and Pi. Select one of those providers.`,
       };
     }
 

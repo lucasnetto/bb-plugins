@@ -50,7 +50,7 @@ for (const profile of ["personal", "work"] as const) {
       );
       const hook = registrations.hooks["message.dispatch"]!;
 
-      for (const providerId of ["codex", "pi"]) {
+      for (const providerId of ["codex", "claude-code", "pi"]) {
         assert.equal(
           (await hook(makeMessageDispatchHookContext({ requestedExecution: { providerId } })))
             .action,
@@ -66,7 +66,7 @@ for (const profile of ["personal", "work"] as const) {
 
       assert.equal(rejected.action, "reject");
 
-      if (rejected.action === "reject") assert.match(rejected.message, /Codex, Cursor, and Pi/);
+      if (rejected.action === "reject") assert.match(rejected.message, /Codex, Claude Code, Cursor, and Pi/);
       assert.equal(
         (
           await hook(

@@ -2,6 +2,8 @@
 
 Switch between your Personal and Work bb instances using the profile icons above New thread. The active profile is highlighted; hover an icon to see its name. The sidebar footer and plugin settings also offer the full profile selector. Each instance keeps its own threads and provider accounts; switching pages leaves running work alone.
 
+Profiles allows Codex, Claude Code, Cursor, and Pi in both instances. Enable the bundled Claude Code provider in each instance where you want to use it; it uses that instance’s existing provider setup.
+
 ## Settings
 
 Open Settings → Installed plugins → Profiles on each instance. Configure the
