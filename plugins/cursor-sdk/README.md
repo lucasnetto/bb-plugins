@@ -145,6 +145,18 @@ never automatically replayed. This in-memory recovery record lasts for the
 parent's lifetime; after a full bridge restart, BB supplies its persisted identity
 through the normal resume request.
 
+If a session process exits during a turn, the plugin marks its open tools and
+that exact turn failed (or interrupted after Stop), so they cannot remain shown
+as running. A follow-up targeting a missing session settles the stale turn and
+reports that the message was not delivered; send a new message to resume. It
+does not start an empty session or replay the follow-up. Competing starts cannot
+make an active process eligible for idle retirement.
+
+`bb cursor-sdk diagnostics <thread-id> --json` also records session process exits,
+including the child PID, exit code or signal, lifetime, and whether shutdown was
+requested by idle retirement, Stop, a timeout, or another lifecycle action.
+Unexpected exits are recorded even after startup has completed.
+
 Local Stop allows ten seconds for graceful cancellation, then terminates the
 session process with a further five-second shutdown limit. A forced Stop is
 acknowledged only after process exit. Its persisted run may still need expiry on

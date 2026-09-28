@@ -24,7 +24,33 @@ export const phaseEventSchema = z.object({
 
 export type PhaseEvent = z.infer<typeof phaseEventSchema>;
 
-export const diagnosticSchema = phaseEventSchema.extend({ at: z.number(), pid: z.number() });
+const processExitEventSchema = z.object({
+  phase: z.literal("session-process"),
+  state: z.literal("process-exited"),
+  durationMs: z.number().nonnegative(),
+  childPid: z.number().optional(),
+  exitCode: z.number().nullable().optional(),
+  signal: z.string().nullable().optional(),
+  reason: z.enum([
+    "unexpected-exit",
+    "idle",
+    "release",
+    "stop",
+    "failed-turn",
+    "shutdown",
+    "startup-failed",
+    "timeout",
+  ]),
+});
+
+export type ProcessExitEvent = z.infer<typeof processExitEventSchema>;
+
+export type DiagnosticEvent = PhaseEvent | ProcessExitEvent;
+
+export const diagnosticSchema = z.union([
+  phaseEventSchema.extend({ at: z.number(), pid: z.number() }),
+  processExitEventSchema.extend({ at: z.number(), pid: z.number() }),
+]);
 
 export const diagnosticsHostContract = defineRpcContract({
   diagnostics: {

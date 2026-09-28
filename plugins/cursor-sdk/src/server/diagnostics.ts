@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { diagnosticSchema, type PhaseEvent, type StartupPhase } from "../shared/diagnostics.js";
+import {
+  diagnosticSchema,
+  type DiagnosticEvent,
+  type StartupPhase,
+} from "../shared/diagnostics.js";
 
 export const phaseDeadlines: Record<StartupPhase, number> = {
   "process-start": 30_000,
@@ -34,7 +38,7 @@ export function readDiagnostics(dataDir: string, threadId: string) {
 }
 
 /** The router is the single writer. Never persist prompts, tool data, env, or SDK errors. */
-export function recordDiagnostic(dataDir: string, threadId: string, event: PhaseEvent) {
+export function recordDiagnostic(dataDir: string, threadId: string, event: DiagnosticEvent) {
   const destination = pathFor(dataDir, threadId);
   const temporary = `${destination}.${randomUUID()}.tmp`;
 

@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { z } from "zod";
 import { createIsolatedBridge, type LaunchSession } from "../../src/server/isolated-bridge.js";
+import { readDiagnostics } from "../../src/server/diagnostics.js";
 
 const wireSchema = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   method: z.string().optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   result: z.unknown().optional(),
+  error: z.object({ message: z.string() }).optional(),
 });
 
 type Wire = z.infer<typeof wireSchema>;
@@ -129,7 +131,7 @@ function fixture() {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  return { children, messages, request, send, complete };
+  return { children, messages, request, send, complete, directory };
 }
 
 async function start(f: ReturnType<typeof fixture>, providerThreadId?: string) {
@@ -152,6 +154,13 @@ test("retires an idle local process after a minute and restores the same convers
   expect(f.children[0].closing).toBe(false);
   await vi.advanceTimersByTimeAsync(1);
   expect(f.children[0].closing).toBe(true);
+  expect(readDiagnostics(f.directory, "a")).toContainEqual(
+    expect.objectContaining({
+      phase: "session-process",
+      state: "process-exited",
+      reason: "idle",
+    }),
+  );
   expect(f.messages.filter((message) => message.method === "thread/delta")).toHaveLength(1);
 
   await f.request("turn/start", { threadId: "a", input: [{ type: "text", text: "Next prompt" }] });
@@ -228,4 +237,25 @@ test("cloud sessions retain their existing lifetime after a completed turn", asy
   f.complete();
   await vi.advanceTimersByTimeAsync(120_000);
   expect(f.children[0].closing).toBe(false);
+});
+
+test("a competing start cannot retire an active session or disarm its recovery", async () => {
+  const f = fixture();
+  await start(f);
+  await f.request("turn/start");
+  // Model startup is finished; a long tool is still running.
+  f.children[0].emit({
+    method: "cursor/phase",
+    params: { threadId: "a", phase: "run-start", state: "succeeded" },
+  });
+  const rejected = await f.request("turn/start");
+  expect(f.messages.find((message) => message.id === rejected)?.error?.message).toContain(
+    "already running",
+  );
+  await vi.advanceTimersByTimeAsync(30 * 60_000);
+  expect(f.children[0].closing).toBe(false);
+  f.children[0].exit();
+  expect(f.messages.find((message) => message.method === "thread/delta")?.params).toMatchObject({
+    deltas: [expect.objectContaining({ kind: "turn.boundary", status: "failed" })],
+  });
 });

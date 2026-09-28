@@ -1,12 +1,18 @@
 import { spawn } from "node:child_process";
 import {
   experimental_defineProviderBridge,
+  BRIDGE_JSON_RPC_ERRORS,
+  threadDeltaSchema,
   type ProviderBridgeContext,
   type ThreadDelta,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { createSdkBridge } from "./bridge.js";
-import { phaseEventSchema, type StartupPhase } from "../shared/diagnostics.js";
+import {
+  phaseEventSchema,
+  type ProcessExitEvent,
+  type StartupPhase,
+} from "../shared/diagnostics.js";
 import { phaseDeadlines, recordDiagnostic } from "./diagnostics.js";
 
 const messageSchema = z
@@ -15,7 +21,11 @@ const messageSchema = z
     id: z.union([z.string(), z.number(), z.null()]).optional(),
     method: z.string().optional(),
     params: z
-      .object({ threadId: z.string().optional(), providerThreadId: z.string().optional() })
+      .object({
+        threadId: z.string().optional(),
+        providerThreadId: z.string().optional(),
+        expectedTurnId: z.string().optional(),
+      })
       .passthrough()
       .optional(),
   })
@@ -34,7 +44,7 @@ export interface SessionProcess {
 export type LaunchSession = (
   context: ProviderBridgeContext,
   receive: (line: string) => void,
-  exited: () => void,
+  exited: (exit?: Pick<ProcessExitEvent, "childPid" | "exitCode" | "signal">) => void,
 ) => SessionProcess;
 
 // The SDK's local shell/MCP execution inherits process.env. Give each BB
@@ -74,11 +84,11 @@ function launcher(moduleUrl: string): LaunchSession {
     let killTimer: ReturnType<typeof setTimeout> | undefined;
 
     const completion = new Promise<void>((resolve) => {
-      child.once("close", () => {
+      child.once("close", (exitCode, signal) => {
         stopped = true;
         clearTimeout(killTimer);
         resolve();
-        exited();
+        exited({ childPid: child.pid, exitCode, signal });
       });
     });
 
@@ -133,7 +143,11 @@ export function createIsolatedBridge(
     ready: boolean;
     queue: string[];
     providerThreadId?: string;
+    providerTurnId?: string;
     active: boolean;
+    openItems: Map<string, Extract<ThreadDelta, { kind: "item.open" }>>;
+    startedAt: number;
+    exitReason?: ProcessExitEvent["reason"];
     construction?: Message;
     recycle?: boolean;
     stopTimer?: ReturnType<typeof setTimeout>;
@@ -153,8 +167,13 @@ export function createIsolatedBridge(
   const fail = (id: RequestId, message: string) =>
     send({ jsonrpc: "2.0", id, error: { code: -32603, message } });
 
-  const release = (threadId: string, session: Session) => {
+  const release = (
+    threadId: string,
+    session: Session,
+    reason: ProcessExitEvent["reason"] = "release",
+  ) => {
     if (sessions.get(threadId) !== session) return;
+    session.exitReason ??= reason;
     sessions.delete(threadId);
     clearTimeout(session.stopTimer);
     clearTimeout(session.deadline);
@@ -202,7 +221,7 @@ export function createIsolatedBridge(
 
       // Keep the resume record, and wait for graceful disposal/OS exit before
       // a subsequent message can acquire the same conversation's lease.
-      if (canIdle(threadId, session)) release(threadId, session);
+      if (canIdle(threadId, session)) release(threadId, session, "idle");
     }, idleTimeoutMs);
     session.idleTimer.unref();
   };
@@ -237,6 +256,7 @@ export function createIsolatedBridge(
       recordDiagnostic(context.dataDir, threadId, { phase: name, state: "timed-out", durationMs });
       // SDK create/send cannot be aborted reliably. Retain ownership until OS exit;
       // never release a lease while an abandoned promise can still write a checkpoint.
+      session.exitReason = "timeout";
       void session.process.close();
     }, startupTimeouts[name] ?? phaseDeadlines[name]);
     session.deadline.unref();
@@ -276,7 +296,7 @@ export function createIsolatedBridge(
             if (message.error) {
               for (const id of session.pending.keys()) send({ ...message, id });
               session.pending.clear();
-              release(threadId, session);
+              release(threadId, session, "startup-failed");
 
               return;
             }
@@ -324,21 +344,33 @@ export function createIsolatedBridge(
           }
 
           if (message.method === "thread/delta") {
-            const deltas = z
-              .array(z.object({ kind: z.string(), status: z.string().optional() }))
-              .parse(message.params?.deltas);
+            const deltas = z.array(threadDeltaSchema).parse(message.params?.deltas);
 
-            if (deltas.some((delta) => delta.kind === "turn.boundary")) {
-              session.active = false;
-              clearTimeout(session.deadline);
-              session.phase = undefined;
+            for (const delta of deltas) {
+              if (delta.kind === "item.open")
+                session.openItems.set(JSON.stringify(delta.key), delta);
+
+              if (delta.kind === "item.close") session.openItems.delete(JSON.stringify(delta.key));
+
+              if (delta.kind === "turn.open") {
+                session.active = true;
+                session.providerTurnId = delta.providerTurnId;
+                cancelIdle(session);
+              }
+
+              if (
+                delta.kind === "turn.boundary" &&
+                (!delta.providerTurnId || delta.providerTurnId === session.providerTurnId)
+              ) {
+                session.active = false;
+                clearTimeout(session.deadline);
+                session.phase = undefined;
+                session.openItems.clear();
+
+                if (delta.status === "failed" && !session.providerThreadId?.startsWith("bc-"))
+                  session.recycle = true;
+              }
             }
-
-            if (
-              deltas.some((delta) => delta.kind === "turn.boundary" && delta.status === "failed") &&
-              !session.providerThreadId?.startsWith("bc-")
-            )
-              session.recycle = true;
           }
 
           send(message);
@@ -387,10 +419,19 @@ export function createIsolatedBridge(
             }
           }
 
-          if (session.recycle && session.pending.size === 0) release(threadId, session);
+          if (session.recycle && session.pending.size === 0)
+            release(threadId, session, "failed-turn");
           else scheduleIdle(threadId, session);
         },
-        () => {
+        (exit) => {
+          recordDiagnostic(context.dataDir, threadId, {
+            phase: "session-process",
+            state: "process-exited",
+            durationMs: Date.now() - session.startedAt,
+            ...exit,
+            reason: session.exitReason ?? "unexpected-exit",
+          });
+
           if (sessions.get(threadId) !== session) return;
 
           if (session.phase && !session.timedOut)
@@ -405,6 +446,7 @@ export function createIsolatedBridge(
               kind: "turn.boundary",
               status: session.forcedStop ? "interrupted" : "failed",
               claimIfIdle: true,
+              providerTurnId: session.providerTurnId,
             };
 
             if (!session.forcedStop)
@@ -413,12 +455,25 @@ export function createIsolatedBridge(
                   session.timedOut ??
                   "Cursor session process exited unexpectedly. The saved conversation can be resumed.",
               };
+
+            // The child cannot close its tools after a crash. Complete their
+            // timeline rows before settling the same provider turn.
+            const deltas: ThreadDelta[] = [...session.openItems.values()].map((open) => ({
+              kind: "item.close",
+              key: open.key,
+              item: open.item,
+              presentation: open.presentation,
+              providerTurnId: open.providerTurnId ?? session.providerTurnId,
+              status: boundary.status,
+            }));
+
+            deltas.push(boundary);
             send({
               jsonrpc: "2.0",
               method: "thread/delta",
               params: {
                 threadId,
-                deltas: [boundary],
+                deltas,
               },
             });
           }
@@ -442,6 +497,8 @@ export function createIsolatedBridge(
       ready: false,
       queue: [],
       active: false,
+      openItems: new Map(),
+      startedAt: Date.now(),
       providerThreadId: restore?.params?.providerThreadId,
     };
 
@@ -456,7 +513,7 @@ export function createIsolatedBridge(
     closing = true;
     const maintenanceClosed = maintenance.onClose?.();
 
-    for (const [threadId, session] of sessions) release(threadId, session);
+    for (const [threadId, session] of sessions) release(threadId, session, "shutdown");
     restores.clear();
 
     return Promise.all([maintenanceClosed, ...retiring.values()]).then(() => {});
@@ -534,6 +591,50 @@ export function createIsolatedBridge(
 
         if (closing || message.id == null) return;
 
+        if (message.method === "turn/steer" && !sessions.has(threadId)) {
+          const detail =
+            "The Cursor session for this turn has ended. Send a new message to resume the saved conversation. This message was not delivered or replayed.";
+
+          // A stale host can still think this turn is active after the child
+          // disappeared. Settle that exact turn; never spawn an empty child or
+          // silently resend steering as a new prompt.
+          if (message.params?.expectedTurnId)
+            send({
+              jsonrpc: "2.0",
+              method: "thread/delta",
+              params: {
+                threadId,
+                deltas: [
+                  {
+                    kind: "turn.boundary",
+                    status: "failed",
+                    providerTurnId: message.params.expectedTurnId,
+                    error: { message: detail },
+                  } satisfies ThreadDelta,
+                ],
+              },
+            });
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+              message: detail,
+              data: { recovery: { kind: "staleTurn", message: detail, retryable: false } },
+            },
+          });
+
+          return;
+        }
+
+        // Reject a competing request before touching the active turn's timers
+        // or state. A rejected start must never make a running session idle.
+        if (message.method === "turn/start" && sessions.get(threadId)?.active) {
+          fail(message.id, "The SDK is already running a turn. Queue the follow-up in BB.");
+
+          return;
+        }
+
         if (message.method === "thread/discard") restores.delete(threadId);
 
         if (
@@ -570,6 +671,7 @@ export function createIsolatedBridge(
 
         if (message.method === "turn/start") {
           session.active = true;
+          session.providerTurnId = undefined;
 
           if (session.ready) watchPhase(threadId, session, "run-start");
         }
@@ -581,6 +683,7 @@ export function createIsolatedBridge(
         ) {
           session.stopTimer = setTimeout(() => {
             session.forcedStop = true;
+            session.exitReason = "stop";
             void session.process.close();
           }, stopTimeoutMs);
         }

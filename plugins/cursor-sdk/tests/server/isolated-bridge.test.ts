@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vite-plus/test";
 import { z } from "zod";
+import {
+  experimental_createBridgeDeltaEventCollector,
+  type ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { createIsolatedBridge } from "../../src/server/isolated-bridge.js";
 import { readDiagnostics } from "../../src/server/diagnostics.js";
 import type { StartupPhase } from "../../src/shared/diagnostics.js";
@@ -19,7 +23,7 @@ const wireSchema = z.object({
   method: z.string().optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   result: z.unknown().optional(),
-  error: z.object({ message: z.string() }).optional(),
+  error: z.object({ code: z.number().optional(), message: z.string() }).optional(),
 });
 
 type Wire = z.infer<typeof wireSchema>;
@@ -55,6 +59,15 @@ function fixture(stopTimeoutMs?: number, startupTimeouts?: Partial<Record<Startu
           }
           if (m.method === "turn/start") {
             if (!threadId) { send({ id: m.id, error: { message: "Session not restored" } }); return; }
+            if (process.env.BB_ISOLATION_TEST === "steady-run") {
+              deps.phase(threadId, { phase: "run-start", state: "succeeded" });
+              send({ method: "thread/delta", params: { threadId, deltas: [
+                { kind: "turn.open", providerTurnId: "turn-a" },
+                { kind: "item.open", providerTurnId: "turn-a", key: { providerItemId: "shell-a" }, item: { type: "tool", tool: "shell", args: {} } },
+              ] } });
+              send({ id: m.id, result: { accepted: true } });
+              return;
+            }
             if (process.env.BB_ISOLATION_TEST === "hang-run") {
               deps.phase(threadId, { phase: "run-start", state: "started" });
               send({ id: m.id, result: { accepted: true } });
@@ -73,12 +86,16 @@ function fixture(stopTimeoutMs?: number, startupTimeouts?: Partial<Record<Startu
   `,
   );
   const messages: Wire[] = [];
+  const collector = experimental_createBridgeDeltaEventCollector("cursor-sdk");
+  const events: ThreadEvent[] = [];
   const waiters = new Set<() => void>();
 
   const bridge = createIsolatedBridge(
     pathToFileURL(modulePath).href,
     (line) => {
-      messages.push(wireSchema.parse(JSON.parse(line)));
+      const message = wireSchema.parse(JSON.parse(line));
+      messages.push(message);
+      events.push(...collector.assembleMessage(message));
 
       for (const wake of waiters) wake();
     },
@@ -124,7 +141,7 @@ function fixture(stopTimeoutMs?: number, startupTimeouts?: Partial<Record<Startu
     return waitFor((message) => message.id === requestId);
   };
 
-  return { request, send, waitFor, messages, dir };
+  return { request, send, waitFor, messages, dir, events };
 }
 
 async function initialize(f: ReturnType<typeof fixture>) {
@@ -302,6 +319,92 @@ test("the next user message restores a crashed child's saved identity and enviro
   expect(
     f.messages.filter((m) => m.method === "thread/identity").map((m) => m.params?.providerThreadId),
   ).toEqual(["agent-a", "agent-a"]);
+});
+
+test("an unsolicited exit during a tool settles the turn, records the signal and rejects stale steering without launching an empty session", async () => {
+  const f = fixture();
+  await initialize(f);
+
+  const original = await f.request("thread/start", {
+    threadId: "a",
+    options: { envVars: { BB_ISOLATION_TEST: "steady-run" } },
+  });
+
+  await f.request("turn/start", { threadId: "a" });
+  const pid = z.object({ pid: z.number() }).parse(original.result).pid;
+  process.kill(pid, "SIGKILL");
+
+  const boundary = await f.waitFor(
+    (message) =>
+      message.method === "thread/delta" && JSON.stringify(message.params).includes("turn.boundary"),
+  );
+
+  expect(boundary.params).toMatchObject({
+    deltas: [
+      expect.objectContaining({ kind: "item.close", status: "failed", providerTurnId: "turn-a" }),
+      expect.objectContaining({
+        kind: "turn.boundary",
+        status: "failed",
+        providerTurnId: "turn-a",
+      }),
+    ],
+  });
+  const started = f.events.find((event) => event.type === "turn/started");
+  const completed = f.events.find((event) => event.type === "turn/completed");
+  expect(started).toBeDefined();
+  expect(completed).toMatchObject({ status: "failed", scope: started?.scope });
+  expect(f.events.find((event) => event.type === "item/completed")).toMatchObject({
+    scope: started?.scope,
+    item: { type: "toolCall", tool: "shell", status: "failed" },
+  });
+  expect(readDiagnostics(f.dir, "a")).toContainEqual(
+    expect.objectContaining({
+      phase: "session-process",
+      state: "process-exited",
+      childPid: pid,
+      exitCode: null,
+      signal: "SIGKILL",
+      reason: "unexpected-exit",
+    }),
+  );
+  const before = readDiagnostics(f.dir, "a");
+
+  const steer = await f.request("turn/steer", {
+    threadId: "a",
+    providerThreadId: "agent-a",
+    expectedTurnId: "turn-a",
+  });
+
+  expect(steer.error).toMatchObject({ code: -32001 });
+  expect(readDiagnostics(f.dir, "a")).toEqual(before);
+
+  const resumed = await f.request("turn/start", { threadId: "a", providerThreadId: "agent-a" });
+  expect(resumed.error).toBeUndefined();
+  expect(f.messages.filter((message) => message.method === "thread/identity")).toHaveLength(2);
+});
+
+test("a stale steer after a bridge restart settles the named turn without starting a child", async () => {
+  const f = fixture();
+  await initialize(f);
+
+  const reply = await f.request("turn/steer", {
+    threadId: "a",
+    providerThreadId: "agent-a",
+    expectedTurnId: "abandoned-turn",
+  });
+
+  expect(reply.error?.code).toBe(-32001);
+  expect(f.messages.find((message) => message.method === "thread/delta")?.params).toMatchObject({
+    deltas: [
+      {
+        kind: "turn.boundary",
+        providerTurnId: "abandoned-turn",
+        status: "failed",
+        error: expect.any(Object),
+      },
+    ],
+  });
+  expect(readDiagnostics(f.dir, "a")).toEqual([]);
 });
 
 test("failed local turns retire their child before restoring the next message", async () => {
