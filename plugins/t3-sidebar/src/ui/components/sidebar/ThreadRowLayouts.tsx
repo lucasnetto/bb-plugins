@@ -16,6 +16,7 @@ import type { ThreadRowProps, ThreadRowProvider } from "./ThreadRow";
 type ThreadLayoutProps = Pick<ThreadRowProps, "thread" | "actions" | "projectName"> & {
   titleNode: ReactNode;
   pinIndicator: ReactNode;
+  childToggle?: ReactNode;
   timeLabel: string;
 };
 
@@ -26,6 +27,7 @@ export function CompactThreadLayout({
   isActive,
   titleNode,
   pinIndicator,
+  childToggle,
   timeLabel,
 }: ThreadLayoutProps & {
   isActive: boolean;
@@ -37,6 +39,7 @@ export function CompactThreadLayout({
         name={projectName}
         className={cn("transition-opacity", !isActive && "opacity-40 group-hover/row:opacity-100")}
       />
+      {childToggle}
       {titleNode}
       {pinIndicator}
       <PullRequestBadge threadId={thread.id} />
@@ -72,6 +75,7 @@ export function CardThreadLayout({
   timeLabel,
   titleNode,
   pinIndicator,
+  childToggle,
 }: ThreadLayoutProps & {
   provider: ThreadRowProvider | null;
   recede: boolean;
@@ -90,7 +94,7 @@ export function CardThreadLayout({
         {projectName ? (
           <span
             className={cn(
-              "min-w-0 flex-1 truncate text-xs text-muted-foreground",
+              "min-w-0 truncate text-xs text-muted-foreground",
               recede ? "font-normal" : "font-medium",
             )}
           >
@@ -99,6 +103,7 @@ export function CardThreadLayout({
         ) : (
           <span className="flex-1" />
         )}
+        {childToggle}
         {pinIndicator}
         <span className="group/status relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
           <span

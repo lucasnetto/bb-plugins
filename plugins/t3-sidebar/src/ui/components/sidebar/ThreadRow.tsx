@@ -187,6 +187,29 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
 
   if (!thread.isArchived) Object.assign(anchorProps, splitProps);
 
+  const childToggle = props.tree?.hasChildren ? (
+    <button
+      type="button"
+      aria-label={`${props.tree.expanded ? "Collapse" : "Expand"} children of ${title}`}
+      aria-expanded={props.tree.expanded}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.tree?.onToggle();
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      title={`${props.tree.childCount} ${props.tree.childCount === 1 ? "child thread" : "child threads"}`}
+      className="relative z-10 flex h-5 min-w-8 px-1 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <Icon name="ChevronDown" className={cn("size-3", !props.tree.expanded && "-rotate-90")} />
+      <span aria-hidden className="text-[10px] font-medium tabular-nums">
+        {props.tree.childCount}
+      </span>
+    </button>
+  ) : null;
+
   const layout = isCard ? (
     <CardThreadLayout
       thread={thread}
@@ -199,6 +222,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       timeLabel={timeLabel}
       titleNode={titleNode}
       pinIndicator={pinIndicator}
+      childToggle={childToggle}
     />
   ) : (
     <CompactThreadLayout
@@ -209,6 +233,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       timeLabel={timeLabel}
       titleNode={titleNode}
       pinIndicator={pinIndicator}
+      childToggle={childToggle}
     />
   );
 
@@ -253,14 +278,14 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
                 }}
               />
               <span
-                className="absolute top-1/2 w-8 border-t"
+                className="absolute top-1/2 w-2 border-t"
                 style={{ left: -8, borderColor: "currentColor" }}
               />
             </>
           )}
           {props.tree.hasChildren && props.tree.expanded && (
             <span
-              className="absolute top-1/2 -bottom-px border-l"
+              className="absolute -bottom-px h-1 border-l"
               style={{ left: 16, borderColor: "currentColor" }}
             />
           )}
@@ -277,27 +302,6 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
         />
       ) : null}
       <div className="flex min-w-0 items-center">
-        {props.tree?.hasChildren ? (
-          <button
-            type="button"
-            aria-label={`${props.tree.expanded ? "Collapse" : "Expand"} children of ${title}`}
-            aria-expanded={props.tree.expanded}
-            onClick={props.tree.onToggle}
-            onPointerDown={(event) => event.stopPropagation()}
-            title={`${props.tree.childCount} ${props.tree.childCount === 1 ? "child thread" : "child threads"}`}
-            className="relative z-10 flex h-7 w-8 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded bg-sidebar text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Icon
-              name="ChevronDown"
-              className={cn("size-3", !props.tree.expanded && "-rotate-90")}
-            />
-            <span aria-hidden className="text-[10px] font-medium tabular-nums">
-              {props.tree.childCount}
-            </span>
-          </button>
-        ) : (
-          <span aria-hidden className="w-8 shrink-0" />
-        )}
         <ThreadContextMenu
           thread={thread}
           section={section}
