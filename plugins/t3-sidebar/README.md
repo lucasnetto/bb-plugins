@@ -10,6 +10,13 @@ t3code's inbox model:
   Threads from different environments and projects on the same machine appear
   together. Pinned, Snoozed and Settled sections keep their existing layout.
   Threads without machine information appear under **No machine**.
+- **Nested child threads.** Visible children appear indented beneath their parent,
+  with tree connector lines, a child count beside the collapse chevron, and
+  extra space between families. Use the chevron to collapse or expand descendants. Collapse state persists in
+  this browser; opening a child reveals its ancestors. Nesting stays within the
+  current section and machine group, and children whose parents are filtered out
+  remain visible as roots. Hidden workers and side chats stay out of the sidebar.
+  Dragging or Alt+Up/Down reorders siblings; moving a parent carries its children.
 - **Cards, not rows.** Every live thread is a three-line card: project ·
   status/time, title, branch · PR · provider.
 - **Pinned block** on top, closed by a thin divider.

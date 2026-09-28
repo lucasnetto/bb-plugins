@@ -1,3 +1,4 @@
+import type { ThreadTreeRow } from "@/ui/lib/thread-tree";
 import { useThreadTitleRegeneration } from "@/ui/hooks/useThreadTitleRegeneration";
 import { CardThreadLayout, CompactThreadLayout } from "./ThreadRowLayouts";
 import { EditableThreadTitle, useThreadRename } from "./EditableThreadTitle";
@@ -47,6 +48,7 @@ export interface ThreadRowProps {
   nowMs: number;
   snoozedUntil?: number;
   actions: ThreadRowActions;
+  tree?: Omit<ThreadTreeRow, "thread" | "parentId"> & { onToggle: () => void };
   reorder?: {
     group: string;
     dragging: boolean;
@@ -155,7 +157,7 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
   ) : null;
 
   const surfaceClass = cn(
-    "group/row relative block w-full cursor-pointer overflow-hidden rounded-md text-left no-underline outline-none select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+    "group/row relative block min-w-0 w-full cursor-pointer overflow-hidden rounded-md text-left no-underline outline-none select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
     isActive
       ? "bg-state-active text-foreground"
       : recede
@@ -212,6 +214,8 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
 
   return (
     <li
+      style={{ marginLeft: Math.min(props.tree?.depth ?? 0, 5) * 24 }}
+      data-thread-depth={props.tree?.depth ?? 0}
       data-thread-item
       data-reorder-id={props.reorder ? thread.id : undefined}
       data-reorder-group={props.reorder?.group}
@@ -219,10 +223,49 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
       onDragStart={props.reorder ? (event) => event.preventDefault() : undefined}
       className={cn(
         "relative list-none",
-        isCard && "py-0.5",
+        isCard && !props.tree?.depth && "py-0.5",
+        props.tree?.startsFamily && "mt-2",
         props.reorder?.dragging && "opacity-40",
       )}
     >
+      {props.tree && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 text-muted-foreground/45">
+          {props.tree.ancestorContinues.map((continues, level) =>
+            continues && level < 4 ? (
+              <span
+                key={level}
+                className="absolute -top-px -bottom-px border-l"
+                style={{
+                  left: (level + 1 - Math.min(props.tree!.depth, 5)) * 24 + 16,
+                  borderColor: "currentColor",
+                }}
+              />
+            ) : null,
+          )}
+          {props.tree.depth > 0 && (
+            <>
+              <span
+                className="absolute -top-px border-l"
+                style={{
+                  left: -8,
+                  bottom: props.tree.isLastChild ? "50%" : -1,
+                  borderColor: "currentColor",
+                }}
+              />
+              <span
+                className="absolute top-1/2 w-8 border-t"
+                style={{ left: -8, borderColor: "currentColor" }}
+              />
+            </>
+          )}
+          {props.tree.hasChildren && props.tree.expanded && (
+            <span
+              className="absolute top-1/2 -bottom-px border-l"
+              style={{ left: 16, borderColor: "currentColor" }}
+            />
+          )}
+        </span>
+      )}
       {props.reorder?.edge ? (
         <span
           aria-hidden
@@ -233,23 +276,46 @@ export const ThreadRow = memo(function ThreadRow(props: ThreadRowProps) {
           )}
         />
       ) : null}
-      <ThreadContextMenu
-        thread={thread}
-        section={section}
-        actions={actions}
-        splitAvailable={splitAvailable}
-        onRename={rename.start}
-        regeneration={regeneration}
-      >
-        <a
-          {...anchorProps}
-          className={
-            isCard ? surfaceClass : cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")
-          }
+      <div className="flex min-w-0 items-center">
+        {props.tree?.hasChildren ? (
+          <button
+            type="button"
+            aria-label={`${props.tree.expanded ? "Collapse" : "Expand"} children of ${title}`}
+            aria-expanded={props.tree.expanded}
+            onClick={props.tree.onToggle}
+            onPointerDown={(event) => event.stopPropagation()}
+            title={`${props.tree.childCount} ${props.tree.childCount === 1 ? "child thread" : "child threads"}`}
+            className="relative z-10 flex h-7 w-8 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded bg-sidebar text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Icon
+              name="ChevronDown"
+              className={cn("size-3", !props.tree.expanded && "-rotate-90")}
+            />
+            <span aria-hidden className="text-[10px] font-medium tabular-nums">
+              {props.tree.childCount}
+            </span>
+          </button>
+        ) : (
+          <span aria-hidden className="w-8 shrink-0" />
+        )}
+        <ThreadContextMenu
+          thread={thread}
+          section={section}
+          actions={actions}
+          splitAvailable={splitAvailable}
+          onRename={rename.start}
+          regeneration={regeneration}
         >
-          {layout}
-        </a>
-      </ThreadContextMenu>
+          <a
+            {...anchorProps}
+            className={
+              isCard ? surfaceClass : cn(surfaceClass, "flex h-9 items-center gap-2.5 px-2.5")
+            }
+          >
+            {layout}
+          </a>
+        </ThreadContextMenu>
+      </div>
     </li>
   );
 });

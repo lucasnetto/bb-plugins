@@ -1,3 +1,4 @@
+import { threadTree, type ThreadTreeRow } from "@/ui/lib/thread-tree";
 import { applyThreadOrder, moveThread } from "@/ui/lib/thread-order";
 import { useThreadReorder } from "@/ui/hooks/useThreadReorder";
 import { ProjectScopePicker } from "./ProjectScopePicker";
@@ -146,6 +147,12 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [effectiveScope, nowMs, snoozed, threads],
   );
 
+  const [collapsedThreads, setCollapsedThreads] = useLocalStorageState<string[]>(
+    "t3-sidebar:collapsed-threads",
+    [],
+    Schema.mutable(Schema.Array(Schema.String)),
+  );
+
   const [savedOrder, setSavedOrder] = useLocalStorageState<{ active: string[]; pinned: string[] }>(
     "t3-sidebar:thread-order",
     { active: [], pinned: [] },
@@ -216,17 +223,28 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     [hostActions, onNavigate, setSettled, setSnoozed, archivedIds, navigate, refetch],
   );
 
-  const reorderGroup = (thread: PluginSidebarThread, section: SidebarSection) =>
-    section === "pinned"
-      ? "pinned"
-      : grouped
-        ? `machine:${JSON.stringify(thread.host?.id ?? null)}`
-        : "active";
+  const treeRows = (rows: PluginSidebarThread[]) =>
+    threadTree(rows, collapsedThreads, activeThreadId);
+  const activeTrees = grouped
+    ? machineGroups.flatMap((group) => treeRows(group.threads))
+    : treeRows(orderedActive);
+  const pinnedTrees = treeRows(orderedPinned);
+  const reorderGroup = (thread: PluginSidebarThread, section: SidebarSection) => {
+    const node = (section === "pinned" ? pinnedTrees : activeTrees).find(
+      (row) => row.thread.id === thread.id,
+    );
+    return JSON.stringify([
+      section,
+      section === "active" && grouped ? (thread.host?.id ?? null) : null,
+      node?.parentId ?? null,
+    ]);
+  };
 
   const reorder = (source: string, target: string, after: boolean, group: string) => {
-    const section = group === "pinned" ? "pinned" : "active";
+    const section = JSON.parse(group)[0] as "pinned" | "active";
 
-    const visible = (section === "pinned" ? orderedPinned : orderedActive)
+    const visible = (section === "pinned" ? pinnedTrees : activeTrees)
+      .map((row) => row.thread)
       .filter((thread) => reorderGroup(thread, section) === group)
       .map((thread) => thread.id);
 
@@ -246,10 +264,19 @@ function T3ThreadListContent(props: PluginThreadListProps) {
     reorder(source, target, after, group),
   );
 
-  const renderRow = (thread: PluginSidebarThread, section: SidebarSection) => (
+  const renderRow = ({ thread, ...tree }: ThreadTreeRow, section: SidebarSection) => (
     <ThreadRow
       key={`${thread.id}:${section === "settled" ? "slim" : "card"}`}
       thread={thread}
+      tree={{
+        ...tree,
+        onToggle: () =>
+          setCollapsedThreads((current) =>
+            current.includes(thread.id)
+              ? current.filter((id) => id !== thread.id)
+              : [...current, thread.id],
+          ),
+      }}
       section={section}
       isActive={thread.id === activeThreadId}
       projectName={projectNameById.get(thread.projectId) ?? null}
@@ -274,9 +301,9 @@ function T3ThreadListContent(props: PluginThreadListProps) {
               onMove: (direction) => {
                 const group = reorderGroup(thread, section);
 
-                const rows = (section === "pinned" ? orderedPinned : orderedActive).filter(
-                  (row) => reorderGroup(row, section) === group,
-                );
+                const rows = (section === "pinned" ? pinnedTrees : activeTrees)
+                  .map((node) => node.thread)
+                  .filter((row) => reorderGroup(row, section) === group);
 
                 const target = rows[rows.findIndex((row) => row.id === thread.id) + direction];
 
@@ -320,7 +347,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
           }}
         />
         <ul ref={drag.listRef} role="list" className="flex flex-col gap-px px-1.5">
-          {orderedPinned.map((thread) => renderRow(thread, "pinned"))}
+          {pinnedTrees.map((node) => renderRow(node, "pinned"))}
           {partition.pinned.length > 0 ? (
             <li aria-hidden className="mx-2.5 my-1.5 h-px list-none bg-border/60" />
           ) : null}
@@ -335,12 +362,12 @@ function T3ThreadListContent(props: PluginThreadListProps) {
                       {group.label}
                     </h3>
                     <ul role="list" className="flex flex-col gap-px">
-                      {group.threads.map((thread) => renderRow(thread, "active"))}
+                      {treeRows(group.threads).map((node) => renderRow(node, "active"))}
                     </ul>
                   </section>
                 </li>
               ))
-            : orderedActive.map((thread) => renderRow(thread, "active"))}
+            : activeTrees.map((node) => renderRow(node, "active"))}
           {partition.snoozed.length > 0 ? (
             <ShelfHeader
               label="Snoozed"
@@ -349,9 +376,9 @@ function T3ThreadListContent(props: PluginThreadListProps) {
               onToggle={() => setSnoozedExpanded((value) => !value)}
             />
           ) : null}
-          {partition.snoozed
-            .filter((thread) => snoozedExpanded || thread.id === activeThreadId)
-            .map((thread) => renderRow(thread, "snoozed"))}
+          {treeRows(
+            partition.snoozed.filter((thread) => snoozedExpanded || thread.id === activeThreadId),
+          ).map((node) => renderRow(node, "snoozed"))}
           {partition.settled.length > 0 ? (
             <ShelfHeader
               label="Settled"
@@ -360,7 +387,7 @@ function T3ThreadListContent(props: PluginThreadListProps) {
               onToggle={() => setSettledExpanded((value) => !value)}
             />
           ) : null}
-          {settledRows.map((thread) => renderRow(thread, "settled"))}
+          {treeRows(settledRows).map((node) => renderRow(node, "settled"))}
           {settledExpanded && hiddenSettledCount > 0 ? (
             <li className="list-none">
               <button
