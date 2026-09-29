@@ -69,19 +69,36 @@ export function guideChapters(guide: ReviewGuide) {
 
 export function validateGuideCoverage(guide: ReviewGuide, files: LinkedDetail["files"]) {
   const expected = new Set(files.map((file) => file.path));
-  const seen = new Set<string>();
-
-  for (const file of [
-    ...guide.sections.flatMap((section) => section.diffs.map((diff) => diff.file)),
-    ...guide.unplacedFiles,
-  ]) {
+  const placed = new Set<string>();
+  const check = (file: string) => {
     if (!expected.has(file)) throw new Error(`Guide references a file outside this PR: ${file}`);
+  };
 
-    if (seen.has(file)) throw new Error(`Guide references a file twice: ${file}`);
-    seen.add(file);
+  // A file may recur across chapters, but each chapter lists it once.
+  for (const section of guide.sections) {
+    const inSection = new Set<string>();
+
+    for (const { file } of section.diffs) {
+      check(file);
+
+      if (inSection.has(file))
+        throw new Error(`Guide chapter "${section.title}" references a file twice: ${file}`);
+      inSection.add(file);
+      placed.add(file);
+    }
   }
 
-  const missing = [...expected].filter((file) => !seen.has(file));
+  const unplaced = new Set<string>();
+
+  for (const file of guide.unplacedFiles) {
+    check(file);
+
+    if (placed.has(file) || unplaced.has(file))
+      throw new Error(`Guide lists an unplaced file that is already covered: ${file}`);
+    unplaced.add(file);
+  }
+
+  const missing = [...expected].filter((file) => !placed.has(file) && !unplaced.has(file));
 
   if (missing.length) throw new Error(`Guide omits changed files: ${missing.join(", ")}`);
 }

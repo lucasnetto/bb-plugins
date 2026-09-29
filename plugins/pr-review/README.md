@@ -36,7 +36,7 @@ In the linked PR’s **Code** tab, choose **Guide → Generate guide**, then sel
 
 Configure the default in **PR Review settings → Guided review model**. Project overrides take precedence over the plugin default, with the thread model as fallback. The launch picker changes only that run.
 
-Chapters pair explanations with selectable diffs. Reviewed checkboxes collapse chapters and persist per thread/PR. Every changed file must appear exactly once; other files appear under Everything else. Guides are pinned to both revisions. Outdated explanations remain readable, but regeneration is required before reviewing newer code or changing progress.
+Chapters pair explanations with selectable diffs. Reviewed checkboxes collapse chapters and persist per thread/PR. Every changed file must appear in at least one chapter, or under Everything else; a file may recur across chapters when it carries changes for each. Guides are pinned to both revisions. Outdated explanations remain readable, but regeneration is required before reviewing newer code or changing progress.
 
 ## Automatic settling
 

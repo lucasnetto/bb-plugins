@@ -250,6 +250,12 @@ test("invalid coverage, blank explanations, stale revisions, and stale progress 
       { ...guide, unplacedFiles: [] },
       { ...guide, unplacedFiles: ["api.ts", "api.test.ts"] },
       { ...guide, unplacedFiles: ["outside.ts"] },
+      {
+        ...guide,
+        sections: [
+          { ...guide.sections[0], diffs: [...guide.sections[0].diffs, ...guide.sections[0].diffs] },
+        ],
+      },
       { ...guide, intent: "   " },
     ])
       await expect(save(invalid)).rejects.toThrow();
@@ -273,6 +279,45 @@ test("invalid coverage, blank explanations, stale revisions, and stale progress 
     ).rejects.toThrow(/replaced/);
     moveHead();
     await expect(save(guide)).rejects.toThrow(/changed during generation/);
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});
+
+test("a file may appear in several chapters", async () => {
+  const { harness } = await setup();
+
+  try {
+    await harness.behavior.callRpc("linkedLink", { ...target, reason: "manual" });
+
+    const shared = {
+      ...guide,
+      sections: [
+        ...guide.sections,
+        {
+          title: "Error messages",
+          overview: "Rejections explain what failed.",
+          diffs: [
+            { file: "api.ts", summary: "Names the invalid field." },
+            { file: "api.test.ts", summary: "Asserts the message." },
+          ],
+        },
+      ],
+      unplacedFiles: [],
+    };
+
+    await harness.behavior.callAgentTool(
+      "save_review_guide",
+      { url, base, head, guideJson: JSON.stringify(shared) },
+      { threadId: "t1" },
+    );
+
+    const saved = Schema.decodeUnknownSync(savedGuideSchema)(
+      await harness.behavior.callRpc("guideGet", target),
+    );
+
+    expect(saved.guide).toEqual(shared);
+    expect(saved.reviewed).toEqual([false, false]);
   } finally {
     await harness.lifecycle.dispose();
   }

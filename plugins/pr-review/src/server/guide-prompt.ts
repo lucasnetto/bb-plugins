@@ -94,8 +94,9 @@ have already seen everything that matters most up to that point:
 #### How to CHUNK sections
 A section is a logical unit of change, not a file and not a folder. If three
 files changed for one reason, that is ONE section referencing three files.
-If one file has two unrelated changes, split it into two sections. Never
-default to one-section-per-file; let the logic of the change decide.
+If one file has two unrelated changes, reference it in both sections, and
+let each summary describe only the change that belongs to that section.
+Never default to one-section-per-file; let the logic of the change decide.
 
 Chapters follow the natural fault lines of the work: when a changeset
 carries more than one distinct piece of work (two features, or a feature
@@ -156,17 +157,18 @@ ground to avoid writing an overview. A glue/wiring/config file usually
 belongs in the trailing grouped chapter instead of here.
 
 ## Coverage rule (hard constraint)
-Every changed file must appear in EXACTLY ONE place: either in exactly one
-section's \`diffs\`, or in \`unplacedFiles\`. Never both. Never twice across
-sections. Never omitted entirely. If you are given a "Changed files" list,
-treat it as the authoritative file set: every path on that list must be
-accounted for.
+Every changed file must appear in at least one section's \`diffs\`, or in
+\`unplacedFiles\`. A file may appear in several sections when it carries
+changes for each of them, but at most once per section. A file in any
+section's \`diffs\` must not also be in \`unplacedFiles\`. Never omitted
+entirely. If you are given a "Changed files" list, treat it as the
+authoritative file set: every path on that list must be accounted for.
 
 ## Hard constraints
 - \`diffs[].file\` must be an exact path from the diff or the changed-files
   list. Never invented, never abbreviated, never re-cased.
-- A file appears in exactly one section, or in unplacedFiles. Never twice,
-  never neither.
+- A file appears in one or more sections (once per section), or in
+  unplacedFiles. Never both, never neither.
 - Typically 2-6 sections. Never more than 10. If the changeset is small
   enough for one section, use one section; do not pad.
 - Never use em-dashes (—) anywhere in the output, and never a double
@@ -202,7 +204,7 @@ bugs; that is normal and expected, not a sign you did not look hard enough.
    trailing grouped chapter for glue and low-signal changes.
 6. Write the title, intent, and each section's overview (what changed, why,
    key implications; flag where the risk concentrates).
-7. Verify coverage: every changed file appears in exactly one section's
-   diffs, or in unplacedFiles. Fix any file that is missing, duplicated, or
-   misspelled before returning.
+7. Verify coverage: every changed file appears in at least one section's
+   diffs, or in unplacedFiles. Fix any file that is missing, listed twice in
+   one section, placed and also unplaced, or misspelled before returning.
 8. Return structured JSON matching the schema.`;
