@@ -257,7 +257,7 @@ first useful action. The linked READMEs contain full details.
   provide context; recovery cannot restore deleted uncommitted files or native
   provider state.
 
-### Attention, providers, and machines
+### Attention and providers
 
 - **[Jev](plugins/jev/README.md)** — ID `jev`, directory `plugins/jev`.
   Experimental attention signals with inspectable, revision-linked evidence.
@@ -278,13 +278,6 @@ first useful action. The linked READMEs contain full details.
   is the supported permission mode. Cloud also needs a clean, pushed GitHub
   commit and Cursor repository access; local BB tools and credentials are not
   forwarded. The cloud switch changes the default for new conversations only.
-- **[Orbisa](https://github.com/lucasnetto/orbisa/tree/main/plugins/bb)** — ID
-  `orbisa`, maintained separately in the Orbisa repository under `plugins/bb`.
-  Follow that package's README for isolated BB machines via Incus or OrbStack,
-  prerequisites, installation, and migration from an existing bb-plugins source.
-  It is no longer included in this workspace or its plugin index. Existing local
-  installations move by installing the new path over the same ID; do not
-  uninstall first, because removal deletes plugin configuration.
 - **[Profiles](plugins/profiles/README.md)** — ID `profiles`, directory
   `plugins/profiles`. Switches between already configured Personal and Work BB
   instances, with separate accounts, thread history, and plugin settings. This

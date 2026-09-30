@@ -21,7 +21,7 @@ to the standard macOS installation. These implementation details need no setting
 The restart helper caches only the two local URLs so it also works while BB is
 down. Edit addresses on the plugin page, not in the generated cache.
 
-Both profiles discover models and thinking levels through their authenticated launcher's `--list-models` command. Work filters the `auto` and `default` aliases from that catalog because its account rejects Auto over ACP. Personal retains Auto. Sessions still launch through the original account-specific command. Install the Work launcher and key with the sibling Orbisa repository’s `scripts/install-bb-work-cursor`.
+Both profiles discover models and thinking levels through their authenticated launcher's `--list-models` command. Work filters the `auto` and `default` aliases from that catalog because its account rejects Auto over ACP. Personal retains Auto. Sessions still launch through the original account-specific command. Install and authenticate the account-specific ACP launchers on each execution host using your own deployment setup.
 
 The workspace pins an SDK 0.5.29 patch in `patches/@get-bb__plugin-sdk@0.5.29.patch`. It makes ACP select the actual effort option when Cursor also exposes a thinking toggle, turns thinking off for None and on for other efforts, and reports rejected effort changes instead of silently continuing. Keep this patch until an SDK update includes these fixes; the bridge tests verify the wire requests for every supported Opus and Sol level. Install dependencies with pnpm before building so the host artifact includes the patch.
 

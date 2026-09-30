@@ -9,11 +9,6 @@ marketplace releases, and I don't promise support or backwards compatibility.
 Plugin IDs, settings, behavior, and BB/SDK requirements can change whenever
 my setup needs them to.
 
-The Orbisa integration now lives in the
-[Orbisa repository](https://github.com/lucasnetto/orbisa/tree/main/plugins/bb).
-Its README covers installation and moving an existing `orbisa` plugin source
-while retaining configuration and machine state.
-
 ## Set up with your agent
 
 Give your coding agent this prompt:
