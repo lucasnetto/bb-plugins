@@ -37,6 +37,8 @@ Switching profiles restores the last thread visited in that profile on this brow
 
 Restoring the last thread uses BB’s client-side navigation, avoiding a second full page load after the destination instance opens. Switching between instances still loads the destination app once.
 
+In the desktop app, browser panels are native views that survive a full page load. Switching from a thread first returns to New thread so BB hides the thread's browser panel, then loads the other profile. Otherwise the panel would stay over the other profile. Browsers and switches outside a thread follow the profile link directly.
+
 ## Refresh local plugins across profiles
 
 ### Desktop updates

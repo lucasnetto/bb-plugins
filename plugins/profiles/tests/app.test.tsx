@@ -58,3 +58,47 @@ test("a narrow header leaves the footer selector available", async () => {
     slot.lifecycle.unmount();
   }
 });
+
+const twoProfiles = {
+  info: () => ({
+    current: "personal",
+    profiles: [
+      { id: "personal", name: "Personal", url: "https://personal.example.com", localUrl: null },
+      { id: "work", name: "Work", url: "https://work.example.com", localUrl: null },
+    ],
+  }),
+};
+
+async function clickWork({ desktop }: { desktop: boolean }) {
+  const app = await loadPluginApp(() => import("../app"));
+
+  if (desktop) Object.assign(window, { bbDesktop: {} });
+
+  const slot = renderSlot(
+    app.experimentalSidebarHeaders[0]!,
+    { width: 100, controlSize: 28, isCompactViewport: false },
+    { rpc: twoProfiles, context: { projectId: "proj_1", threadId: "thr_1" } },
+  );
+
+  try {
+    const link = await slot.findByRole("link", { name: "Work — switch profile" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+    link.dispatchEvent(click);
+
+    return { prevented: click.defaultPrevented, navigateCalls: [...slot.navigateCalls] };
+  } finally {
+    slot.lifecycle.unmount();
+    Reflect.deleteProperty(window, "bbDesktop");
+  }
+}
+
+test("desktop switches leave the thread first so its native browser panel hides", async () => {
+  expect(await clickWork({ desktop: true })).toEqual({
+    prevented: true,
+    navigateCalls: [{ method: "toCompose" }],
+  });
+});
+
+test("browser switches follow the profile link directly", async () => {
+  expect(await clickWork({ desktop: false })).toEqual({ prevented: false, navigateCalls: [] });
+});

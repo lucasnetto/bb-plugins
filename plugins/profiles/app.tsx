@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import {
   definePluginApp,
   useBbContext,
@@ -11,6 +11,45 @@ import type { ProfileInfo, rpcContract } from "./contract.ts";
 import { LAST_THREAD_KEY, profileSwitchUrl, resumeThread, savedThreadPath } from "./navigation.ts";
 import "./app.css";
 
+// Desktop browser panels are native views that survive a full page load, so they would stay
+// over the other profile. Leaving the thread first lets BB hide them as the thread unmounts.
+function useProfileSwitch() {
+  const { threadId } = useBbContext();
+  const navigate = useBbNavigate();
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) return;
+
+    if (!threadId) {
+      window.location.assign(pending);
+
+      return;
+    }
+
+    // Switch anyway if the host does not leave the thread.
+    const timer = setTimeout(() => window.location.assign(pending), 1000);
+
+    return () => clearTimeout(timer);
+  }, [pending, threadId]);
+
+  return (event: MouseEvent<HTMLAnchorElement>, current: boolean) => {
+    if (current) {
+      event.preventDefault();
+
+      return;
+    }
+
+    if (!threadId || !("bbDesktop" in window) || !isPlainClick(event)) return;
+    event.preventDefault();
+    setPending(event.currentTarget.href);
+    navigate.toCompose();
+  };
+}
+
+function isPlainClick(event: MouseEvent) {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
 function ProfileOptions({
   compact = false,
   controlSize = 32,
@@ -22,6 +61,7 @@ function ProfileOptions({
   const { values } = useSettings();
   const [info, setInfo] = useState<ProfileInfo | null>(null);
   const [error, setError] = useState(false);
+  const switchTo = useProfileSwitch();
   useEffect(() => {
     let disposed = false;
     void rpc
@@ -70,9 +110,7 @@ function ProfileOptions({
             aria-label={`${profile.name}${profile.id === info.current ? " (current profile)" : " — switch profile"}`}
             title={profile.name}
             aria-current={profile.id === info.current ? "true" : undefined}
-            onClick={(event) => {
-              if (profile.id === info.current) event.preventDefault();
-            }}
+            onClick={(event) => switchTo(event, profile.id === info.current)}
           >
             <svg
               width="18"
@@ -111,9 +149,7 @@ function ProfileOptions({
           className="bb-profiles-option"
           href={profileSwitchUrl(profile.url, profile.localUrl, window.location.hostname)}
           aria-current={profile.id === info.current ? "true" : undefined}
-          onClick={(event) => {
-            if (profile.id === info.current) event.preventDefault();
-          }}
+          onClick={(event) => switchTo(event, profile.id === info.current)}
         >
           <span className={`bb-profiles-dot bb-profiles-dot-${profile.id}`} />
           <span className="bb-profiles-copy">
