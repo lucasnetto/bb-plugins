@@ -40,7 +40,6 @@ copies by directory path; you don't need to copy that index.
 | [t3-sidebar](plugins/t3-sidebar/README.md)                     | Organize threads with cards, pinning, snoozing, and a Settled shelf.          |
 | [pr-review](plugins/pr-review/README.md)                       | Find and review PRs, generate guided reviews, and inspect local changes.      |
 | [rename-thread](plugins/rename-thread/README.md)               | Regenerate thread titles from conversation context.                           |
-| [workers](plugins/workers/README.md)                           | Delegate to hidden workers and chat with them in the parent panel.            |
 | [workspace-opener](plugins/workspace-opener/README.md)         | Open a folder's workspace file in Cursor or VS Code.                          |
 | [environment-recovery](plugins/environment-recovery/README.md) | Continue a conversation in a fresh worktree after its environment is removed. |
 | [jev](plugins/jev/README.md)                                   | Explore attention signals and their evidence, with optional live evaluation.  |

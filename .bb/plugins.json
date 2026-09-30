@@ -24,10 +24,6 @@
       "source": "./plugins/pr-review"
     },
     {
-      "name": "workers",
-      "source": "./plugins/workers"
-    },
-    {
       "name": "cursor-sdk",
       "source": "./plugins/cursor-sdk"
     },

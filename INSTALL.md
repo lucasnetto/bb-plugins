@@ -240,14 +240,6 @@ first useful action. The linked READMEs contain full details.
   T3 Sidebar is optional for CLI use. The default Codex helper needs Codex on the
   server's PATH and the documented `.bb`/`.bb-work` account layout; other
   providers use a hidden BB helper with that instance's authentication.
-- **[Workers](plugins/workers/README.md)** — ID `workers`, directory
-  `plugins/workers`. Agents delegate to hidden children; open **Workers** in the
-  parent thread's panel to read, reply, answer questions, or stop them. Ordinary
-  workers inherit the parent's model. Optional presets live in **Settings →
-  Workers → Worker presets**; none ship by default. Ask an agent to use BB workers
-  for a task. The bundled `$fusion` workflow uses one persistent implementation
-  worker and requires a suitable configured preset first. New tools/presets are
-  discovered when an agent session next starts or resumes.
 - **[Environment Recovery](plugins/environment-recovery/README.md)** — ID
   `environment-recovery`, directory `plugins/environment-recovery`. **Recover
   workspace** on a thread with a removed environment creates a new worktree and

@@ -59,7 +59,6 @@ export default defineConfig({
       "plugins/rename-thread",
       "plugins/hide-models",
       "plugins/pr-review",
-      "plugins/workers",
       "plugins/fonts",
       "plugins/cursor-sdk",
       "plugins/environment-recovery",
