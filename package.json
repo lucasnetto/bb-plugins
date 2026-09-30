@@ -1,6 +1,7 @@
 {
   "name": "bb-plugins",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "vp run -r build",

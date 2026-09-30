@@ -116,6 +116,11 @@ first, then use the local path workflow. There is no publishing step.
 
 Generated bundles, dependencies, and local configuration stay out of Git.
 
+## License
+
+Original code is licensed under the [MIT License](LICENSE). Third-party code
+retains its own notices; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Source layout
 
 Each plugin keeps its manifest and tooling configuration at the package root:
