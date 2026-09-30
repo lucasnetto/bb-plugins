@@ -16,7 +16,7 @@ analysis of a user's thread. Do not enable local capture without project approva
 - Disabling attention cancels work and clears stored projections. Changing settings clears captured state.
 - The server-only `gatewayApiKey` is used only server-side for live checks; offline fixtures never use it for inference. Never read or print secret settings.
 
-Live evaluation uses Vercel AI Gateway `typesafe-ai/jev` with configurable ZDR (`requireZdr`, default true) and no automatic fallback. The user explicitly approved disabling ZDR for Personal bb-plugins testing; do not generalize that approval to other projects. A Gateway error is not a classification.
+Live evaluation uses Vercel AI Gateway `typesafe-ai/jev` with configurable ZDR (`requireZdr`, default true) and no automatic fallback. Disabling ZDR requires explicit authorization for that project and evaluation. A Gateway error is not a classification.
 
 - `bb jev smoke <fixture>` queues synthetic evidence through Gateway.
 - `bb jev check <thread-id>` queues an approved, idle, visible thread's bounded history.
