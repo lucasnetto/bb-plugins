@@ -11,6 +11,19 @@ import { runRefresh } from "./refresh-runner.ts";
 import { maintain } from "./refresh-host.ts";
 
 export default async function plugin(bb: BbPluginApi) {
+  bb.onInstall?.(async () => {
+    const { preferences } = await bb.sdk.system.uiPreferences.list();
+    const header = preferences["sidebar.headerProvider"];
+
+    if (header?.revision !== 0 || header.value !== "__builtin__") return;
+
+    await bb.sdk.system.uiPreferences.set({
+      key: "sidebar.headerProvider",
+      expectedRevision: header.revision,
+      value: "profiles/profiles",
+    });
+  });
+
   const settings = defineSettings(bb);
   const initial = await settings.get();
   let cache = Promise.resolve();

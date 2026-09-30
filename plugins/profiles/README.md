@@ -31,7 +31,7 @@ The workspace pins an SDK 0.5.29 patch in `patches/@get-bb__plugin-sdk@0.5.29.pa
 
 The catalog filter runs the bridge executable as Node, including when the installed bb uses Electron, and removes that runtime flag before launching Cursor. To exercise the installed runtime as well as Node, run `CURSOR_TEST_BRIDGE_EXECUTABLE=/Applications/bb.app/Contents/MacOS/bb node --experimental-strip-types --test plugins/profiles/*.test.ts` from the repository root.
 
-On BB 0.44 or later, choose Profiles under Settings → Appearance → Sidebar → Header. The icons fit the host’s header controls; narrow headers keep the footer selector available. On BB 0.43, use the footer or plugin settings. Profiles works alongside custom navigation and thread lists.
+On BB 0.44 or later, a fresh installation selects Profiles as the sidebar header when its preference is untouched. Existing header choices are preserved, and reloads or updates keep your selection. Choose a header under Settings → Appearance → Sidebar → Header. The icons fit the host’s header controls; narrow headers keep the footer selector available. On BB 0.43, use the footer or plugin settings. Profiles works alongside custom navigation and thread lists.
 
 Switching profiles restores the last thread visited in that profile on this browser. Each profile stores its own last thread locally. If no thread has been remembered, the profile opens New thread; opening New thread directly never restores an old thread.
 
