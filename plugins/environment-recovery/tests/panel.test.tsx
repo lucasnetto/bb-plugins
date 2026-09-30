@@ -85,3 +85,50 @@ test("shows recovery failures and allows choosing an alternative branch", async 
     slot.lifecycle.unmount();
   }
 });
+
+test("restores the original conversation and offers a continuation only after changing branch", async () => {
+  const app = await loadPluginApp(() => import("../app"));
+
+  const slot = renderSlot(
+    app.threadPanelActions[0]!,
+    { threadId: "source", params: null },
+    {
+      rpc: {
+        preview: () => ({
+          sourceThreadId: "source",
+          projectId: "project",
+          hostId: "host",
+          environmentId: "old",
+          title: "Work",
+          branch: "feature",
+          branches: ["feature"],
+          available: true,
+          restoreAvailable: true,
+          reason: null,
+        }),
+        recover: () => ({
+          threadId: "source",
+          sourceThreadId: "source",
+          branch: "feature",
+          reused: false,
+          restored: true,
+        }),
+      },
+    },
+  );
+
+  try {
+    await slot.findByRole("button", { name: "Restore this thread" });
+    fireEvent.change(slot.getByLabelText("Branch"), { target: { value: "main" } });
+    expect(slot.getByRole("button", { name: "Create recovery" })).toBeTruthy();
+    fireEvent.change(slot.getByLabelText("Branch"), { target: { value: "feature" } });
+    fireEvent.click(slot.getByRole("button", { name: "Restore this thread" }));
+    fireEvent.click(await slot.findByRole("button", { name: "Open original thread" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "source",
+    });
+  } finally {
+    slot.lifecycle.unmount();
+  }
+});

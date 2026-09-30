@@ -23,7 +23,6 @@ test("context menu snoozes a thread; shelf can wake it without navigating", asyn
       isCompactViewport: false,
       onNavigate: () => {},
       searchQuery: "",
-      Original: () => null,
     },
     {
       sidebarThreads: { status: "ready", threads: [thread], projects: [] },

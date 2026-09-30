@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type PluginSidebarThread, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import {
+  experimental_useSidebarThreadActions,
+  type PluginSidebarThread,
+  useRealtime,
+  useRpc,
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "@/shared/rpc-contract";
 import type { SettledThread } from "@/shared/settled-contract";
@@ -8,12 +13,13 @@ import { SETTLED_CHANGED } from "@/shared/contract";
 import { mergeSettledHistory } from "@/ui/lib/settled-history";
 
 type OptimisticSettlement = {
-  thread: PluginSidebarThread & { archivedAt?: number };
+  thread: PluginSidebarThread;
   confirmed: boolean;
 };
 
 export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
   const rpc = useRpc<typeof rpcContract>();
+  const actions = experimental_useSidebarThreadActions();
   const [archivedThreads, setArchivedThreads] = useState<SettledThread[]>([]);
   const revision = useRef(0);
   const [optimistic, setOptimistic] = useState<Record<string, OptimisticSettlement>>({});
@@ -67,6 +73,14 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
 
   const set = useCallback(
     (threadId: string, settled: boolean) => {
+      if (settled) {
+        // The host owns child confirmation and Undo. Do not move the card
+        // until its archive has actually been confirmed by the user.
+        actions.archive(threadId);
+
+        return;
+      }
+
       const thread = threads.find((row) => row.id === threadId);
 
       const update = thread
@@ -74,14 +88,14 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
             thread: {
               ...thread,
               isArchived: settled,
-              archivedAt: settled ? Date.now() : undefined,
+              archivedAt: null,
             },
             confirmed: false,
           }
         : undefined;
 
       if (update) setOptimistic((current) => ({ ...current, [threadId]: update }));
-      // Serialize rapid Settle / Un-settle clicks so the server ends in the same state.
+      // Serialize repeated Un-settle clicks while the previous request finishes.
       const previous = requests.current.get(threadId) ?? Promise.resolve();
 
       const request = previous
@@ -115,7 +129,7 @@ export function useSettledThreads(liveThreads: readonly PluginSidebarThread[]) {
         },
       );
     },
-    [rpc, refetch, threads],
+    [actions, rpc, refetch, threads],
   );
 
   return { archivedThreads, threads, set, refetch };

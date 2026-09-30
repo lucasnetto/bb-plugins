@@ -99,7 +99,7 @@ All direct dependency versions live in the default `catalog` in
 `catalogMode: strict` keeps `vp add` on the catalog's shared versions.
 To upgrade a dependency, edit its catalog entry and run `vp install`, then
 run the build, typecheck, and test commands above. The shared BB SDK is pinned
-to `0.4.47`; keep each plugin's `engines.bbPluginSdk` floor in sync when upgrading.
+to `0.5.29`; keep each plugin's `engines.bbPluginSdk` floor in sync when upgrading.
 If `bb plugin types` rewrites dependency pins, move those versions into the
 catalog and restore the manifest's `catalog:` references before installing.
 

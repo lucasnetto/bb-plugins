@@ -13,6 +13,9 @@ const environment = {
   name: "Checkout",
   branchName: "main",
   workspaceDisplayKind: "other" as const,
+  path: null,
+  isWorktree: null,
+  providerId: null,
 };
 
 const threads = [
@@ -76,11 +79,10 @@ test.each([false, true])("machine setting groups only active threads: %s", async
       isCompactViewport: false,
       onNavigate: () => {},
       searchQuery: "",
-      Original: () => null,
     },
     {
       settings: enabled ? { groupByMachine: true } : {},
-      sidebarThreads: { status: "ready", threads, projects: [] },
+      sidebarThreads: { status: "ready", threads, projects: [], experimental_hosts: [host] },
       rpc: {
         settled_list: () => ({ archivedThreads: [history] }),
         snoozed_list: () => ({ snoozed }),
@@ -98,6 +100,12 @@ test.each([false, true])("machine setting groups only active threads: %s", async
       expect(within(groups[0]!).getByRole("link", { name: "First" })).toBeTruthy();
       expect(within(groups[0]!).getByRole("link", { name: "Second" })).toBeTruthy();
       expect(within(groups[1]!).getByRole("link", { name: "Other" })).toBeTruthy();
+      fireEvent.click(within(groups[0]!).getByRole("button", { name: "New thread on Laptop" }));
+      expect(slot.inspection.sidebarActionCalls).toContainEqual({
+        method: "openNewThread",
+        options: { hostId: "host-a", projectId: undefined, focusPrompt: true },
+      });
+      expect(within(groups[1]!).queryByRole("button", { name: "New thread on Laptop" })).toBeNull();
     } else {
       expect(slot.queryAllByRole("region")).toHaveLength(0);
     }

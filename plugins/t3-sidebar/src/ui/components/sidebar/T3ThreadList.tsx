@@ -80,7 +80,14 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   const [projectDialog, setProjectDialog] = useState(false);
   const navigate = useBbNavigate();
   const { activeThreadId, onNavigate } = props;
-  const { status, threads: liveThreads, projects } = experimental_useSidebarThreads();
+
+  const {
+    status,
+    threads: liveThreads,
+    projects,
+    experimental_hosts: hosts,
+  } = experimental_useSidebarThreads();
+
   const hostActions = experimental_useSidebarThreadActions();
   const { providers } = experimental_useProviders();
   const { archivedThreads, threads, set: setSettled, refetch } = useSettledThreads(liveThreads);
@@ -225,14 +232,18 @@ function T3ThreadListContent(props: PluginThreadListProps) {
 
   const treeRows = (rows: PluginSidebarThread[]) =>
     threadTree(rows, collapsedThreads, activeThreadId);
+
   const activeTrees = grouped
     ? machineGroups.flatMap((group) => treeRows(group.threads))
     : treeRows(orderedActive);
+
   const pinnedTrees = treeRows(orderedPinned);
+
   const reorderGroup = (thread: PluginSidebarThread, section: SidebarSection) => {
     const node = (section === "pinned" ? pinnedTrees : activeTrees).find(
       (row) => row.thread.id === thread.id,
     );
+
     return JSON.stringify([
       section,
       section === "active" && grouped ? (thread.host?.id ?? null) : null,
@@ -241,7 +252,9 @@ function T3ThreadListContent(props: PluginThreadListProps) {
   };
 
   const reorder = (source: string, target: string, after: boolean, group: string) => {
-    const section = JSON.parse(group)[0] as "pinned" | "active";
+    const section = Schema.decodeUnknownSync(Schema.Literals(["pinned", "active"]))(
+      JSON.parse(group)[0],
+    );
 
     const visible = (section === "pinned" ? pinnedTrees : activeTrees)
       .map((row) => row.thread)
@@ -355,12 +368,32 @@ function T3ThreadListContent(props: PluginThreadListProps) {
             ? machineGroups.map((group) => (
                 <li key={group.key} className="list-none">
                   <section aria-label={group.label} className="mt-3">
-                    <h3
-                      className="truncate px-2.5 pb-1 text-[calc(0.75rem+2px)] font-bold text-muted-foreground"
-                      title={group.label}
-                    >
-                      {group.label}
-                    </h3>
+                    <div className="flex items-center justify-between gap-2 px-2.5 pb-1">
+                      <h3
+                        className="truncate text-[calc(0.75rem+2px)] font-bold text-muted-foreground"
+                        title={group.label}
+                      >
+                        {group.label}
+                      </h3>
+                      {hosts?.some((host) => host.id === group.threads[0]?.host?.id) && (
+                        <button
+                          type="button"
+                          aria-label={`New thread on ${group.label}`}
+                          title={`New thread on ${group.label}`}
+                          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                          onClick={() => {
+                            hostActions.openNewThread({
+                              hostId: group.threads[0]?.host?.id,
+                              projectId: effectiveScope ?? undefined,
+                              focusPrompt: true,
+                            });
+                            onNavigate();
+                          }}
+                        >
+                          <Icon name="Plus" className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
                     <ul role="list" className="flex flex-col gap-px">
                       {treeRows(group.threads).map((node) => renderRow(node, "active"))}
                     </ul>

@@ -1,5 +1,16 @@
 import { Effect, Schema } from "effect";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
+import type { JsonValue, NewThreadRequest } from "@get-bb/plugin-sdk/app";
+
+const jsonValueSchema: Schema.Codec<JsonValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.Null,
+    Schema.Finite,
+    Schema.Boolean,
+    Schema.String,
+    Schema.mutable(Schema.Array(jsonValueSchema)),
+    Schema.Record(Schema.String, jsonValueSchema),
+  ]),
+);
 
 // The SDK exports these contracts as types only. Validate the full forwarded
 // payload here rather than claiming that a discriminator proves its contents.
@@ -34,7 +45,7 @@ const mentionResourceSchema = Schema.Union([
     argumentHint: Schema.NullOr(Schema.String),
     origin: Schema.Literals(["builtin", "project", "user"]),
     source: Schema.Literals(["command", "skill"]),
-    trigger: Schema.Literal("/"),
+    trigger: Schema.Literals(["/", "$"]),
   }),
   Schema.Struct({
     kind: Schema.Literal("plugin"),
@@ -81,6 +92,24 @@ export const promptInputSchema = Schema.mutable(
 export const threadEnvironmentSchema = Schema.Union([
   Schema.Struct({ type: Schema.Literal("reuse"), environmentId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("project-default") }),
+  Schema.Struct({
+    type: Schema.Literal("provider"),
+    environmentProviderId: Schema.String.check(Schema.isMinLength(1)),
+    inputs: jsonValueSchema,
+    machine: Schema.optionalKey(
+      Schema.Union([
+        Schema.Struct({
+          type: Schema.Literal("existing"),
+          hostId: Schema.String.check(Schema.isMinLength(1)),
+        }),
+        Schema.Struct({
+          type: Schema.Literal("new"),
+          machineProviderId: Schema.String.check(Schema.isMinLength(1)),
+          inputs: jsonValueSchema,
+        }),
+      ]),
+    ),
+  }),
   Schema.Struct({
     type: Schema.Literal("host"),
     hostId: Schema.optionalKey(Schema.String),

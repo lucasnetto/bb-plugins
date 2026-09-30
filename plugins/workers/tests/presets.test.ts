@@ -21,6 +21,7 @@ const provider: Awaited<ReturnType<BbPluginApi["sdk"]["providers"]["list"]>>[num
   pluginId: "provider-pi",
   displayName: "Pi",
   available: true,
+  completedTurnDisplay: "collapse",
   logoUrl: null,
   maintenance: { health: false, usage: false, installation: false },
   composerActions: [],

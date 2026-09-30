@@ -11,10 +11,13 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@testing-library/react": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "better-sqlite3": "catalog:",
-    "react": "catalog:"
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "engines": {
     "bb": ">=0.42.1",

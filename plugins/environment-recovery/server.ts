@@ -44,7 +44,7 @@ export default function plugin(bb: BbPluginApi) {
           },
         }),
         recover: cliCommand({
-          summary: "Create a fresh worktree and continuation thread with saved conversation text",
+          summary: "Restore the original workspace, or create a continuation on another branch",
           positionals,
           options,
           async run(input) {

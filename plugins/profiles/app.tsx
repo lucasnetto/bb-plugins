@@ -5,13 +5,19 @@ import {
   useBbNavigate,
   useRpc,
   useSettings,
-  type ExperimentalSidebarNavigationProps,
+  type ExperimentalSidebarHeaderProps,
 } from "@get-bb/plugin-sdk/app";
 import type { ProfileInfo, rpcContract } from "./contract.ts";
 import { LAST_THREAD_KEY, profileSwitchUrl, resumeThread, savedThreadPath } from "./navigation.ts";
 import "./app.css";
 
-function ProfileOptions({ compact = false }: { compact?: boolean }) {
+function ProfileOptions({
+  compact = false,
+  controlSize = 32,
+}: {
+  compact?: boolean;
+  controlSize?: number;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const { values } = useSettings();
   const [info, setInfo] = useState<ProfileInfo | null>(null);
@@ -59,6 +65,7 @@ function ProfileOptions({ compact = false }: { compact?: boolean }) {
           <a
             key={profile.id}
             className="bb-profiles-icon"
+            style={{ width: controlSize, height: controlSize }}
             href={profileSwitchUrl(profile.url, profile.localUrl, window.location.hostname)}
             aria-label={`${profile.name}${profile.id === info.current ? " (current profile)" : " — switch profile"}`}
             title={profile.name}
@@ -151,25 +158,27 @@ function RememberThread() {
   return null;
 }
 
-function ProfileNavigation({
-  experimental_Original: Original,
-}: ExperimentalSidebarNavigationProps) {
+function ProfileHeader({ width, controlSize }: ExperimentalSidebarHeaderProps) {
+  if (width < controlSize * 2 + 4) return null;
+
   return (
-    <>
-      <ProfileOptions compact />
-      <Original />
-    </>
+    <div>
+      <ProfileOptions compact controlSize={controlSize} />
+    </div>
   );
 }
 
 export default definePluginApp((app) => {
   app.slots.experimental_appOverlay({ id: "remember-thread", component: RememberThread });
-  app.slots.experimental_sidebarNavigation({
-    id: "profiles",
-    title: "Profiles",
-    description: "Profile icons above the standard navigation.",
-    component: ProfileNavigation,
-  });
+
+  // BB 0.43 keeps the footer selector; 0.44 adds the dedicated header slot.
+  if (app.slots.experimental_sidebarHeader)
+    app.slots.experimental_sidebarHeader({
+      id: "profiles",
+      title: "Profiles",
+      description: "Switch account profiles from the sidebar header.",
+      component: ProfileHeader,
+    });
   app.experimental_sidebarFooter.register({
     kind: "disclosure",
     id: "profiles",

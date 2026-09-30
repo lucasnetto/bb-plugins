@@ -73,6 +73,18 @@ test("new thread preserves native composer selections, provenance, prompt varian
       { type: "host", hostId: "selected-host", workspace: { type: "unmanaged", path: null } },
       { type: "reuse", environmentId: "existing-environment" },
       { type: "project-default" },
+      {
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        inputs: { branch: { kind: "default" } },
+        machine: { type: "existing", hostId: "selected-host" },
+      },
+      {
+        type: "provider",
+        environmentProviderId: "project-checkout",
+        inputs: null,
+        machine: { type: "new", machineProviderId: "orbisa-machine", inputs: { region: "test" } },
+      },
       { type: "host", workspace: { type: "personal" } },
     ]) {
       const submitted = {

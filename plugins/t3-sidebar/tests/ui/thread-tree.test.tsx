@@ -55,7 +55,6 @@ test("sidebar toggles children without navigation and reorders siblings only", a
       isCompactViewport: false,
       onNavigate,
       searchQuery: "",
-      Original: () => null,
     },
     {
       sidebarThreads: {

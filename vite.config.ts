@@ -63,6 +63,7 @@ export default defineConfig({
       "plugins/fonts",
       "plugins/cursor-sdk",
       "plugins/environment-recovery",
+      "plugins/profiles",
     ],
   },
 });

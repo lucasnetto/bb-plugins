@@ -17,6 +17,7 @@ export const previewSchema = z.object({
   branch: z.string().nullable(),
   branches: z.array(z.string()),
   available: z.boolean(),
+  restoreAvailable: z.boolean().default(false),
   reason: z.string().nullable(),
 });
 
@@ -27,6 +28,7 @@ export const resultSchema = z.object({
   sourceThreadId: z.string(),
   branch: z.string(),
   reused: z.boolean(),
+  restored: z.boolean().default(false),
 });
 
 export type RecoveryResult = z.infer<typeof resultSchema>;

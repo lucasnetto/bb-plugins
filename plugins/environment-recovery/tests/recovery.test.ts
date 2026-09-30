@@ -63,6 +63,8 @@ function fixture(history = [user(1, "Original goal"), user(2, "Latest constraint
   let missing = false;
   let failure = false;
   let change = false;
+  let native = false;
+  let restoreFailure = false;
 
   const host = createFakePluginHost({
     pluginId: "environment-recovery",
@@ -71,6 +73,17 @@ function fixture(history = [user(1, "Original goal"), user(2, "Latest constraint
         get: async ({ threadId }) =>
           threadId === "source" ? source : makeThreadResponse({ id: "recovered" }),
         defaultExecutionOptions: async () => execution,
+        unarchive: async () => {
+          source = { ...source, archivedAt: null, canRestoreEnvironment: native };
+
+          return { ok: true };
+        },
+        restoreEnvironment: async () => {
+          if (restoreFailure) throw new Error("Restoration failed");
+          status = "ready";
+
+          return source;
+        },
         spawn: async () => {
           if (failure) throw new Error("Response lost");
 
@@ -95,6 +108,7 @@ function fixture(history = [user(1, "Original goal"), user(2, "Latest constraint
           hostId: "original-host",
           branchName: "feature",
           isGitRepo: true,
+          environmentProviderId: native ? "git-worktree" : null,
         }),
         listProviders: async () => [{ id: "git-worktree", availability: { status: "available" } }],
       },
@@ -135,6 +149,12 @@ function fixture(history = [user(1, "Original goal"), user(2, "Latest constraint
     change: () => {
       change = true;
     },
+    native: () => {
+      native = true;
+    },
+    failRestore: () => {
+      restoreFailure = true;
+    },
   };
 }
 
@@ -171,6 +191,68 @@ test("preview and recovery route to the original host, preserve settings, and le
   expect(f.harness.inspection.sdk.callsTo("projects.branches")[0]).toMatchObject([
     { hostId: "original-host", selectedBranch: "feature" },
   ]);
+});
+
+test("native restoration unarchives the original thread without copying history or spawning", async () => {
+  const f = fixture();
+  f.native();
+  expect(await f.recovery.preview({ threadId: "source" })).toMatchObject({
+    restoreAvailable: true,
+  });
+  expect(f.harness.inspection.sdk.callsTo("threads.unarchive")).toHaveLength(0);
+
+  const results = await Promise.all([
+    f.recovery.recover({ threadId: "source" }),
+    f.recovery.recover({ threadId: "source" }),
+  ]);
+
+  expect(results).toEqual([
+    {
+      threadId: "source",
+      sourceThreadId: "source",
+      branch: "feature",
+      reused: false,
+      restored: true,
+    },
+    {
+      threadId: "source",
+      sourceThreadId: "source",
+      branch: "feature",
+      reused: false,
+      restored: true,
+    },
+  ]);
+  expect(f.harness.inspection.sdk.callsTo("threads.unarchive")).toHaveLength(1);
+  expect(f.harness.inspection.sdk.callsTo("threads.restoreEnvironment")).toEqual([
+    [{ threadId: "source" }],
+  ]);
+  expect(f.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  expect(f.harness.inspection.sdk.callsTo("threads.events.list")).toHaveLength(0);
+});
+
+test("an alternate branch keeps the continuation flow even when native restoration is available", async () => {
+  const f = fixture();
+  f.native();
+  expect(await f.recovery.recover({ threadId: "source", branch: "main" })).toMatchObject({
+    restored: false,
+    threadId: "recovered",
+  });
+  expect(f.harness.inspection.sdk.callsTo("threads.restoreEnvironment")).toHaveLength(0);
+});
+
+test("restoration failure never silently spawns a continuation", async () => {
+  const f = fixture();
+  f.native();
+  f.failRestore();
+  await expect(f.recovery.recover({ threadId: "source" })).rejects.toThrow("Restoration failed");
+  expect(f.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+});
+
+test("unarchived restorable threads keep their original identity", async () => {
+  const f = fixture();
+  f.setSource({ archivedAt: null, canRestoreEnvironment: true });
+  expect(await f.recovery.recover({ threadId: "source" })).toMatchObject({ restored: true });
+  expect(f.harness.inspection.sdk.callsTo("threads.unarchive")).toHaveLength(0);
 });
 
 test("a missing branch never falls back silently; explicit replacement is allowed", async () => {

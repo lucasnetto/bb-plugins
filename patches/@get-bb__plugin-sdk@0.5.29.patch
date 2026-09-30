@@ -1,8 +1,6 @@
-diff --git a/dist/provider-bridge-acp.js b/dist/provider-bridge-acp.js
-index ca5a587d015d15a1cffe0cc3ad51914fcccb32c7..45ec8e7282f809c0ed4d76f1ab7d75a571457278 100644
 --- a/dist/provider-bridge-acp.js
 +++ b/dist/provider-bridge-acp.js
-@@ -6413,9 +6413,13 @@ function findAcpModelConfigOption(configOptions) {
+@@ -7231,9 +7231,13 @@
    return options.find((option) => option.category === "model") ?? options.find((option) => option.id === "model");
  }
  function findAcpThoughtLevelConfigOption(configOptions) {
@@ -17,7 +15,7 @@ index ca5a587d015d15a1cffe0cc3ad51914fcccb32c7..45ec8e7282f809c0ed4d76f1ab7d75a5
  }
  var ACP_NATIVE_REASONING_LEVEL_BY_VALUE = {
    none: "none",
-@@ -8374,7 +8378,26 @@ async function selectAcpNativeReasoning(args) {
+@@ -9291,7 +9295,26 @@
    if (reasoningLevel === void 0) {
      return;
    }
@@ -45,7 +43,7 @@ index ca5a587d015d15a1cffe0cc3ad51914fcccb32c7..45ec8e7282f809c0ed4d76f1ab7d75a5
    if (!thoughtLevelOption) {
      return;
    }
-@@ -8385,18 +8408,15 @@ async function selectAcpNativeReasoning(args) {
+@@ -9302,18 +9325,15 @@
    if (value === void 0) {
      return;
    }

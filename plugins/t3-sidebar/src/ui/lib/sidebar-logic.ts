@@ -228,7 +228,7 @@ export function sortByCreated<T extends Pick<PluginSidebarThread, "id" | "create
 /** Settled rows are history: order by when the work ended, not when it began. */
 export function settledTimestamp(
   thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "updatedAt"> & {
-    archivedAt?: number;
+    archivedAt?: number | null;
   },
 ): number {
   return thread.archivedAt ?? Math.max(thread.latestAttentionAt, thread.updatedAt);

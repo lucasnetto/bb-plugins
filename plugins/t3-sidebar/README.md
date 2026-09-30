@@ -25,6 +25,10 @@ t3code's inbox model:
   provider session and workspace stay intact, and running work continues. The
   existing side-chat tab still points to the same conversation. Only live side
   chats show this action; workers and archived threads are excluded.
+- **New thread on a machine.** On BB 0.44 or later, grouped machine headings offer
+  a plus button that opens the native composer with that machine selected.
+- **Settle through BB.** BB confirms when children will also be archived and owns
+  Undo. Canceling leaves the card in its current section.
 - **Manual order.** Drag active or pinned cards up/down to reorder within their
   section (and within a machine when grouped). A line shows the insertion point;
   hold near the scroll edge to scroll, or press Escape to cancel. Focus a card

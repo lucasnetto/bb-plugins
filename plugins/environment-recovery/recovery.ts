@@ -16,6 +16,7 @@ const receiptSchema = z.discriminatedUnion("state", [
 
 export function createRecovery(bb: BbPluginApi) {
   const pending = new Map<string, Promise<RecoveryResult>>();
+  const pendingInputs = new Map<string, string>();
   let disposed = false;
 
   async function prepare(input: RecoveryInput) {
@@ -34,6 +35,7 @@ export function createRecovery(bb: BbPluginApi) {
       branch: input.branch ?? environment?.branchName ?? null,
       branches: [],
       available: false,
+      restoreAvailable: false,
       reason: null,
     };
 
@@ -42,9 +44,6 @@ export function createRecovery(bb: BbPluginApi) {
     else if (environment.status !== "destroyed")
       preview.reason =
         "Recovery is for removed environments. This environment has not been removed.";
-    else if (!environment.isGitRepo)
-      preview.reason =
-        "This environment has no Git repository. A surviving Git branch is required.";
     else if (
       !["idle", "error"].includes(source.status) ||
       !["idle", "error"].includes(source.runtime.displayStatus) ||
@@ -52,6 +51,29 @@ export function createRecovery(bb: BbPluginApi) {
       source.activeBackgroundAgentCount
     )
       preview.reason = "Stop this thread and clear its queued messages before recovering.";
+
+    if (!preview.reason && environment) {
+      const sameBranch = !input.branch || input.branch === environment.branchName;
+      // Archived threads only report the capability after unarchiving. The
+      // bundled Worktree provider supports restore in every BB with this field.
+      preview.restoreAvailable =
+        sameBranch &&
+        (source.canRestoreEnvironment === true ||
+          (source.archivedAt !== null &&
+            source.canRestoreEnvironment !== undefined &&
+            environment.environmentProviderId === "git-worktree"));
+
+      if (preview.restoreAvailable) {
+        preview.available = true;
+        preview.branches = preview.branch ? [preview.branch] : [];
+
+        return { preview, source, environment };
+      }
+
+      if (!environment.isGitRepo)
+        preview.reason =
+          "This environment has no Git repository. A surviving Git branch is required.";
+    }
 
     if (!preview.reason && environment) {
       const [catalog, refs] = await Promise.all([
@@ -89,6 +111,33 @@ export function createRecovery(bb: BbPluginApi) {
     const { preview, source } = plan;
     const branch = preview.branch;
 
+    if (preview.restoreAvailable) {
+      const latest = await bb.sdk.threads.get({ threadId: source.id });
+
+      if (latest.updatedAt !== source.updatedAt)
+        throw new Error("The source thread changed. Refresh the recovery preview and retry.");
+
+      if (disposed) throw new Error("The recovery plugin is reloading. Retry shortly.");
+
+      if (source.archivedAt !== null) await bb.sdk.threads.unarchive({ threadId: source.id });
+      const current = await bb.sdk.threads.get({ threadId: source.id });
+
+      if (!current.canRestoreEnvironment)
+        throw new Error(
+          "This workspace cannot be restored on the original thread. Refresh the recovery preview or choose another branch.",
+        );
+
+      await bb.sdk.threads.restoreEnvironment({ threadId: source.id });
+
+      return {
+        threadId: source.id,
+        sourceThreadId: source.id,
+        branch: branch ?? "",
+        reused: false,
+        restored: true,
+      };
+    }
+
     if (!preview.available || !branch || !preview.hostId)
       throw new Error(preview.reason ?? "No recovery source is available.");
 
@@ -108,7 +157,13 @@ export function createRecovery(bb: BbPluginApi) {
           "The recovery thread was deleted. Choose another branch to start a separate recovery.",
         );
 
-      return { threadId: saved.threadId, sourceThreadId: source.id, branch, reused: true };
+      return {
+        threadId: saved.threadId,
+        sourceThreadId: source.id,
+        branch,
+        reused: true,
+        restored: false,
+      };
     }
 
     if (saved)
@@ -169,7 +224,13 @@ ${JSON.stringify(history)}`,
 
     await bb.storage.kv.set(key, { state: "created", threadId: recovered.id });
 
-    return { threadId: recovered.id, sourceThreadId: source.id, branch, reused: false };
+    return {
+      threadId: recovered.id,
+      sourceThreadId: source.id,
+      branch,
+      reused: false,
+      restored: false,
+    };
   }
 
   return {
@@ -178,12 +239,20 @@ ${JSON.stringify(history)}`,
     },
     recover(input: RecoveryInput) {
       const parsed = recoveryInput.parse(input);
+      const fingerprint = JSON.stringify(parsed);
+      const running = pending.get(parsed.threadId);
+
+      if (running && pendingInputs.get(parsed.threadId) === fingerprint) return running;
       const previous = pending.get(parsed.threadId) ?? Promise.resolve();
       const job = previous.catch(() => undefined).then(() => recover(parsed));
       pending.set(parsed.threadId, job);
+      pendingInputs.set(parsed.threadId, fingerprint);
       void job
         .finally(() => {
-          if (pending.get(parsed.threadId) === job) pending.delete(parsed.threadId);
+          if (pending.get(parsed.threadId) === job) {
+            pending.delete(parsed.threadId);
+            pendingInputs.delete(parsed.threadId);
+          }
         })
         .catch(() => undefined);
 

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
-import { settledContract } from "../../src/shared/settled-contract";
 import { expect, test, vi } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { thread } from "./thread-fixture";
 import { mergeSettledHistory } from "../../src/ui/lib/settled-history";
@@ -49,7 +48,6 @@ test("archived history opens through navigation and Un-settle calls native resto
       isCompactViewport: false,
       onNavigate: () => {},
       searchQuery: "",
-      Original: () => null,
     },
     {
       sidebarThreads: { status: "ready", threads: [], projects: [] },
@@ -99,93 +97,15 @@ test("settled history sorts by native archive time rather than later title edits
   expect(result.settled.map((thread) => thread.id)).toEqual(["one", "earlier"]);
 });
 
-for (const outcome of ["success", "failure"] as const) {
-  test(`Settle moves immediately, survives stale refreshes, and handles ${outcome}`, async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
-    );
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-    window.localStorage.clear();
-    const app = await loadPluginApp(() => import("../../src/ui/app"));
-    const liveThreads = [{ ...thread, isPinned: true }];
-    let archived = false;
-    let resolve!: (value: null) => void;
-    let reject!: (error: Error) => void;
-
-    const pending = new Promise<null>((yes, no) => {
-      resolve = yes;
-      reject = no;
-    });
-
-    const slot = renderSlot(
-      app.threadLists[0]!,
-      {
-        activeThreadId: null,
-        activeProjectId: null,
-        isCompactViewport: false,
-        onNavigate: () => {},
-        searchQuery: "",
-        Original: () => null,
-      },
-      {
-        sidebarThreads: { status: "ready", threads: liveThreads, projects: [] },
-        rpc: {
-          settled_list: () => ({ archivedThreads: archived ? [history] : [] }),
-          settled_set: () => pending,
-          snoozed_list: () => ({ snoozed: {} }),
-        },
-      },
-    );
-
-    try {
-      fireEvent.click(await slot.findByRole("button", { name: "Settle thread" }));
-      expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
-      expect(slot.getByRole("button", { name: "Settled (1)" })).toBeTruthy();
-      await slot.behavior.emitRealtime("settled-changed", {});
-      expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
-
-      if (outcome === "failure") {
-        await act(async () => reject(new Error("Archive failed")));
-        await slot.findByRole("button", { name: "Settle thread" });
-        expect(slot.queryByRole("button", { name: "Settled (1)" })).toBeNull();
-      } else {
-        await act(async () => resolve(null));
-        // Even a successful RPC must not expose stale live sidebar data.
-        expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
-        archived = true;
-        liveThreads.splice(0);
-        await slot.behavior.emitRealtime("settled-changed", {});
-        expect(slot.getByRole("button", { name: "Settled (1)" })).toBeTruthy();
-        // A later native restore must win after reconciliation.
-        liveThreads.push({ ...thread, isPinned: true });
-        archived = false;
-        await slot.behavior.emitRealtime("settled-changed", {});
-        await slot.findByRole("button", { name: "Settle thread" });
-      }
-    } finally {
-      slot.lifecycle.unmount();
-      warning.mockRestore();
-      vi.unstubAllGlobals();
-    }
-  });
-}
-
-test("Un-settle responds immediately while a previous Settle finishes in order", async () => {
+test("Settle delegates to BB and waits for confirmation before moving the card", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => ({ ok: true, json: async () => ({}) })),
   );
   window.localStorage.clear();
   const app = await loadPluginApp(() => import("../../src/ui/app"));
-  let resolve!: (value: null) => void;
-
-  const pending = new Promise<null>((yes) => {
-    resolve = yes;
-  });
-
-  const mutations: boolean[] = [];
-
+  const liveThreads = [thread];
+  let archived = false;
   const slot = renderSlot(
     app.threadLists[0]!,
     {
@@ -194,35 +114,30 @@ test("Un-settle responds immediately while a previous Settle finishes in order",
       isCompactViewport: false,
       onNavigate: () => {},
       searchQuery: "",
-      Original: () => null,
     },
     {
-      sidebarThreads: { status: "ready", threads: [thread], projects: [] },
+      sidebarThreads: { status: "ready", threads: liveThreads, projects: [] },
       rpc: {
-        settled_list: () => ({ archivedThreads: [] }),
-        settled_set: async (input) => {
-          const parsed = await settledContract.settled_set.input["~standard"].validate(input);
-
-          if (parsed.issues) throw new Error("Invalid settled mutation");
-          const { settled } = parsed.value;
-          mutations.push(settled);
-
-          return settled ? pending : null;
-        },
+        settled_list: () => ({ archivedThreads: archived ? [history] : [] }),
         snoozed_list: () => ({ snoozed: {} }),
       },
     },
   );
-
   try {
     fireEvent.click(await slot.findByRole("button", { name: "Settle thread" }));
-    fireEvent.click(slot.getByRole("button", { name: "Settled (1)" }));
-    fireEvent.click(await slot.findByRole("button", { name: "Un-settle thread" }));
-    expect(slot.getByRole("button", { name: "Settle thread" })).toBeTruthy();
-    expect(mutations).toEqual([true]);
-    await act(async () => resolve(null));
-    expect(mutations).toEqual([true, false]);
-    expect(slot.getByRole("button", { name: "Settle thread" })).toBeTruthy();
+    expect(slot.inspection.sidebarActionCalls).toEqual([{ method: "archive", threadId: "one" }]);
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "settled_set")).toBe(false);
+    expect(slot.getByRole("link", { name: "Reminder" })).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Settled (1)" })).toBeNull();
+    // Canceling the host dialog emits no archive event and must leave the row visible.
+    await slot.behavior.emitRealtime("settled-changed", {});
+    expect(slot.getByRole("link", { name: "Reminder" })).toBeTruthy();
+    // A confirmed host archive arrives through the native sidebar and realtime data.
+    archived = true;
+    liveThreads.splice(0);
+    await slot.behavior.emitRealtime("settled-changed", {});
+    await slot.findByRole("button", { name: "Settled (1)" });
+    expect(slot.queryByRole("link", { name: "Reminder" })).toBeNull();
   } finally {
     slot.lifecycle.unmount();
     vi.unstubAllGlobals();

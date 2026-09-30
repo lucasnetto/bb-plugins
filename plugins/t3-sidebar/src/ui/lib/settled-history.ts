@@ -1,7 +1,7 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { SettledThread } from "../../shared/settled-contract";
 
-type SidebarThread = PluginSidebarThread & { archivedAt?: number };
+type SidebarThread = PluginSidebarThread;
 
 export function mergeSettledHistory(
   live: readonly PluginSidebarThread[],
@@ -20,6 +20,16 @@ export function mergeSettledHistory(
               isArchived: true,
               isPinned: false,
               isUnread: false,
+              displayTitle: thread.title ?? thread.titleFallback ?? "Conversation",
+              lifecycleOwnerThreadId: null,
+              sourceThreadId: null,
+              status: "idle",
+              runtimeStatus: "idle",
+              queuedWork: "none",
+              pinnedAt: null,
+              pinSortKey: null,
+              href: `/projects/${thread.projectId}/threads/${thread.id}`,
+              isHidden: false,
               parentThreadId: null,
               sectionId: null,
               originKind: null,

@@ -21,6 +21,7 @@ export function RecoveryPanel({ threadId }: PluginThreadPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RecoveryResult | null>(null);
+  const restoring = preview?.restoreAvailable && branch.trim() === (preview.branch ?? "");
 
   useEffect(() => {
     let current = true;
@@ -50,7 +51,7 @@ export function RecoveryPanel({ threadId }: PluginThreadPanelProps) {
     setError(null);
 
     try {
-      const value = await rpc.call("recover", { threadId, branch: branch.trim() });
+      const value = await rpc.call("recover", { threadId, branch: branch.trim() || undefined });
       setResult(value);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Recovery failed. Please retry.");
@@ -63,12 +64,12 @@ export function RecoveryPanel({ threadId }: PluginThreadPanelProps) {
     <div className="space-y-4 text-sm">
       <h2 className="text-base font-medium">Recover workspace</h2>
       <p className="text-muted-foreground">
-        Create a new worktree from a surviving branch and a continuation thread with the original
-        request and recent messages.
+        {restoring
+          ? "Restore the workspace on this thread and keep its complete conversation. An archived thread will be unarchived."
+          : "Create a new worktree from a surviving branch and a continuation thread with the original request and recent messages."}
       </p>
       <p className="text-muted-foreground">
-        Only committed files are restored. The original thread remains available as the full
-        conversation history.
+        Only committed files are restored. Choose another branch to create a separate continuation.
       </p>
       {!preview && !error && <p role="status">Checking recovery source…</p>}
       {preview && (
@@ -93,10 +94,18 @@ export function RecoveryPanel({ threadId }: PluginThreadPanelProps) {
           {!result && (
             <button
               className={button}
-              disabled={busy || !branch.trim() || (!preview.available && !preview.branches.length)}
+              disabled={
+                busy ||
+                (!restoring && !branch.trim()) ||
+                (!preview.available && !preview.branches.length)
+              }
               onClick={() => void recover()}
             >
-              {busy ? "Creating workspace…" : "Create recovery"}
+              {busy
+                ? "Preparing workspace…"
+                : restoring
+                  ? "Restore this thread"
+                  : "Create recovery"}
             </button>
           )}
         </>
@@ -109,12 +118,14 @@ export function RecoveryPanel({ threadId }: PluginThreadPanelProps) {
       {result && (
         <div className="space-y-3">
           <p role="status">
-            {result.reused
-              ? "A recovery already exists."
-              : "Recovery created. BB will prepare the new workspace."}
+            {result.restored
+              ? "Restoration requested. BB will prepare this thread’s workspace."
+              : result.reused
+                ? "A recovery already exists."
+                : "Recovery created. BB will prepare the new workspace."}
           </p>
           <button className={button} onClick={() => navigate.toThread(result.threadId)}>
-            Open recovered thread
+            {result.restored ? "Open original thread" : "Open recovered thread"}
           </button>
         </div>
       )}
