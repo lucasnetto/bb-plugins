@@ -1,8 +1,13 @@
 # bb-plugins
 
-Lucas Netto's collection of [BB](https://getbb.app/) plugins. Clone this repo,
-build the plugins you want, and install them from your local checkout. No npm
-publication or marketplace listing is needed.
+My personal collection of [BB](https://getbb.app/) plugins. I build these for
+my own setup and share the source for anyone who finds it useful.
+
+Use them shadcn-style: copy the plugins you want into a repository you own,
+adapt them to your setup, and maintain your copy. I won't publish packages or
+marketplace releases, and I don't promise support or backwards compatibility.
+Plugin IDs, settings, behavior, and BB/SDK requirements can change whenever
+my setup needs them to.
 
 The Orbisa integration now lives in the
 [Orbisa repository](https://github.com/lucasnetto/orbisa/tree/main/plugins/bb).
@@ -15,24 +20,25 @@ Give your coding agent this prompt:
 
 > Read https://github.com/lucasnetto/bb-plugins/blob/main/INSTALL.md. Walk me through
 > the plugins and their features, help me choose which ones fit my setup, then
-> clone the repository to a permanent location, build and install my choices,
-> and verify them in BB. Follow the guide's prerequisites and explain any
-> plugin that needs additional setup.
+> copy the selected source and its dependencies into a permanent repository
+> I own. Adapt it to my setup, build and install my copies, and verify them
+> in BB. Treat upstream as reference code, with no compatibility guarantees
+> or automatic updates. Explain any plugin that needs additional setup.
 
 [INSTALL.md](INSTALL.md) is the agent-facing installation guide and plugin tour.
-It also covers configuration, updates, troubleshooting, and removal. You can
+It also covers configuration, maintaining your copy, troubleshooting, and removal. You can
 follow it yourself with the same commands.
 
 ## Plugins
 
 Each plugin lives in `plugins/<name>` with its own package manifest.
 A pnpm workspace manages dependencies with one root lockfile.
-`.bb/plugins.json` indexes a subset of the collection for bb; the installation
-guide uses directory paths so every plugin below can be selected.
+`.bb/plugins.json` indexes a subset of this collection for BB. Install your
+copies by directory path; you don't need to copy that index.
 
 | Plugin                                                         | Purpose                                                                       |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [bb-fonts](plugins/fonts/README.md)                         | Choose interface and code fonts and sizes, with live previews.                |
+| [bb-fonts](plugins/fonts/README.md)                            | Choose interface and code fonts and sizes, with live previews.                |
 | [ocean-theme](plugins/ocean-theme/README.md)                   | Use T3 Code's Ocean palette in light or dark mode.                            |
 | [hide-models](plugins/hide-models/README.md)                   | Hide selected models from the model picker.                                   |
 | [model-thinking-level](plugins/model-thinking-level/README.md) | Keep the thinking level visible beside the model.                             |
@@ -85,12 +91,12 @@ For CI or a reproducible install, use `vp install --frozen-lockfile`.
 From the repository root, install that plugin into bb:
 
 ```sh
-bb plugin install path:. --plugin hide-models
+bb plugin install path:. --subdirectory plugins/hide-models
 ```
 
-Repeat for each plugin you want to run from this checkout. Installing changes
-its registered source to this checkout. The initial source import does not
-change existing installations.
+These development commands describe this repository's tooling. For a selected
+copy, keep only the test projects and configuration you need. Follow
+[INSTALL.md](INSTALL.md) to install from your own source directory.
 
 ## Dependencies
 
@@ -105,14 +111,15 @@ catalog and restore the manifest's `catalog:` references before installing.
 
 ## Distribution
 
-This collection is distributed through source checkouts. Follow
-[INSTALL.md](INSTALL.md) to install dependencies, build selected plugins, and
-register their local paths with BB. Keep the checkout available for as long as
-the plugins are installed.
+Copy the source you want, including its dependencies, SDK patches, and license
+notices, into your own repository. Follow [INSTALL.md](INSTALL.md) to build
+your copy and register its local path with BB. Keep that directory available
+for as long as the plugins are installed.
 
-Direct BB Git installs of these source manifests are unsupported: BB runs
-`npm install` for Git plugins, and npm cannot resolve `catalog:`. Clone with Git
-first, then use the local path workflow. There is no publishing step.
+Upstream is a reference, not an update channel. Review later changes and port
+the ones you want; there is no release schedule or supported upgrade path.
+Direct BB Git installs also can't resolve this workspace's `catalog:`
+dependencies. Use local path installs from your own copy.
 
 Generated bundles, dependencies, and local configuration stay out of Git.
 

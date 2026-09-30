@@ -1,9 +1,15 @@
-# Install and use bb-plugins with an agent
+# Copy and use BB plugins with an agent
 
-bb-plugins is a collection of plugins for [BB](https://getbb.app/). Install from a
-permanent clone of this repository; no npm publication or marketplace
-registration is involved. Each plugin can be selected independently, with
-optional integrations described below.
+This is the author's personal collection of plugins for [BB](https://getbb.app/).
+Use it shadcn-style: copy the plugins you want into a permanent repository you
+own, adapt them to your setup, and maintain your copy. Each plugin can be
+selected independently, with optional integrations described below.
+
+The author develops these for personal use. There are no published packages,
+marketplace releases, support commitments, or backwards compatibility
+guarantees. Upstream plugin IDs, settings, behavior, and BB/SDK requirements
+can change without an upgrade path. Treat this repository as reference code,
+not a dependency or automatic update source.
 
 ## Instructions for the agent
 
@@ -15,13 +21,20 @@ optional integrations described below.
 3. Check the selected plugins' READMEs and `package.json` files for prerequisites
    and BB/SDK compatibility. Explain any missing setup before installing those
    plugins. Continue with selections whose prerequisites are satisfied.
-4. Clone, install dependencies, build, and install using the commands below.
-   Installation authorization includes these steps; do not ask again for each
-   command. Keep long builds in a background task or yielding terminal, collect
-   their exit status, and report failures before proceeding.
+4. Copy the selected plugin directories and their supporting files into a
+   permanent repository owned by the user. Adapt dependencies, tooling, and
+   deployment assumptions to that repository. Build and install from the copy
+   using the commands below. Installation authorization includes these steps;
+   do not ask again for each command. Keep long builds in a background task or
+   yielding terminal, collect their exit status, and report failures before
+   proceeding. Preserve MIT and third-party license notices.
 5. Verify each installed plugin, then show the user where to find it and how to
-   try one useful feature. Report the checkout path, installed plugin IDs,
+   try one useful feature. Report the user's source path, installed plugin IDs,
    configuration changes, and anything still blocked or unverified.
+
+Do not configure automatic pulls from this repository. Later upstream changes
+are optional material to review and port into the user's copy. Do not copy
+the author's deployment instructions in `AGENTS.md` into the user's project.
 
 Keep changes within plugins and their settings; never patch BB core or its
 installed bundles. Use the user's own accounts and paths. The author's
@@ -40,11 +53,12 @@ README; it is not an installation prerequisite.
   [BB's installation instructions](https://getbb.app/).
 - Git, Node.js 24+, and the Vite+ CLI (`vp`). Follow the
   [Vite+ setup instructions](https://viteplus.dev/guide/) if `vp` is missing.
-  The repository selects pnpm through `packageManager` and pins its local
-  Vite+ dependency; preserve those versions and the lockfile.
+  The source snapshot selects pnpm through `packageManager` and pins its local
+  Vite+ dependency. Keep those versions and the lockfile for the initial copy;
+  the user can deliberately adapt the tooling afterward.
 - A permanent directory on the **BB server machine**, accessible to the server.
   A `path:` installation refers to files on that machine. If the agent is in a
-  remote task environment, perform the clone/build/install on the server
+  remote task environment, perform the copy/build/install on the server
   machine through the user's existing access, rather than passing it a path
   that only exists in the task environment.
 
@@ -74,33 +88,67 @@ Environment Recovery requires Plugin SDK 0.5.9 or later. Read current CLI help
 when flags differ. Report incompatibility instead of relaxing engine ranges or
 rewriting dependency pins to force installation.
 
-## Clone and install dependencies
+## Copy the source into your own repository
 
-Choose a directory the user will keep. This example uses `~/Developer/bb-plugins`;
-reuse a suitable existing clone instead of overwriting it:
+Choose a permanent directory the user owns. For an existing project, merge the
+selected source and required configuration without overwriting its files.
+For a new project, the example below copies Hide Models into
+`~/Developer/my-bb-plugins`. Confirm that destination does not already exist
+before running it; otherwise choose another path or adapt the existing project.
+
+The temporary clone is only a source reference. BB will load the user's copy:
 
 ```sh
+BB_PLUGINS_REFERENCE="$(mktemp -d)"
+git clone --depth 1 https://github.com/lucasnetto/bb-plugins.git "$BB_PLUGINS_REFERENCE/source"
+git -C "$BB_PLUGINS_REFERENCE/source" rev-parse HEAD
+
+BB_PLUGINS_COPY="$HOME/Developer/my-bb-plugins"
 mkdir -p "$HOME/Developer"
-git clone https://github.com/lucasnetto/bb-plugins.git "$HOME/Developer/bb-plugins"
-cd "$HOME/Developer/bb-plugins"
-git status --short
-git rev-parse HEAD
+mkdir "$BB_PLUGINS_COPY"
+mkdir "$BB_PLUGINS_COPY/plugins"
+cp -R "$BB_PLUGINS_REFERENCE/source/plugins/hide-models" "$BB_PLUGINS_COPY/plugins/"
+
+for file in package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json vite.config.ts .gitignore LICENSE THIRD_PARTY_NOTICES.md; do
+  cp "$BB_PLUGINS_REFERENCE/source/$file" "$BB_PLUGINS_COPY/"
+done
+cp -R "$BB_PLUGINS_REFERENCE/source/patches" "$BB_PLUGINS_COPY/"
+cp -R "$BB_PLUGINS_REFERENCE/source/tools" "$BB_PLUGINS_COPY/"
+
+cd "$BB_PLUGINS_COPY"
+git init
+```
+
+Copy any other selected plugin directories the same way, including their
+`skills/`, tests, assets, and retained license notices. Keep a record of the
+reference commit in the user's project. The new repository has its own Git
+history and no upstream remote to pull automatically.
+
+In the copied `vite.config.ts`, set `test.projects` to the selected directories;
+for this example, use `["plugins/hide-models"]`. Keep the lint tools while that
+configuration imports them. The initial snapshot's catalog and lockfile may
+contain unused entries; they can remain until the user deliberately trims them.
+
+Install dependencies at the root of the user's copy:
+
+```sh
 vp install --frozen-lockfile
 ```
 
-Run dependency installation at the repository root. The pnpm workspace resolves
-`catalog:` dependencies and applies the checked-in SDK patch. Do not use
-`npm install` inside individual plugin directories, remove the lockfile, or
-regenerate it to hide a failed frozen install.
+The pnpm workspace resolves `catalog:` dependencies and applies the checked-in
+SDK patch. If integrating into a different toolchain, resolve those catalog
+versions into the user's dependency configuration and carry over the patch
+before building. Do not run `npm install` against unresolved `catalog:` entries
+or regenerate the lockfile just to conceal a failed frozen install.
 
-BB loads these local sources in place. Keep the checkout, dependencies, and
+BB loads the copied local sources in place. Keep the source, dependencies, and
 generated bundles available; do not install from `/tmp`, an agent worktree, or
 an environment that will be deleted when a thread is archived.
 
 ## Build and install the selected plugins
 
 For each selected plugin, use its **directory** from the tour. For example,
-from the repository root, install Hide Models:
+from the root of the user's copy, install Hide Models:
 
 ```sh
 "$BB_PLUGINS_BB" plugin build plugins/hide-models
@@ -120,11 +168,10 @@ in `plugins/fonts` but its ID is `bb-fonts`. Use the ID for configuration,
 reload, logs, and removal. Package names such as `bb-plugin-bb-fonts` are not
 the IDs used by those commands.
 
-`--plugin <name>` is an alternative only for entries in
-[.bb/plugins.json](.bb/plugins.json). That index currently omits some plugins.
-`--subdirectory` works for every directory listed here; do not pass both flags.
-Do not use `bb plugin install git:...` for this repository: BB's Git dependency
-installer uses npm, which cannot resolve its pnpm `catalog:` dependencies.
+Use `--subdirectory` for copied plugin directories. The source repository's
+`.bb/plugins.json` index is optional and should only be copied if adapted to
+the selected plugins. Direct Git installs are not this guide's workflow;
+BB's Git dependency installer also cannot resolve pnpm `catalog:` dependencies.
 
 If an ID is already installed, inspect `bb plugin source <id> --json` first.
 For the same local checkout, rebuild and reload. Installing a different local
@@ -259,7 +306,7 @@ After installation, inspect each selected ID:
 "$BB_PLUGINS_BB" plugin logs hide-models -n 50
 ```
 
-Check that the source points to the intended permanent checkout and the plugin
+Check that the source points to the user's permanent copy and the plugin
 is enabled and running. Some settings are in custom plugin pages rather than
 `plugin config`; use the linked README. After CLI configuration changes, reload
 when required by the plugin. Refresh the browser if its UI remains stale. Start
@@ -271,32 +318,31 @@ visual verification remains for the user. A successful build alone does not
 verify activation, credentials, or UI behavior. Do not merge PRs, create paid
 model requests, or archive real work solely to demonstrate installation.
 
-## Update an existing checkout
+## Maintain your copy
 
-Local path plugins are updated through their checkout. From its root, inspect
-changes and record the current commit before pulling:
+Make changes in the user's repository. If a later upstream change is useful,
+compare it against the recorded source revision, review its assumptions and
+dependencies, and port only what the user wants. Preserve local customizations;
+do not pull or merge upstream wholesale. There is no compatibility guarantee
+or supported migration sequence.
+
+After editing the copy, rebuild and verify the affected plugins:
 
 ```sh
 git status --short
-git rev-parse HEAD
-git pull --ff-only
 vp install --frozen-lockfile
 "$BB_PLUGINS_BB" plugin build plugins/hide-models
 "$BB_PLUGINS_BB" plugin reload hide-models
 "$BB_PLUGINS_BB" plugin list --json
 ```
 
-Only pull when the checkout is clean and its branch/upstream is understood.
-Preserve local edits; do not reset, stash, or resolve diverged branches without
-addressing the user's changes. Repeat build/reload/verification for every
-installed plugin affected by the update, including shared dependency changes.
+When intentionally changing dependencies, update the user's lockfile first.
+Repeat build/reload/verification for every installed plugin affected by the
+update, including shared dependency changes.
 Do not reload a failed build or report the old running instance as the new one.
 
-For the author's configured dual-instance deployment, after changes reach its
-permanent checkout, use `bb profiles refresh <plugin-id>` and then
-`bb profiles refresh <plugin-id> --check` as required by [AGENTS.md](AGENTS.md).
-That helper preserves both accounts and replaces the manual build/reload steps;
-do not imitate it by changing server URLs or credentials in the agent session.
+Use the user's own deployment process. The author's Personal/Work refresh
+workflow is specialized maintainer tooling, not a requirement for copied plugins.
 
 ## Disable, remove, or troubleshoot
 
@@ -310,7 +356,7 @@ Disable a plugin to unload it while preserving its configuration:
 
 If the user requests removal, explain that `bb plugin remove <id>` deletes its
 settings, secrets, and schedules. It leaves local source files on disk. Keep the
-clone while any other installed plugin still points to it.
+source directory while any other installed plugin still points to it.
 
 | Problem                                         | Next step                                                                                                                         |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
